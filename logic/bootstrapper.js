@@ -29,7 +29,7 @@ import { getContext } from '../../../../extensions.js';
 import { log, warn, error } from '../utils/logger.js';
 import { state, bulkInitState, setFileIndex, addToFileIndex, updateChainEntry } from '../state.js';
 import { reconstruct } from '../reconstruction.js';
-import { fetchFileIndex, generate, buildFilename } from '../imageCache.js';
+import { fetchFileIndex, generate } from '../imageCache.js';
 import { setPortrait, clearPortrait } from '../portrait.js';
 import { getCharacter } from '../registry.js';
 
