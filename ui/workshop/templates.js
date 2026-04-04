@@ -108,9 +108,16 @@ export function getStudioHTML(characterId, character, fileIndex) {
     </div>
 
     <!-- Identity Anchor -->
-    <label class="plz-studio-label">Identity Anchor
-        <span style="font-size:0.78em;opacity:0.55;margin-left:6px;">permanent appearance description used in every generation prompt</span>
-    </label>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;">
+        <label class="plz-studio-label" style="margin-bottom:0;">Identity Anchor
+            <span style="font-size:0.78em;opacity:0.55;margin-left:6px;">permanent appearance used in every generation prompt</span>
+        </label>
+        <button class="menu_button plz-anchor-scan" data-mode="studio"
+                title="Scan recent chat to refresh this anchor"
+                style="font-size:0.78em;padding:2px 8px;flex-shrink:0;margin-left:8px;">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Scan Chat
+        </button>
+    </div>
     <textarea id="plz-studio-anchor" class="text_pole" rows="3"
               style="width:100%;resize:vertical;margin-bottom:16px;">${escapeHtml(character.identityAnchor ?? '')}</textarea>
     <button id="plz-studio-anchor-save" class="menu_button" style="margin-bottom:20px;">Save Anchor</button>
@@ -192,9 +199,16 @@ export function getRegisterHTML() {
             here to define their Identity Anchor before that happens.
         </p>
 
-        <label class="plz-studio-label">Character Name
-            <span style="font-size:0.78em;opacity:0.55;margin-left:6px;">must match the name used in chat</span>
-        </label>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+            <label class="plz-studio-label" style="margin-bottom:0;">Character Name
+                <span style="font-size:0.78em;opacity:0.55;margin-left:6px;">must match the name used in chat</span>
+            </label>
+            <button class="menu_button plz-anchor-scan" data-mode="register"
+                    title="Scan recent chat to identify character name and appearance"
+                    style="font-size:0.78em;padding:2px 8px;flex-shrink:0;margin-left:8px;">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Scan Chat
+            </button>
+        </div>
         <input type="text" id="plz-reg-name" class="text_pole" placeholder="e.g. Claire" style="width:100%;margin-bottom:4px;" />
         <div style="font-size:0.8em;opacity:0.5;margin-bottom:14px;">
             Key preview: <code id="plz-reg-key-preview">—</code>

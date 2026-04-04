@@ -186,6 +186,24 @@ Reply with exactly two lines:
 Outfit: [key] or NEW or NULL
 Expression: [label] or NULL`
 
+export const DEFAULT_ANCHOR_SCAN_PROMPT =
+`[SYSTEM: TASK — CHARACTER ARCHIVIST]
+Analyze the roleplay transcript to identify and describe a character's permanent physical appearance.
+
+{{character_focus}}
+TRANSCRIPT:
+{{context}}
+
+INSTRUCTIONS:
+1. Identify the main character being actively described or present{{focus_note}}.
+2. Extract only their permanent physical features: face, hair, eye colour, build, distinctive marks.
+3. Do NOT include clothing, outfits, or current emotional state — permanent appearance only.
+4. The Name must exactly match how the character is referred to in the transcript.
+
+### OUTPUT FORMAT:
+Name: [Exact character name as used in the transcript]
+Identity Anchor: [2-3 sentences of permanent physical appearance for an image generator]`
+
 export const DEFAULT_OUTFIT_DESCRIBER_PROMPT =
 `[SYSTEM: TASK — OUTFIT ARCHIVIST]
 Extract a precise visual description of a character's new outfit from the roleplay transcript.

@@ -15,6 +15,7 @@
  *     external_io: [jQuery DOM Events, registry.js, characterWorkshop.js]
  */
 
+import { getContext } from '../../../../../extensions.js';
 import { state, setWorkshopCharacter } from '../../state.js';
 import {
     getAllCharacterIds,
@@ -23,7 +24,9 @@ import {
     upsertOutfit,
     upsertExpression
 } from '../../registry.js';
-import { slugify } from '../../utils/history.js';
+import { getSettings } from '../../settings.js';
+import { slugify, buildDescriberContext } from '../../utils/history.js';
+import { detectAnchorScan } from '../../detector.js';
 import { error } from '../../utils/logger.js';
 
 /**
@@ -192,6 +195,66 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
 
         renderStudio(id);
         if (window.toastr) window.toastr.success(`${dimension} "${label}" added.`, 'PersonaLyze');
+    });
+
+    // ─── Anchor Scan (Register + Studio) ─────────────────────────────────────
+
+    $overlay.on('click', '.plz-anchor-scan', async function () {
+        const mode   = $(this).data('mode');   // 'register' or 'studio'
+        const $btn   = $(this);
+        const $icon  = $btn.find('i');
+
+        // Spinner feedback
+        $icon.removeClass('fa-wand-magic-sparkles').addClass('fa-spinner fa-spin');
+        $btn.prop('disabled', true);
+
+        try {
+            const context  = getContext();
+            const chat     = context?.chat;
+            if (!chat?.length) {
+                if (window.toastr) window.toastr.warning('No active chat to scan.', 'PersonaLyze');
+                return;
+            }
+
+            const s           = getSettings();
+            const lastIdx     = chat.length - 1;
+            const transcript  = buildDescriberContext(chat, lastIdx, s.describerHistory ?? 3);
+
+            // For studio, focus on the character already in the slot.
+            // For register, use whatever name is already typed (may be empty).
+            const focusName = mode === 'studio'
+                ? (state._workshopCharacterId?.replace(/_/g, ' ') ?? null)
+                : ($('#plz-reg-name').val().trim() || null);
+
+            const result = await detectAnchorScan(
+                transcript,
+                focusName,
+                s.anchorScanPrompt,
+                s.describerProfileId,
+            );
+
+            if (!result) {
+                if (window.toastr) window.toastr.warning('Could not extract character details from chat.', 'PersonaLyze');
+                return;
+            }
+
+            if (mode === 'register') {
+                $('#plz-reg-name').val(result.name).trigger('input');
+                $('#plz-reg-anchor').val(result.anchor);
+            } else {
+                // Studio — only update the anchor textarea, leave name alone.
+                $('#plz-studio-anchor').val(result.anchor);
+            }
+
+            if (window.toastr) window.toastr.success('Character details scanned from chat.', 'PersonaLyze');
+
+        } catch (err) {
+            error('Workshop', 'Anchor scan failed:', err);
+            if (window.toastr) window.toastr.error(`Scan failed: ${err.message}`, 'PersonaLyze');
+        } finally {
+            $icon.removeClass('fa-spinner fa-spin').addClass('fa-wand-magic-sparkles');
+            $btn.prop('disabled', false);
+        }
     });
 
     // ─── Register Tab ─────────────────────────────────────────────────────────

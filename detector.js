@@ -310,6 +310,58 @@ function extractLine(raw, fieldName) {
     return match ? match[1].trim() : null;
 }
 
+// ─── Anchor Scanner ───────────────────────────────────────────────────────────
+
+/**
+ * Scans recent chat context to extract a character's name and permanent physical
+ * appearance (Identity Anchor). Used by the Character Workshop to pre-fill the
+ * Register and Studio forms from the live chat.
+ *
+ * When characterName is provided the prompt focuses on that character.
+ * When null the LLM identifies whoever is most prominently described.
+ *
+ * @param {string}      context        Transcript context (from buildDescriberContext).
+ * @param {string|null} characterName  Optional focus character name.
+ * @param {string}      promptTemplate
+ * @param {string|null} profileId
+ * @returns {Promise<{ name: string, anchor: string }|null>}
+ */
+export async function detectAnchorScan(context, characterName, promptTemplate, profileId) {
+    const hasFocus       = !!characterName;
+    const characterFocus = hasFocus ? `CHARACTER FOCUS: ${characterName}\n` : '';
+    const focusNote      = hasFocus ? ` (focus on ${characterName})` : '';
+
+    const prompt = promptTemplate
+        .replace('{{character_focus}}', characterFocus)
+        .replace('{{focus_note}}',      focusNote)
+        .replace('{{context}}',         context ?? '');
+
+    const raw = await dispatch(prompt, profileId, 'AnchorScan', { temperature: 0.3 });
+    return parseAnchorScanResponse(raw);
+}
+
+/**
+ * Parses an anchor scan response into { name, anchor }.
+ * @param {string} raw
+ * @returns {{ name: string, anchor: string }|null}
+ */
+function parseAnchorScanResponse(raw) {
+    const text = String(raw ?? '');
+
+    const nameMatch   = text.match(/\*?\*?Name\*?\*?:\s*(.+)/i);
+    const anchorMatch = text.match(/\*?\*?Identity\s+Anchor\*?\*?:\s*([\s\S]+?)(?=\n\*?\*?[A-Z]|$)/i);
+
+    if (!nameMatch || !anchorMatch) {
+        warn('AnchorScan', 'Could not extract Name/Identity Anchor from response.');
+        return null;
+    }
+
+    return {
+        name:   nameMatch[1].trim().replace(/^\*+|\*+$/g, ''),
+        anchor: anchorMatch[1].trim().replace(/^\*+|\*+$/g, ''),
+    };
+}
+
 // ─── Outfit Describer ─────────────────────────────────────────────────────────
 
 /**
