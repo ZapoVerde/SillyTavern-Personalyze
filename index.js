@@ -1,10 +1,10 @@
 /**
  * @file data/default-user/extensions/personalyze/index.js
  * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
- * @version 0.1.5
+ * @version 0.1.6
  * @architectural-role Feature Entry Point / Orchestrator
  * @description
- * SillyTavern PersonaLyze (PLZ) — extension entry point.
+ * SillyTavern Personalyze (PLZ) — extension entry point.
  *
  * Binds SillyTavern lifecycle events to the PLZ pipeline and boot sequence.
  * Handles new AI messages, swipe navigation, and chat session changes.
@@ -86,16 +86,16 @@ function handleChatChanged() {
 }
 
 /**
- * Injects the PersonaLyze button into the ST extensions menu.
+ * Injects the Personalyze button into the ST extensions menu.
  * Clicking it opens the Character Workshop on the Roster tab.
  */
 function injectToolbarButton() {
     $('#plz-toolbar-btn').remove();
 
     const $btn = $(`
-        <div id="plz-toolbar-btn" class="list-group-item flex-container flexGap5" title="PersonaLyze — Character Workshop">
+        <div id="plz-toolbar-btn" class="list-group-item flex-container flexGap5" title="Personalyze — Character Workshop">
             <i class="fa-solid fa-user"></i>
-            <span>PersonaLyze</span>
+            <span>Personalyze</span>
         </div>
     `);
 
