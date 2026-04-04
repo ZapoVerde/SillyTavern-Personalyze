@@ -28,6 +28,7 @@
 
 import { state, setWorkshopCharacter } from '../state.js';
 import { getAllCharacterIds, getCharacter } from '../registry.js';
+import { getSettings } from '../settings.js';
 import {
     getBaseWorkshopHTML,
     getRosterHTML,
@@ -69,7 +70,8 @@ export function renderStudio(characterId) {
     }
 
     setWorkshopCharacter(id);
-    $('#plz-tab-studio').html(getStudioHTML(id, character, state.fileIndex));
+    const s = getSettings();
+    $('#plz-tab-studio').html(getStudioHTML(id, character, state.fileIndex, s.expressionLabels ?? []));
 }
 
 // ─── Tab Switcher ─────────────────────────────────────────────────────────────

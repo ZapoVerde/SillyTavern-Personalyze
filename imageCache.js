@@ -15,6 +15,7 @@
  *
  * @api-declaration
  * buildFilename(characterId, outfitKey, expressionKey) → string
+ * buildPortraitPrompt(anchor, outfitDescription, expressionDescription) → string
  * fetchFileIndex() → Promise<{ fileIndex: Set<string>, allImages: string[] }>
  * fetchPreviewBlob(prompt) → Promise<string> (Object URL)
  * generate(characterId, outfitKey, expressionKey, outfitDef, expressionDef, anchor) → Promise<string> (filename)
@@ -81,7 +82,7 @@ async function getAuthHeaders() {
  * @param {string} expressionDescription
  * @returns {string}
  */
-function buildPrompt(anchor, outfitDescription, expressionDescription) {
+export function buildPortraitPrompt(anchor, outfitDescription, expressionDescription) {
     const s = getSettings();
     const suffix = s.vnStyleSuffix ?? DEFAULT_VN_STYLE_SUFFIX;
     return [anchor, outfitDescription, expressionDescription, suffix]
@@ -170,7 +171,7 @@ export async function generate(
     const width    = devMode ? DEV_IMAGE_WIDTH  : DEFAULT_IMAGE_WIDTH;
     const height   = devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
 
-    const prompt   = buildPrompt(anchor, outfitDescription, expressionLabel);
+    const prompt   = buildPortraitPrompt(anchor, outfitDescription, expressionLabel);
     const url      = buildPollinationsUrl(prompt, width, height);
     const headers  = await getAuthHeaders();
 

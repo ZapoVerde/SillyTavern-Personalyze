@@ -94,11 +94,12 @@ export function getRosterHTML(characters, activeId) {
 
 /**
  * Studio tab — edit a specific character's anchor, outfits, and expressions.
- * @param {string} characterId
- * @param {object} character  { identityAnchor, outfits, expressions }
- * @param {Set<string>} fileIndex  Known image filenames on disk.
+ * @param {string}   characterId
+ * @param {object}   character       { identityAnchor, outfits, expressions }
+ * @param {Set<string>} fileIndex    Known image filenames on disk.
+ * @param {string[]} expressionLabels  Global expression palette for the portrait picker.
  */
-export function getStudioHTML(characterId, character, fileIndex) {
+export function getStudioHTML(characterId, character, fileIndex, expressionLabels = []) {
     const label = characterId.replace(/_/g, ' ');
 
     return `
@@ -130,7 +131,7 @@ export function getStudioHTML(characterId, character, fileIndex) {
         </button>
     </div>
     <div id="plz-studio-outfits" style="margin-bottom:20px;">
-        ${getEntryListHTML(characterId, character.outfits ?? {}, 'outfit', fileIndex)}
+        ${getEntryListHTML(characterId, character.outfits ?? {}, 'outfit', fileIndex, expressionLabels)}
     </div>
 
     <!-- Expressions -->
@@ -141,18 +142,19 @@ export function getStudioHTML(characterId, character, fileIndex) {
         </button>
     </div>
     <div id="plz-studio-expressions">
-        ${getEntryListHTML(characterId, character.expressions ?? {}, 'expression', fileIndex)}
+        ${getEntryListHTML(characterId, character.expressions ?? {}, 'expression', fileIndex, [])}
     </div>`;
 }
 
 /**
  * Renders the list of entries (outfits or expressions) for the Studio.
- * @param {string} characterId
- * @param {object} entries     { key: { label, description } }
+ * @param {string}   characterId
+ * @param {object}   entries          { key: { label, description } }
  * @param {'outfit'|'expression'} dimension
  * @param {Set<string>} fileIndex
+ * @param {string[]} expressionLabels  Portrait picker labels (outfit entries only).
  */
-export function getEntryListHTML(characterId, entries, dimension, fileIndex) {
+export function getEntryListHTML(characterId, entries, dimension, fileIndex, expressionLabels = []) {
     const keys = Object.keys(entries);
 
     if (keys.length === 0) {
@@ -165,6 +167,10 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex) {
         const imgCount = dimension === 'outfit'
             ? [...fileIndex].filter(f => f.startsWith(`plz_${characterId}_${key}_`)).length
             : [...fileIndex].filter(f => f.includes(`_${key}.png`)).length;
+
+        const portraitSection = dimension === 'outfit'
+            ? getOutfitPortraitSectionHTML(characterId, key, fileIndex, expressionLabels)
+            : '';
 
         return `
         <div class="plz-studio-entry" data-key="${escapeHtml(key)}" data-dimension="${dimension}">
@@ -182,8 +188,51 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex) {
                 <button class="menu_button plz-entry-delete-btn" data-key="${escapeHtml(key)}" data-dimension="${dimension}"
                         style="font-size:0.78em;padding:2px 8px;">Delete</button>
             </div>
+            ${portraitSection}
         </div>`;
     }).join('');
+}
+
+/**
+ * Portrait generation sub-section for an outfit entry.
+ * Renders expression picker pills and thumbnail/generate buttons.
+ * @param {string}   characterId
+ * @param {string}   outfitKey
+ * @param {Set<string>} fileIndex
+ * @param {string[]} expressionLabels
+ */
+function getOutfitPortraitSectionHTML(characterId, outfitKey, fileIndex, expressionLabels) {
+    if (expressionLabels.length === 0) return '';
+
+    const pills = expressionLabels.map(label => {
+        const hasImage = fileIndex.has(buildFilename(characterId, outfitKey, label));
+        const cls      = hasImage ? ' plz-expr-has-image' : '';
+        const check    = hasImage ? '<i class="fa-solid fa-check" style="font-size:0.8em;margin-right:3px;opacity:0.7;"></i>' : '';
+        return `<span class="plz-expr-pill${cls}" data-label="${escapeHtml(label)}">${check}${escapeHtml(label)}</span>`;
+    }).join('');
+
+    return `
+    <div class="plz-portrait-section" data-outfit-key="${escapeHtml(outfitKey)}" data-selected-expr="">
+        <div class="plz-portrait-section-label">Generate Portrait — pick an expression:</div>
+        <div class="plz-expr-pills">
+            ${pills}
+            <button class="plz-expr-add-btn" title="Add a custom expression to the global list">+ Add</button>
+        </div>
+        <div class="plz-portrait-actions">
+            <button class="menu_button plz-portrait-preview-btn" data-key="${escapeHtml(outfitKey)}"
+                    disabled style="font-size:0.78em;padding:2px 8px;">
+                <i class="fa-solid fa-eye"></i> Thumbnail
+            </button>
+            <button class="menu_button plz-portrait-generate-btn" data-key="${escapeHtml(outfitKey)}"
+                    disabled style="font-size:0.78em;padding:2px 8px;">
+                <i class="fa-solid fa-image"></i> Generate &amp; Save
+            </button>
+        </div>
+        <div class="plz-portrait-preview-area plz-hidden">
+            <img class="plz-portrait-preview-img" src="" alt="portrait thumbnail" />
+            <div class="plz-portrait-preview-label"></div>
+        </div>
+    </div>`;
 }
 
 /**

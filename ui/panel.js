@@ -117,16 +117,17 @@ function buildPanelHTML() {
 
                 <!-- Pipeline Steps -->
                 <p style="font-size:0.85em;opacity:0.7;margin:0 0 12px;">
-                    Each pipeline step uses its own prompt and connection profile.
-                    Leave connection blank to use the chat's active API.
+                    Each step uses its own connection profile — booleans can run on the
+                    cheapest model you have. A profile must be set for each step to work.
                 </p>
 
-                ${buildCallRow('detection', 'Detection — Subject / Change / Classifier', null, 'detectionProfileId', 'detectionHistory', `
-                    <button class="menu_button plz-open-prompt" data-prompt-key="subjectMatchPrompt"       style="font-size:0.75em;padding:2px 6px;">Subject?</button>
+                ${buildCallRow('boolean', 'Boolean — Subject? / Changed?', null, 'booleanProfileId', 'detectionHistory', `
+                    <button class="menu_button plz-open-prompt" data-prompt-key="subjectMatchPrompt" style="font-size:0.75em;padding:2px 6px;">Subject?</button>
+                    <button class="menu_button plz-open-prompt" data-prompt-key="changeCheckPrompt"  style="font-size:0.75em;padding:2px 6px;">Changed?</button>`)}
+                ${buildCallRow('classifier', 'Classifier — Who? / Outfit + Expression', null, 'classifierProfileId', null, `
                     <button class="menu_button plz-open-prompt" data-prompt-key="subjectListPrompt"        style="font-size:0.75em;padding:2px 6px;">Who?</button>
-                    <button class="menu_button plz-open-prompt" data-prompt-key="changeCheckPrompt"        style="font-size:0.75em;padding:2px 6px;">Changed?</button>
                     <button class="menu_button plz-open-prompt" data-prompt-key="combinedClassifierPrompt" style="font-size:0.75em;padding:2px 6px;">Classify</button>`)}
-                ${buildCallRow('describer', 'Describer — New Outfit Description', 'outfitDescriberPrompt', 'describerProfileId', 'describerHistory')}
+                ${buildCallRow('describer', 'Describer — New Outfit / Anchor Scan', 'outfitDescriberPrompt', 'describerProfileId', 'describerHistory')}
 
                 <!-- Image Generation -->
                 <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--SmartThemeBorderColor,#444);">
@@ -230,8 +231,9 @@ function populateInputs() {
 function initConnectionDropdowns() {
     const s = getSettings();
     const dropdowns = [
-        { id: '#plz-profile-detection', key: 'detectionProfileId' },
-        { id: '#plz-profile-describer', key: 'describerProfileId' },
+        { id: '#plz-profile-boolean',    key: 'booleanProfileId'    },
+        { id: '#plz-profile-classifier', key: 'classifierProfileId' },
+        { id: '#plz-profile-describer',  key: 'describerProfileId'  },
     ];
 
     for (const { id, key } of dropdowns) {

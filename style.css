@@ -254,3 +254,107 @@
     border-color: var(--SmartThemeDangerColor, #e05c5c) !important;
     color: var(--SmartThemeDangerColor, #e05c5c) !important;
 }
+
+/* ─── Studio Portrait Section ─────────────────────────────────────────────── */
+
+.plz-portrait-section {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.plz-portrait-section-label {
+    font-size: 0.78em;
+    opacity: 0.55;
+    margin-bottom: 6px;
+}
+
+/* ─── Expression Pills ────────────────────────────────────────────────────── */
+
+.plz-expr-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.plz-expr-pill {
+    padding: 2px 9px;
+    border-radius: 12px;
+    font-size: 0.78em;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.05);
+    user-select: none;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.plz-expr-pill:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.plz-expr-pill.plz-expr-selected {
+    background: rgba(124, 158, 240, 0.2);
+    border-color: rgba(124, 158, 240, 0.65);
+    color: #b8ccf8;
+}
+
+.plz-expr-pill.plz-expr-has-image {
+    border-color: rgba(80, 200, 120, 0.45);
+}
+
+.plz-expr-pill.plz-expr-has-image:hover {
+    border-color: rgba(80, 200, 120, 0.75);
+}
+
+.plz-expr-pill.plz-expr-has-image.plz-expr-selected {
+    background: rgba(80, 200, 120, 0.15);
+    border-color: rgba(80, 200, 120, 0.75);
+    color: #90e8a0;
+}
+
+.plz-expr-add-btn {
+    padding: 2px 9px;
+    border-radius: 12px;
+    font-size: 0.78em;
+    cursor: pointer;
+    border: 1px dashed rgba(255, 255, 255, 0.28);
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.plz-expr-add-btn:hover {
+    border-color: rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* ─── Portrait Actions & Preview ──────────────────────────────────────────── */
+
+.plz-portrait-actions {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.plz-portrait-preview-area {
+    margin-top: 8px;
+    text-align: center;
+}
+
+.plz-portrait-preview-img {
+    max-width: 100%;
+    max-height: 180px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    display: block;
+    margin: 0 auto;
+}
+
+.plz-portrait-preview-label {
+    font-size: 0.75em;
+    opacity: 0.45;
+    margin-top: 5px;
+}

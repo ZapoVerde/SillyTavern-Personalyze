@@ -76,7 +76,7 @@ export async function runPipeline(messageId) {
                 state.activeCharacterId.replace(/_/g, ' '),
                 history,
                 s.subjectMatchPrompt,
-                s.detectionProfileId,
+                s.booleanProfileId,
             );
             if (isMatch) characterId = state.activeCharacterId;
         }
@@ -96,7 +96,7 @@ export async function runPipeline(messageId) {
             userName,
             history,
             s.subjectListPrompt,
-            s.detectionProfileId,
+            s.classifierProfileId,
         );
 
         if (!characterId) return;   // NONE — no known character is the main subject.
@@ -111,27 +111,32 @@ export async function runPipeline(messageId) {
     // Cheap boolean: is everything still the same? Skip the classifier if so.
     // Read from the DNA chain — this character's own last-known state, not the
     // global active pointers (which may belong to a different character).
+    //
+    // If there is no chain entry for this character (first time we've seen them
+    // this session), skip the check entirely — we have nothing to compare against
+    // and must run the classifier unconditionally.
 
-    const chainEntry             = getChainEntry(characterId);
-    const currentOutfitLabel     = chainEntry?.outfit
-        ? (character.outfits[chainEntry.outfit]?.label ?? chainEntry.outfit)
-        : 'unknown';
-    const currentExpressionLabel = chainEntry?.expression ?? 'neutral';
+    const chainEntry = getChainEntry(characterId);
 
-    const unchanged = await detectChangeCheck(
-        message.mes,
-        characterId.replace(/_/g, ' '),
-        currentOutfitLabel,
-        currentExpressionLabel,
-        history,
-        s.changeCheckPrompt,
-        s.detectionProfileId,
-    );
+    if (chainEntry?.outfit && chainEntry?.expression) {
+        const currentOutfitLabel     = character.outfits[chainEntry.outfit]?.label ?? chainEntry.outfit;
+        const currentExpressionLabel = chainEntry.expression;
 
-    if (unchanged) {
-        // Portrait is already correct — just ensure it's visible.
-        if (state.activeImageFile) setPortrait(state.activeImageFile);
-        return;
+        const unchanged = await detectChangeCheck(
+            message.mes,
+            characterId.replace(/_/g, ' '),
+            currentOutfitLabel,
+            currentExpressionLabel,
+            history,
+            s.changeCheckPrompt,
+            s.booleanProfileId,
+        );
+
+        if (unchanged) {
+            // Portrait is already correct — just ensure it's visible.
+            if (chainEntry.image) setPortrait(chainEntry.image);
+            return;
+        }
     }
 
     // ── Step 3: Combined Classifier ──────────────────────────────────────────
@@ -146,7 +151,7 @@ export async function runPipeline(messageId) {
         s.expressionLabels,
         history,
         s.combinedClassifierPrompt,
-        s.detectionProfileId,
+        s.classifierProfileId,
     );
 
     // Both NULL — classifier found nothing actionable.

@@ -34,53 +34,56 @@
  *   assertions:
  *     purity: IO
  *     state_ownership: []
- *     external_io: [generateQuietPrompt, ConnectionManagerRequestService]
+ *     external_io: [ConnectionManagerRequestService]
  */
 
-import { generateQuietPrompt } from '../../../../script.js';
 import { ConnectionManagerRequestService } from '../../shared.js';
 import { log, warn, error } from './utils/logger.js';
 
 // ─── Core Dispatch ────────────────────────────────────────────────────────────
 
 /**
- * Dispatches a prompt to the LLM with profile-aware routing.
- * Falls back to the active ST connection if the profileId call fails or is absent.
- * @param {string} prompt
+ * Dispatches a prompt to the LLM via ConnectionManagerRequestService.
+ *
+ * NOTE: generateQuietPrompt is deliberately NOT used here. Despite its name it
+ * routes through ST's main generation path and locks the send button for the
+ * duration of the call. ConnectionManagerRequestService uses a side-channel
+ * connection that never touches the generation lock.
+ *
+ * If no profileId is configured the call is aborted with a one-time warning
+ * rather than falling back to the blocking path.
+ *
+ * @param {string}      prompt
  * @param {string|null} profileId
- * @param {string} label   Log tag (e.g. 'SubjectMatch').
- * @param {object} extraOptions
- * @returns {Promise<string>}
+ * @param {string}      label   Log tag (e.g. 'SubjectMatch').
+ * @param {object}      extraOptions
+ * @returns {Promise<string>}  Empty string when no profile is configured.
  */
 async function dispatch(prompt, profileId, label, extraOptions = {}) {
+    if (!profileId) {
+        warn(label, 'No detection profile configured — aborting call. Set a Detection Profile in PLZ settings.');
+        if (window.toastr) {
+            window.toastr.warning(
+                'PersonaLyze: No Detection Profile set. Configure one in PLZ settings to enable detection.',
+                'PersonaLyze',
+                { timeOut: 6000, preventDuplicates: true },
+            );
+        }
+        return '';
+    }
+
     log(label, `--- PROMPT SENT ---\n${prompt}`);
 
-    let result;
-
-    if (profileId) {
-        try {
-            result = await ConnectionManagerRequestService.sendRequest(profileId, prompt, null, extraOptions);
-        } catch (err) {
-            warn(label, 'ConnectionManager failed, falling back to active connection:', err);
-        }
+    try {
+        const result = await ConnectionManagerRequestService.sendRequest(profileId, prompt, null, extraOptions);
+        const text   = result?.content ?? result;
+        log(label, `--- RAW AI RESPONSE ---\n${text}`);
+        return String(text ?? '');
+    } catch (err) {
+        error(label, 'ConnectionManager request failed:', err);
+        if (window.toastr) window.toastr.error(`PLZ detection failed: ${err.message}`, 'PersonaLyze');
+        throw err;
     }
-
-    if (!result) {
-        try {
-            result = await generateQuietPrompt({
-                quietPrompt: prompt,
-                removeReasoning: true,
-                ...extraOptions,
-            });
-        } catch (err) {
-            error(label, 'generateQuietPrompt failed:', err);
-            throw err;
-        }
-    }
-
-    const text = result?.content ?? result;
-    log(label, `--- RAW AI RESPONSE ---\n${text}`);
-    return String(text ?? '');
 }
 
 // ─── YES/NO Parser ────────────────────────────────────────────────────────────
@@ -118,9 +121,9 @@ function parseYesNo(raw, label) {
  */
 export async function detectSubjectMatch(messageMes, characterName, history, promptTemplate, profileId) {
     const prompt = promptTemplate
-        .replace('{{character_name}}', characterName ?? 'Unknown')
-        .replace('{{history}}',        history       ?? '')
-        .replace('{{message}}',        messageMes    ?? '');
+        .replaceAll('{{character_name}}', characterName ?? 'Unknown')
+        .replace('{{history}}',           history       ?? '')
+        .replace('{{message}}',           messageMes    ?? '');
 
     const raw = await dispatch(prompt, profileId, 'SubjectMatch', { temperature: 0.1 });
     return parseYesNo(raw, 'SubjectMatch');
@@ -189,11 +192,11 @@ export async function detectSubjectFromList(messageMes, characterIds, userName, 
  */
 export async function detectChangeCheck(messageMes, characterName, currentOutfit, currentExpression, history, promptTemplate, profileId) {
     const prompt = promptTemplate
-        .replace('{{character_name}}',    characterName     ?? 'Unknown')
-        .replace('{{current_outfit}}',    currentOutfit     ?? 'unknown')
-        .replace('{{current_expression}}',currentExpression ?? 'neutral')
-        .replace('{{history}}',           history           ?? '')
-        .replace('{{message}}',           messageMes        ?? '');
+        .replaceAll('{{character_name}}',    characterName     ?? 'Unknown')
+        .replace('{{current_outfit}}',       currentOutfit     ?? 'unknown')
+        .replace('{{current_expression}}',   currentExpression ?? 'neutral')
+        .replace('{{history}}',              history           ?? '')
+        .replace('{{message}}',              messageMes        ?? '');
 
     const raw = await dispatch(prompt, profileId, 'ChangeCheck', { temperature: 0.1 });
     // YES = still the same = unchanged = true

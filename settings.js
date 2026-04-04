@@ -63,9 +63,10 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     devMode:                DEFAULT_DEV_MODE,
     verboseLogging:         DEFAULT_VERBOSE_LOGGING,
 
-    // LLM profile IDs — null means "use the active ST connection"
-    detectionProfileId:     null,   // subject match / subject list / change check / combined classifier
-    describerProfileId:     null,   // outfit describer
+    // LLM profile IDs — null means disabled (do not fall back to main connection)
+    booleanProfileId:       null,   // Step 1 + 2.9 — Subject Match (YES/NO) + Change Check (YES/NO)
+    classifierProfileId:    null,   // Step 2 + 3   — Subject From List + Combined Outfit/Expression
+    describerProfileId:     null,   // Step 3a      — Outfit Describer + Anchor Scan
 
     // History window sizes (turn pairs)
     detectionHistory:       DEFAULT_DETECTION_HISTORY,

@@ -16,7 +16,7 @@
  */
 
 import { getContext } from '../../../../../extensions.js';
-import { state, setWorkshopCharacter } from '../../state.js';
+import { state, setWorkshopCharacter, addToFileIndex, updateChainEntry } from '../../state.js';
 import {
     getAllCharacterIds,
     getCharacter,
@@ -24,9 +24,10 @@ import {
     upsertOutfit,
     upsertExpression
 } from '../../registry.js';
-import { getSettings } from '../../settings.js';
+import { getSettings, updateSetting } from '../../settings.js';
 import { slugify, buildDescriberContext } from '../../utils/history.js';
 import { detectAnchorScan } from '../../detector.js';
+import { buildPortraitPrompt, fetchPreviewBlob, generate, buildFilename } from '../../imageCache.js';
 import { error } from '../../utils/logger.js';
 
 /**
@@ -254,6 +255,120 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         } finally {
             $icon.removeClass('fa-spinner fa-spin').addClass('fa-wand-magic-sparkles');
             $btn.prop('disabled', false);
+        }
+    });
+
+    // ─── Register Tab ─────────────────────────────────────────────────────────
+
+    // ─── Portrait Generation (Studio — outfit entries) ────────────────────────
+
+    // Select an expression pill → enable buttons
+    $overlay.on('click', '.plz-expr-pill', function () {
+        const $pill    = $(this);
+        const $section = $pill.closest('.plz-portrait-section');
+
+        $section.find('.plz-expr-pill').removeClass('plz-expr-selected');
+        $pill.addClass('plz-expr-selected');
+        $section.attr('data-selected-expr', $pill.data('label'));
+
+        $section.find('.plz-portrait-preview-btn, .plz-portrait-generate-btn').prop('disabled', false);
+    });
+
+    // Add a custom expression label to the global palette
+    $overlay.on('click', '.plz-expr-add-btn', async function () {
+        const { callPopup } = await import('../../../../../../script.js');
+
+        const confirmed = await callPopup(
+            `<h3>Add Expression</h3>
+            <label style="display:block;margin:8px 0 3px;font-size:0.88em;opacity:0.75;">Label (e.g. embarrassed)</label>
+            <input type="text" id="plz-custom-expr-input" class="text_pole" style="width:100%;" />`,
+            'confirm'
+        );
+        if (!confirmed) return;
+
+        const label = ($('#plz-custom-expr-input').val() ?? '').trim().toLowerCase();
+        if (!label) return;
+
+        const s = getSettings();
+        if (s.expressionLabels.includes(label)) {
+            if (window.toastr) window.toastr.info(`"${label}" is already in the list.`, 'PersonaLyze');
+            return;
+        }
+
+        updateSetting('expressionLabels', [...s.expressionLabels, label]);
+        renderStudio(state._workshopCharacterId);
+        if (window.toastr) window.toastr.success(`Expression "${label}" added to global list.`, 'PersonaLyze');
+    });
+
+    // Thumbnail preview — small fast image to check the look
+    $overlay.on('click', '.plz-portrait-preview-btn', async function () {
+        const $btn      = $(this);
+        const outfitKey = $btn.data('key');
+        const $section  = $btn.closest('.plz-portrait-section');
+        const exprLabel = $section.attr('data-selected-expr');
+        const id        = state._workshopCharacterId;
+        if (!id || !exprLabel) return;
+
+        const character = getCharacter(id);
+        const outfitDef = character?.outfits[outfitKey];
+        if (!outfitDef) return;
+
+        const $icon = $btn.find('i');
+        $icon.removeClass('fa-eye').addClass('fa-spinner fa-spin');
+        $btn.prop('disabled', true);
+
+        try {
+            const prompt  = buildPortraitPrompt(character.identityAnchor, outfitDef.description, exprLabel);
+            const blobUrl = await fetchPreviewBlob(prompt);
+
+            const $area = $section.find('.plz-portrait-preview-area');
+            $area.find('.plz-portrait-preview-img').attr('src', blobUrl);
+            $area.find('.plz-portrait-preview-label').text(`${outfitDef.label} × ${exprLabel}`);
+            $area.removeClass('plz-hidden');
+        } catch (err) {
+            error('Studio', 'Thumbnail preview failed:', err);
+            if (window.toastr) window.toastr.error(`Preview failed: ${err.message}`, 'PersonaLyze');
+        } finally {
+            $icon.removeClass('fa-spinner fa-spin').addClass('fa-eye');
+            $btn.prop('disabled', false);
+        }
+    });
+
+    // Generate full-resolution portrait and save to server
+    $overlay.on('click', '.plz-portrait-generate-btn', async function () {
+        const $btn      = $(this);
+        const outfitKey = $btn.data('key');
+        const $section  = $btn.closest('.plz-portrait-section');
+        const exprLabel = $section.attr('data-selected-expr');
+        const id        = state._workshopCharacterId;
+        if (!id || !exprLabel) return;
+
+        const character = getCharacter(id);
+        const outfitDef = character?.outfits[outfitKey];
+        if (!outfitDef) return;
+
+        const $icon = $btn.find('i');
+        $icon.removeClass('fa-image').addClass('fa-spinner fa-spin');
+        $btn.prop('disabled', true);
+        $section.find('.plz-portrait-preview-btn').prop('disabled', true);
+
+        try {
+            const newFile = await generate(
+                id, outfitKey, exprLabel,
+                outfitDef.description, exprLabel,
+                character.identityAnchor,
+            );
+            addToFileIndex(newFile);
+            updateChainEntry(id, outfitKey, exprLabel, newFile);
+
+            if (window.toastr) window.toastr.success(`Saved: ${newFile}`, 'PersonaLyze');
+            renderStudio(id);   // re-render to add checkmark to the pill
+        } catch (err) {
+            error('Studio', 'Portrait generation failed:', err);
+            if (window.toastr) window.toastr.error(`Generate failed: ${err.message}`, 'PersonaLyze');
+            $icon.removeClass('fa-spinner fa-spin').addClass('fa-image');
+            $btn.prop('disabled', false);
+            $section.find('.plz-portrait-preview-btn').prop('disabled', false);
         }
     });
 
