@@ -18,6 +18,7 @@
  *
  * @api-declaration
  * state                                    — Read-only access to runtime data.
+ * setWorkshopCharacter(characterId)        — Sets the character open in the Workshop.
  * resetState()                             — Restores state to factory defaults.
  * updateActiveCharacter(characterId)       — Sets the currently tracked character.
  * updateActivePointers(outfit, expression) — Updates the active outfit/expression keys.
@@ -43,6 +44,17 @@ export const state = {
 
     // Filesystem cache — set of filenames confirmed present on the server
     fileIndex: new Set(),
+
+    // Workshop (Temporary UI State)
+    _workshopCharacterId: null,   // string | null — character currently open in Studio tab
+}
+
+/**
+ * Sets the character currently being edited in the Workshop.
+ * @param {string|null} characterId
+ */
+export function setWorkshopCharacter(characterId) {
+    state._workshopCharacterId = characterId ?? null;
 }
 
 /**
@@ -55,6 +67,7 @@ export function resetState() {
     state.activeExpressionKey = null;
     state.activeImageFile     = null;
     state.fileIndex           = new Set();
+    state._workshopCharacterId = null;
 }
 
 /**

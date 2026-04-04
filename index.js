@@ -1,7 +1,7 @@
 /**
  * @file data/default-user/extensions/personalyze/index.js
  * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
- * @version 0.1.2
+ * @version 0.1.3
  * @architectural-role Feature Entry Point / Orchestrator
  * @description
  * SillyTavern PersonaLyze (PLZ) — extension entry point.
@@ -33,6 +33,7 @@ import { runPipeline } from './logic/pipeline.js';
 import { injectSettingsPanel } from './ui/panel.js';
 import { injectMessageBadge, reinjectAllBadges } from './ui/badge.js';
 import { injectPortraitContainer } from './portrait.js';
+import { handleOpenWorkshop } from './logic/characterWorkshop.js';
 
 /**
  * Pipeline Dispatcher.
@@ -85,6 +86,26 @@ function handleChatChanged() {
 }
 
 /**
+ * Injects the PersonaLyze button into the ST extensions menu.
+ * Clicking it opens the Character Workshop on the Roster tab.
+ */
+function injectToolbarButton() {
+    $('#plz-toolbar-btn').remove();
+
+    const $btn = $(`
+        <div id="plz-toolbar-btn" class="list-group-item flex-container flexGap5" title="PersonaLyze — Character Workshop">
+            <i class="fa-solid fa-user"></i>
+            <span>PersonaLyze</span>
+        </div>
+    `);
+
+    $btn.on('click', () => handleOpenWorkshop());
+
+    const $menu = $('#extensionsMenu');
+    if ($menu.length) $menu.append($btn);
+}
+
+/**
  * Extension Entry Point.
  * Orchestrates the startup sequence.
  */
@@ -101,6 +122,7 @@ async function init() {
         // 2. UI Layer — Inject persistent elements into the ST DOM.
         injectSettingsPanel();
         injectPortraitContainer();
+        injectToolbarButton();
 
         // 3. Host Events — Bind core SillyTavern lifecycle events.
         eventSource.on(event_types.MESSAGE_RECEIVED, handleMessageReceived);

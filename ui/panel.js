@@ -35,7 +35,7 @@ import { ConnectionManagerRequestService } from '../../../shared.js';
 import { getSettings, updateSetting, SETTINGS_DEFAULTS } from '../settings.js';
 import { fetchPreviewBlob } from '../imageCache.js';
 import { setPortraitPosition } from '../portrait.js';
-import { openPortfolio } from './portfolio.js';
+import { handleOpenWorkshop, handleOpenRegister } from '../logic/characterWorkshop.js';
 import { warn, error, log, setVerbose } from '../utils/logger.js';
 import {
     DEFAULT_BOOLEAN_PROMPT,
@@ -172,10 +172,13 @@ function buildPanelHTML() {
                     </div>
                 </div>
 
-                <!-- Portfolio Manager -->
-                <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--SmartThemeBorderColor,#444);">
-                    <button class="menu_button" id="plz-open-portfolio" style="width:100%;">
-                        <i class="fa-solid fa-shirt"></i> Open Portfolio Manager
+                <!-- Character Workshop -->
+                <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--SmartThemeBorderColor,#444);display:flex;gap:8px;">
+                    <button class="menu_button" id="plz-open-workshop" style="flex:1;">
+                        <i class="fa-solid fa-user"></i> Character Workshop
+                    </button>
+                    <button class="menu_button" id="plz-open-register" style="flex:1;">
+                        <i class="fa-solid fa-user-plus"></i> Register Character
                     </button>
                 </div>
 
