@@ -1,7 +1,7 @@
 /**
  * @file data/default-user/extensions/personalyze/index.js
  * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
- * @version 0.1.1
+ * @version 0.1.2
  * @architectural-role Feature Entry Point / Orchestrator
  * @description
  * SillyTavern PersonaLyze (PLZ) — extension entry point.
@@ -25,8 +25,9 @@
 import { eventSource, event_types } from '../../../../script.js';
 import { getContext } from '../../../extensions.js';
 import { resetState } from './state.js';
-import { log, error } from './utils/logger.js';
+import { log, error, setVerbose } from './utils/logger.js';
 import { initRegistry } from './registry.js';
+import { getSettings } from './settings.js';
 import { runBoot } from './logic/bootstrapper.js';
 import { runPipeline } from './logic/pipeline.js';
 import { injectSettingsPanel } from './ui/panel.js';
@@ -93,6 +94,9 @@ async function init() {
     try {
         // 1. Data Layer — Bootstrap global registry and settings.
         initRegistry();
+
+        // Apply stored verbose preference before any further logging.
+        setVerbose(getSettings().verboseLogging ?? false);
 
         // 2. UI Layer — Inject persistent elements into the ST DOM.
         injectSettingsPanel();

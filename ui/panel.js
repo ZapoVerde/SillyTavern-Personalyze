@@ -36,7 +36,7 @@ import { getSettings, updateSetting, SETTINGS_DEFAULTS } from '../settings.js';
 import { fetchPreviewBlob } from '../imageCache.js';
 import { setPortraitPosition } from '../portrait.js';
 import { openPortfolio } from './portfolio.js';
-import { warn, error, log } from '../utils/logger.js';
+import { warn, error, log, setVerbose } from '../utils/logger.js';
 import {
     DEFAULT_BOOLEAN_PROMPT,
     DEFAULT_OUTFIT_CLASSIFIER_PROMPT,
@@ -156,12 +156,19 @@ function buildPanelHTML() {
                                 style="font-size:0.8em;padding:2px 8px;">Edit Suffix</button>
                     </div>
 
-                    <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
                         <label class="checkbox_label" style="font-size:0.85em;cursor:pointer;">
                             <input type="checkbox" id="plz-dev-mode" />
                             <span>Dev mode</span>
                         </label>
                         <span style="font-size:0.78em;opacity:0.55;">Generates small preview images to save API credits</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <label class="checkbox_label" style="font-size:0.85em;cursor:pointer;">
+                            <input type="checkbox" id="plz-verbose-logging" />
+                            <span>Verbose logging</span>
+                        </label>
+                        <span style="font-size:0.78em;opacity:0.55;">Show [PLZ:*] info/warn output in the browser console</span>
                     </div>
                 </div>
 
@@ -186,6 +193,7 @@ function populateInputs() {
     $(`#${PANEL_ID} #plz-portrait-position`).val(s.portraitPosition ?? 'bottom-right');
     $(`#${PANEL_ID} #plz-image-model`).val(s.imageModel);
     $(`#${PANEL_ID} #plz-dev-mode`).prop('checked', s.devMode ?? false);
+    $(`#${PANEL_ID} #plz-verbose-logging`).prop('checked', s.verboseLogging ?? false);
 
     $(`#${PANEL_ID} .plz-history-input`).each(function () {
         const key = $(this).data('history-key');
@@ -269,6 +277,12 @@ function bindHandlers() {
 
     $panel.on('change', '#plz-dev-mode', function () {
         updateSetting('devMode', $(this).prop('checked'));
+    });
+
+    $panel.on('change', '#plz-verbose-logging', function () {
+        const enabled = $(this).prop('checked');
+        updateSetting('verboseLogging', enabled);
+        setVerbose(enabled);
     });
 
     $panel.on('input', '.plz-history-input', function () {

@@ -30,7 +30,7 @@
  */
 
 /** Primary API gateway for Pollinations. */
-export const POLLINATIONS_BASE_URL = 'https://image.pollinations.ai'
+export const POLLINATIONS_BASE_URL = 'https://gen.pollinations.ai'
 
 /** Publishable app key — identifies PersonaLyze to Pollinations for attribution. */
 export const POLLINATIONS_APP_KEY = ''
@@ -58,8 +58,8 @@ export const DEFAULT_DEV_MODE = false
 export const DEV_IMAGE_WIDTH  = 256
 export const DEV_IMAGE_HEIGHT = 384
 
-/** Verbose logging — set to true to enable informational log/warn output. Errors always surface. */
-export const DEFAULT_VERBOSE_LOGGING = true
+/** Verbose logging — off by default. Enable in the settings panel to see log/warn output. Errors always surface. */
+export const DEFAULT_VERBOSE_LOGGING = false
 
 /** Default turn-pair history windows for LLM calls. */
 export const DEFAULT_BOOLEAN_HISTORY               = 3

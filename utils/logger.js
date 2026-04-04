@@ -1,34 +1,43 @@
 /**
  * @file data/default-user/extensions/personalyze/utils/logger.js
  * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
- * @architectural-role Utility
+ * @architectural-role Utility / Central Logger
  * @description
  * Centralised logging wrapper for PersonaLyze.
  *
- * - log() and warn() are gated behind DEFAULT_VERBOSE_LOGGING.
- * - error() always fires regardless of the flag.
- * - Calls with extra arguments (e.g. an error object) are rendered as a
- *   collapsed console group so the header stays on a single line.
+ * All console output in the extension must go through this module.
+ * Raw console.log / console.warn / console.error calls are forbidden
+ * outside this file.
+ *
+ * Behaviour:
+ *   - Every message is prefixed with [PLZ:Tag].
+ *   - log() and warn() are gated behind the verbose flag (off by default).
+ *   - error() always fires regardless of the flag.
+ *   - Calls with extra arguments (e.g. an error object) render as a
+ *     collapsed console group so the label stays on a single line.
  *
  * Usage:
  *   import { log, warn, error } from '../utils/logger.js';
- *   log('Boot', 'Session started:', id);       // → [PLZ:Boot] Session started: (collapsed)
- *   warn('Pipeline', 'Skipping stale turn');   // → [PLZ:Pipeline] Skipping stale turn
- *   error('Pointer', 'Write failed:', err);    // → [PLZ:Pointer] Write failed: (collapsed)
+ *   log('Boot', 'Session started:', id);      // → [PLZ:Boot] Session started: (collapsed)
+ *   warn('Pipeline', 'Skipping stale turn');  // → [PLZ:Pipeline] Skipping stale turn
+ *   error('Pointer', 'Write failed:', err);   // → [PLZ:Pointer] Write failed: (collapsed)
  *
  * @api-declaration
- * log(tag, ...args)   — verbose-gated informational output.
- * warn(tag, ...args)  — verbose-gated warning output.
- * error(tag, ...args) — always-on error output.
+ * log(tag, ...args)        — verbose-gated informational output.
+ * warn(tag, ...args)       — verbose-gated warning output.
+ * error(tag, ...args)      — always-on error output.
+ * setVerbose(enabled)      — enable or disable verbose output at runtime.
+ * isVerbose()              — returns the current verbose state.
  */
 
-import { DEFAULT_VERBOSE_LOGGING } from '../defaults.js';
+/** Verbose output is off by default. Enable via the settings panel. */
+let _verbose = false;
 
 /**
- * Emits a single labelled log line, collapsing any extra arguments into a group.
- * @param {Function} consoleFn  The bound console method (log / warn / error).
+ * Emits a single labelled line, collapsing any extra arguments into a group.
+ * @param {Function} consoleFn  Bound console method (log / warn / error).
  * @param {string}   tag        Module identifier, e.g. 'Boot'.
- * @param {any[]}    args       Caller arguments: [message, ...details]
+ * @param {any[]}    args       [message, ...extras]
  */
 function _output(consoleFn, tag, args) {
     const label = `[PLZ:${tag}] ${String(args[0] ?? '')}`;
@@ -43,29 +52,47 @@ function _output(consoleFn, tag, args) {
 
 /**
  * Verbose-gated informational log.
- * @param {string} tag Module identifier
- * @param {...*} args  Message followed by any extra detail values
+ * @param {string} tag
+ * @param {...*}   args
  */
 export function log(tag, ...args) {
-    if (!DEFAULT_VERBOSE_LOGGING) return;
+    if (!_verbose) return;
     _output(console.log.bind(console), tag, args);
 }
 
 /**
  * Verbose-gated warning.
- * @param {string} tag Module identifier
- * @param {...*} args  Message followed by any extra detail values
+ * @param {string} tag
+ * @param {...*}   args
  */
 export function warn(tag, ...args) {
-    if (!DEFAULT_VERBOSE_LOGGING) return;
+    if (!_verbose) return;
     _output(console.warn.bind(console), tag, args);
 }
 
 /**
- * Always-on error output.
- * @param {string} tag Module identifier
- * @param {...*} args  Message followed by any extra detail values
+ * Always-on error output. Not gated by the verbose flag.
+ * @param {string} tag
+ * @param {...*}   args
  */
 export function error(tag, ...args) {
     _output(console.error.bind(console), tag, args);
+}
+
+/**
+ * Enables or disables verbose (log/warn) output at runtime.
+ * Called by the settings panel when the user toggles the verbose checkbox,
+ * and on init after settings are loaded.
+ * @param {boolean} enabled
+ */
+export function setVerbose(enabled) {
+    _verbose = !!enabled;
+}
+
+/**
+ * Returns the current verbose state.
+ * @returns {boolean}
+ */
+export function isVerbose() {
+    return _verbose;
 }

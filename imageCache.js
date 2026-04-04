@@ -99,7 +99,7 @@ function buildPollinationsUrl(prompt, width, height) {
         model:  s.imageModel ?? DEFAULT_IMAGE_MODEL,
         nologo: 'true',
     });
-    return `${POLLINATIONS_BASE_URL}/prompt/${encodeURIComponent(prompt)}?${params.toString()}`;
+    return `${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(prompt)}?${params.toString()}`;
 }
 
 async function validateImageResponse(response) {
