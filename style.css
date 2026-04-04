@@ -100,7 +100,8 @@
     border-radius: 10px;
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
     width: min(720px, 92vw);
-    max-height: 86vh;
+    height: 80vh;
+    min-height: 500px;
     display: flex;
     flex-direction: column;
     overflow: hidden;

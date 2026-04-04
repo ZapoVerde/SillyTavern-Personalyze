@@ -16,6 +16,7 @@
  * @api-declaration
  * detectBoolean(message, characterName, currentOutfit, currentExpression, history, prompt, profileId)
  *   → Promise<{ outfit_changed: boolean, expression_changed: boolean }>
+ *   Parses plain-text "Outfit Changed: YES/NO" lines — no JSON.
  *
  * detectOutfitClassifier(message, characterName, outfitKeys, outfits, history, prompt, profileId)
  *   → Promise<string|null>   — matched key, 'NEW', or null (no change / NULL)
@@ -86,7 +87,10 @@ async function dispatch(prompt, profileId, label, extraOptions = {}) {
 
 /**
  * Asks the LLM whether the outfit or expression changed in the current message.
- * Parses the expected JSON response. Falls back to false/false on parse failure.
+ * Parses plain-text lines:
+ *   Outfit Changed: YES
+ *   Expression Changed: NO
+ * Falls back to false/false if lines are absent.
  *
  * @returns {Promise<{ outfit_changed: boolean, expression_changed: boolean }>}
  */
@@ -101,29 +105,23 @@ export async function detectBoolean(
         .replace('{{history}}',            history             ?? '')
         .replace('{{message}}',            message             ?? '');
 
-    try {
-        const raw = await dispatch(prompt, profileId, 'Boolean', { temperature: 0.1 });
+    const raw = await dispatch(prompt, profileId, 'Boolean', { temperature: 0.1 });
 
-        // Extract first JSON object from the response (tolerates markdown fences)
-        const match = raw.match(/\{[\s\S]*?\}/);
-        if (!match) {
-            warn('Boolean', 'No JSON object found in response. Defaulting to no change.');
-            return { outfit_changed: false, expression_changed: false };
-        }
+    const outfitMatch     = raw.match(/outfit\s+changed\s*:\s*(yes|no)/i);
+    const expressionMatch = raw.match(/expression\s+changed\s*:\s*(yes|no)/i);
 
-        const parsed = JSON.parse(match[0]);
-        const result = {
-            outfit_changed:     !!parsed.outfit_changed,
-            expression_changed: !!parsed.expression_changed,
-        };
-
-        log('Boolean', `Result: outfit_changed=${result.outfit_changed}, expression_changed=${result.expression_changed}`);
-        return result;
-
-    } catch (err) {
-        error('Boolean', 'Parse failed:', err);
+    if (!outfitMatch || !expressionMatch) {
+        warn('Boolean', 'Could not parse YES/NO lines. Defaulting to no change.');
         return { outfit_changed: false, expression_changed: false };
     }
+
+    const result = {
+        outfit_changed:     outfitMatch[1].toLowerCase()     === 'yes',
+        expression_changed: expressionMatch[1].toLowerCase() === 'yes',
+    };
+
+    log('Boolean', `Result: outfit_changed=${result.outfit_changed}, expression_changed=${result.expression_changed}`);
+    return result;
 }
 
 // ─── Step 2a: Outfit Classifier ───────────────────────────────────────────────

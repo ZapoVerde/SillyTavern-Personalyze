@@ -1,7 +1,7 @@
 /**
  * @file data/default-user/extensions/personalyze/index.js
  * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
- * @version 0.1.3
+ * @version 0.1.4
  * @architectural-role Feature Entry Point / Orchestrator
  * @description
  * SillyTavern PersonaLyze (PLZ) — extension entry point.

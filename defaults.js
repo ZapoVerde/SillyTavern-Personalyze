@@ -92,8 +92,9 @@ LATEST MESSAGE:
 Did the character's clothing or outfit meaningfully change in this message?
 Did the character's facial expression or emotional state meaningfully change in this message?
 
-Reply with only valid JSON matching this schema exactly:
-{ "outfit_changed": boolean, "expression_changed": boolean }`
+Reply with exactly two lines, nothing else:
+Outfit Changed: YES or NO
+Expression Changed: YES or NO`
 
 export const DEFAULT_OUTFIT_CLASSIFIER_PROMPT =
 `[SYSTEM: TASK — OUTFIT CLASSIFIER]
