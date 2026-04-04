@@ -1,0 +1,77 @@
+/**
+ * @file data/default-user/extensions/personalyze/style.css
+ * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @architectural-role UI Styling
+ * @description
+ * Primary stylesheet for PersonaLyze.
+ * Covers the floating VN portrait container, crossfade layers,
+ * portrait position variants, the Portfolio Manager modal, and
+ * per-message state badges.
+ */
+
+/* ─── Portrait Container ──────────────────────────────────────────────────── */
+
+#plz-portrait-container {
+    position: fixed;
+    z-index: 1000;
+    pointer-events: none;
+    width: 180px;
+}
+
+#plz-portrait-container.plz-position-bottom-right {
+    bottom: 20px;
+    right: 20px;
+}
+
+#plz-portrait-container.plz-position-center-left {
+    bottom: 80px;
+    left: 20px;
+}
+
+/* ─── Portrait Frame ──────────────────────────────────────────────────────── */
+
+.plz-portrait-frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid var(--SmartThemeBorderColor, #555);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.06);
+    background: rgba(0, 0, 0, 0.4);
+}
+
+/* ─── Crossfade Layers ────────────────────────────────────────────────────── */
+
+.plz-layer-back,
+.plz-layer-front {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    display: block;
+}
+
+.plz-layer-back  { z-index: 1; }
+.plz-layer-front { z-index: 2; }
+
+/* ─── Portfolio Manager Modal ─────────────────────────────────────────────── */
+
+#plz-portfolio-panel {
+    pointer-events: all;
+}
+
+/* Wardrobe cell hover */
+.plz-wardrobe-cell:hover {
+    border-color: var(--SmartThemeQuoteColor, #28a745) !important;
+    transition: border-color 0.15s ease;
+}
+
+/* ─── Per-Message Badge ───────────────────────────────────────────────────── */
+
+.plz-msg-badge {
+    pointer-events: none;
+    line-height: 1;
+}

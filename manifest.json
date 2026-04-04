@@ -1,0 +1,12 @@
+{
+    "display_name": "PersonaLyze",
+    "loading_order": 10,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "ZapoVerde",
+    "version": "0.1.1",
+    "homePage": "https://github.com/ZapoVerde/SillyTavern-Personalyze",
+    "auto_update": false
+}
