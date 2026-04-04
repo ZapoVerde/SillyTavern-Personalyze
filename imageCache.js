@@ -153,16 +153,16 @@ export async function fetchPreviewBlob(prompt) {
  * @param {string} outfitKey
  * @param {string} expressionKey
  * @param {string} outfitDescription
- * @param {string} expressionDescription
+ * @param {string} expressionLabel     The ST expression label (e.g. "joy") — used directly in prompt.
  * @param {string} anchor              The character's identity anchor string.
- * @returns {Promise<string>}          The saved filename (e.g. plz_claire_armor_smug.png).
+ * @returns {Promise<string>}          The saved filename (e.g. plz_claire_armor_joy.png).
  */
 export async function generate(
     characterId,
     outfitKey,
     expressionKey,
     outfitDescription,
-    expressionDescription,
+    expressionLabel,
     anchor
 ) {
     const s        = getSettings();
@@ -170,7 +170,7 @@ export async function generate(
     const width    = devMode ? DEV_IMAGE_WIDTH  : DEFAULT_IMAGE_WIDTH;
     const height   = devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
 
-    const prompt   = buildPrompt(anchor, outfitDescription, expressionDescription);
+    const prompt   = buildPrompt(anchor, outfitDescription, expressionLabel);
     const url      = buildPollinationsUrl(prompt, width, height);
     const headers  = await getAuthHeaders();
 

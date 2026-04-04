@@ -17,14 +17,14 @@
  * DEFAULT_IMAGE_HEIGHT
  * DEFAULT_DEV_MODE
  * DEFAULT_VERBOSE_LOGGING
- * DEFAULT_BOOLEAN_HISTORY
- * DEFAULT_OUTFIT_CLASSIFIER_HISTORY
- * DEFAULT_EXPRESSION_CLASSIFIER_HISTORY
+ * DEFAULT_DETECTION_HISTORY
  * DEFAULT_DESCRIBER_HISTORY
+ * DEFAULT_EXPRESSION_LABELS
  * DEFAULT_VN_STYLE_SUFFIX
- * DEFAULT_BOOLEAN_PROMPT
- * DEFAULT_OUTFIT_CLASSIFIER_PROMPT
- * DEFAULT_EXPRESSION_CLASSIFIER_PROMPT
+ * DEFAULT_SUBJECT_MATCH_PROMPT
+ * DEFAULT_SUBJECT_LIST_PROMPT
+ * DEFAULT_CHANGE_CHECK_PROMPT
+ * DEFAULT_COMBINED_CLASSIFIER_PROMPT
  * DEFAULT_OUTFIT_DESCRIBER_PROMPT
  * DEFAULT_EXPRESSION_DESCRIBER_PROMPT
  */
@@ -61,11 +61,47 @@ export const DEV_IMAGE_HEIGHT = 384
 /** Verbose logging — off by default. Enable in the settings panel to see log/warn output. Errors always surface. */
 export const DEFAULT_VERBOSE_LOGGING = false
 
-/** Default turn-pair history windows for LLM calls. */
-export const DEFAULT_BOOLEAN_HISTORY               = 3
-export const DEFAULT_OUTFIT_CLASSIFIER_HISTORY     = 3
-export const DEFAULT_EXPRESSION_CLASSIFIER_HISTORY = 3
-export const DEFAULT_DESCRIBER_HISTORY             = 3
+/** History window for detection calls (subject match, change check, combined classifier). */
+export const DEFAULT_DETECTION_HISTORY = 2
+
+/** History window for describer calls. */
+export const DEFAULT_DESCRIBER_HISTORY = 3
+
+/**
+ * Standard expression labels — mirrors the SillyTavern Expressions extension default set.
+ * These are the only values the combined classifier will return for expressions.
+ * Images are generated per-character on demand (build-on-demand, never pre-generated).
+ */
+export const DEFAULT_EXPRESSION_LABELS = [
+    'admiration',
+    'amusement',
+    'anger',
+    'annoyance',
+    'approval',
+    'caring',
+    'confusion',
+    'curiosity',
+    'desire',
+    'disappointment',
+    'disapproval',
+    'disgust',
+    'embarrassment',
+    'excitement',
+    'fear',
+    'gratitude',
+    'grief',
+    'joy',
+    'love',
+    'nervousness',
+    'optimism',
+    'pride',
+    'realization',
+    'relief',
+    'remorse',
+    'sadness',
+    'surprise',
+    'neutral',
+]
 
 /**
  * Style suffix appended to every Pollinations prompt.
@@ -77,9 +113,42 @@ export const DEFAULT_VN_STYLE_SUFFIX =
 
 // ─── Prompt Templates ────────────────────────────────────────────────────────
 
-export const DEFAULT_BOOLEAN_PROMPT =
-`[SYSTEM: TASK — VISUAL CHANGE DETECTOR]
-You are monitoring a roleplay for meaningful visual changes to a character.
+export const DEFAULT_SUBJECT_MATCH_PROMPT =
+`[SYSTEM: TASK — SUBJECT CHECK]
+You are monitoring a roleplay.
+
+CURRENT CHARACTER: {{character_name}}
+
+{{history}}
+LATEST MESSAGE:
+{{message}}
+
+Is {{character_name}} the main subject being actively described or acting in this message?
+Ignore the narrator voice. Focus on who is physically present and doing things.
+
+Reply with exactly one word: YES or NO`
+
+export const DEFAULT_SUBJECT_LIST_PROMPT =
+`[SYSTEM: TASK — SUBJECT IDENTIFICATION]
+You are monitoring a roleplay.
+
+KNOWN CHARACTERS:
+{{character_list}}
+
+USER: {{user_name}}
+
+{{history}}
+LATEST MESSAGE:
+{{message}}
+
+Who is the main character being actively described or acting in this message?
+Ignore the narrator voice. Do not pick {{user_name}}.
+
+Reply with one of the keys shown in brackets above (e.g. [claire] → claire), or NONE if no known character is the main subject.`
+
+export const DEFAULT_CHANGE_CHECK_PROMPT =
+`[SYSTEM: TASK — VISUAL CHANGE CHECK]
+You are monitoring a roleplay for visual changes to a character.
 
 CHARACTER: {{character_name}}
 CURRENT OUTFIT: {{current_outfit}}
@@ -89,39 +158,20 @@ CURRENT EXPRESSION: {{current_expression}}
 LATEST MESSAGE:
 {{message}}
 
-Did the character's clothing or outfit meaningfully change in this message?
-Did the character's facial expression or emotional state meaningfully change in this message?
+Is {{character_name}} still wearing the same outfit and showing the same expression as described above?
 
-Reply with exactly two lines, nothing else:
-Outfit Changed: YES or NO
-Expression Changed: YES or NO`
+Reply with exactly one word: YES or NO`
 
-export const DEFAULT_OUTFIT_CLASSIFIER_PROMPT =
-`[SYSTEM: TASK — OUTFIT CLASSIFIER]
-Match the character's current clothing to one of their known outfits.
+export const DEFAULT_COMBINED_CLASSIFIER_PROMPT =
+`[SYSTEM: TASK — VISUAL STATE CLASSIFIER]
+Identify the current outfit and expression of a character based on the roleplay.
 
 CHARACTER: {{character_name}}
 
 KNOWN OUTFITS:
 {{outfit_list}}
 
-{{history}}
-LATEST MESSAGE:
-{{message}}
-
-INSTRUCTIONS:
-1. Compare the clothing described in the message to each known outfit's label and description.
-2. If a match is found, reply with only the exact key shown in brackets (e.g. [casual] → casual).
-3. If the clothing is entirely new and does not match any known outfit, reply with: NEW
-4. If no outfit is mentioned or visible, reply with: NULL`
-
-export const DEFAULT_EXPRESSION_CLASSIFIER_PROMPT =
-`[SYSTEM: TASK — EXPRESSION CLASSIFIER]
-Match the character's current facial expression or emotional state to one of their known expressions.
-
-CHARACTER: {{character_name}}
-
-KNOWN EXPRESSIONS:
+EXPRESSION OPTIONS:
 {{expression_list}}
 
 {{history}}
@@ -129,10 +179,12 @@ LATEST MESSAGE:
 {{message}}
 
 INSTRUCTIONS:
-1. Compare the emotion or expression described in the message to each known expression's label and description.
-2. If a match is found, reply with only the exact key shown in brackets (e.g. [neutral] → neutral).
-3. If the expression is entirely new and does not match any known expression, reply with: NEW
-4. If no expression is discernible, reply with: NULL`
+- Outfit: match to a known key, or NEW if it is an unregistered outfit, or NULL if outfit is unchanged or unclear
+- Expression: pick the single closest label from the expression options above, or NULL if unclear
+
+Reply with exactly two lines:
+Outfit: [key] or NEW or NULL
+Expression: [label] or NULL`
 
 export const DEFAULT_OUTFIT_DESCRIBER_PROMPT =
 `[SYSTEM: TASK — OUTFIT ARCHIVIST]

@@ -27,7 +27,7 @@
 
 import { getContext } from '../../../../extensions.js';
 import { log, warn, error } from '../utils/logger.js';
-import { state, bulkInitState, setFileIndex, addToFileIndex } from '../state.js';
+import { state, bulkInitState, setFileIndex, addToFileIndex, updateChainEntry } from '../state.js';
 import { reconstruct } from '../reconstruction.js';
 import { fetchFileIndex, generate, buildFilename } from '../imageCache.js';
 import { setPortrait, clearPortrait } from '../portrait.js';
@@ -85,18 +85,18 @@ export async function runBoot() {
         state.activeOutfitKey &&
         state.activeExpressionKey
     ) {
-        const character  = getCharacter(state.activeCharacterId);
-        const outfitDef  = character?.outfits[state.activeOutfitKey];
-        const exprDef    = character?.expressions[state.activeExpressionKey];
+        const character = getCharacter(state.activeCharacterId);
+        const outfitDef = character?.outfits[state.activeOutfitKey];
 
-        if (character && outfitDef && exprDef) {
+        // expressionKey is now a plain ST expression label (e.g. "joy") — no registry lookup needed.
+        if (character && outfitDef) {
             log('Boot', 'Queuing silent regeneration for missing active portrait...');
             generate(
                 state.activeCharacterId,
                 state.activeOutfitKey,
                 state.activeExpressionKey,
                 outfitDef.description,
-                exprDef.description,
+                state.activeExpressionKey,
                 character.identityAnchor
             )
                 .then(filename => {

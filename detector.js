@@ -5,29 +5,29 @@
  * @description
  * Wraps all LLM calls made by the PersonaLyze pipeline.
  *
- * Each exported function corresponds to one pipeline step. All functions send
- * a structured prompt to the configured LLM connection profile, parse the
- * response, and return a typed result. Callers receive clean values — raw LLM
- * text is never exposed outside this module.
+ * Pipeline call sequence per turn (best case 2, worst case 4):
+ *   Step 1   — detectSubjectMatch     — Is the current character the main subject? (YES/NO)
+ *   Step 2   — detectSubjectFromList  — Who is the main subject? (key or NONE)
+ *   Step 2.9 — detectChangeCheck      — Did outfit or expression change? (YES/NO)
+ *   Step 3   — detectCombined         — What outfit + expression? (two plain-text lines)
  *
- * Response parsing uses heuristic word-boundary matching to tolerate noisy or
- * markdown-wrapped replies from chatty models.
+ * All detection calls share detectionProfileId. The describer uses describerProfileId.
+ * Raw LLM text is never exposed outside this module.
  *
  * @api-declaration
- * detectBoolean(message, characterName, currentOutfit, currentExpression, history, prompt, profileId)
- *   → Promise<{ outfit_changed: boolean, expression_changed: boolean }>
- *   Parses plain-text "Outfit Changed: YES/NO" lines — no JSON.
+ * detectSubjectMatch(messageMes, characterName, history, promptTemplate, profileId)
+ *   → Promise<boolean>
  *
- * detectOutfitClassifier(message, characterName, outfitKeys, outfits, history, prompt, profileId)
- *   → Promise<string|null>   — matched key, 'NEW', or null (no change / NULL)
+ * detectSubjectFromList(messageMes, characterIds, userName, history, promptTemplate, profileId)
+ *   → Promise<string|null>  — matched characterId, or null (NONE)
  *
- * detectExpressionClassifier(message, characterName, expressionKeys, expressions, history, prompt, profileId)
- *   → Promise<string|null>   — matched key, 'NEW', or null (no change / NULL)
+ * detectChangeCheck(messageMes, characterName, currentOutfit, currentExpression, history, promptTemplate, profileId)
+ *   → Promise<boolean>  — true = no change (still same), false = changed
  *
- * detectOutfitDescriber(context, characterName, anchor, prompt, profileId)
- *   → Promise<{ label: string, description: string }|null>
+ * detectCombined(messageMes, characterName, outfitKeys, outfits, expressionLabels, history, promptTemplate, profileId)
+ *   → Promise<{ outfitKey: string|'NEW'|null, expressionKey: string|null }>
  *
- * detectExpressionDescriber(context, characterName, anchor, prompt, profileId)
+ * detectOutfitDescriber(context, characterName, anchor, promptTemplate, profileId)
  *   → Promise<{ label: string, description: string }|null>
  *
  * @contract
@@ -44,11 +44,11 @@ import { log, warn, error } from './utils/logger.js';
 // ─── Core Dispatch ────────────────────────────────────────────────────────────
 
 /**
- * Dispatches a prompt to the LLM with profile-aware routing and raw response logging.
- * Falls back to the active ST connection if the profileId call fails.
+ * Dispatches a prompt to the LLM with profile-aware routing.
+ * Falls back to the active ST connection if the profileId call fails or is absent.
  * @param {string} prompt
  * @param {string|null} profileId
- * @param {string} label   Log tag for this step (e.g. 'Boolean', 'Classifier').
+ * @param {string} label   Log tag (e.g. 'SubjectMatch').
  * @param {object} extraOptions
  * @returns {Promise<string>}
  */
@@ -83,210 +83,260 @@ async function dispatch(prompt, profileId, label, extraOptions = {}) {
     return String(text ?? '');
 }
 
-// ─── Step 1: Boolean Gate ─────────────────────────────────────────────────────
+// ─── YES/NO Parser ────────────────────────────────────────────────────────────
 
 /**
- * Asks the LLM whether the outfit or expression changed in the current message.
- * Parses plain-text lines:
- *   Outfit Changed: YES
- *   Expression Changed: NO
- * Falls back to false/false if lines are absent.
- *
- * @returns {Promise<{ outfit_changed: boolean, expression_changed: boolean }>}
+ * Parses a YES/NO response. Returns true for YES, false for NO or unrecognised.
+ * @param {string} raw
+ * @param {string} label
+ * @returns {boolean}
  */
-export async function detectBoolean(
-    message, characterName, currentOutfit, currentExpression,
-    history, promptTemplate, profileId
-) {
-    const prompt = promptTemplate
-        .replace('{{character_name}}',     characterName       ?? 'Unknown')
-        .replace('{{current_outfit}}',     currentOutfit       ?? 'Unknown')
-        .replace('{{current_expression}}', currentExpression   ?? 'Unknown')
-        .replace('{{history}}',            history             ?? '')
-        .replace('{{message}}',            message             ?? '');
-
-    const raw = await dispatch(prompt, profileId, 'Boolean', { temperature: 0.1 });
-
-    const outfitMatch     = raw.match(/outfit\s+changed\s*:\s*(yes|no)/i);
-    const expressionMatch = raw.match(/expression\s+changed\s*:\s*(yes|no)/i);
-
-    if (!outfitMatch || !expressionMatch) {
-        warn('Boolean', 'Could not parse YES/NO lines. Defaulting to no change.');
-        return { outfit_changed: false, expression_changed: false };
+function parseYesNo(raw, label) {
+    const text = String(raw ?? '').trim();
+    if (/\byes\b/i.test(text)) {
+        log(label, 'Result: YES');
+        return true;
     }
-
-    const result = {
-        outfit_changed:     outfitMatch[1].toLowerCase()     === 'yes',
-        expression_changed: expressionMatch[1].toLowerCase() === 'yes',
-    };
-
-    log('Boolean', `Result: outfit_changed=${result.outfit_changed}, expression_changed=${result.expression_changed}`);
-    return result;
+    if (/\bno\b/i.test(text)) {
+        log(label, 'Result: NO');
+        return false;
+    }
+    warn(label, `Could not parse YES/NO from: "${text.slice(0, 80)}". Defaulting to NO.`);
+    return false;
 }
 
-// ─── Step 2a: Outfit Classifier ───────────────────────────────────────────────
+// ─── Step 1: Subject Match ────────────────────────────────────────────────────
 
 /**
- * Matches the current message against the character's known outfit portfolio.
- * Returns a matched key, 'NEW' if unrecognised, or null (no outfit mentioned).
- *
- * @param {string}   message
- * @param {string}   characterName
- * @param {string[]} outfitKeys
- * @param {object}   outfits       { key: { label, description } }
- * @param {string}   history
- * @param {string}   promptTemplate
+ * Asks whether the current active character is the main subject of this message.
+ * @param {string}      messageMes
+ * @param {string}      characterName
+ * @param {string}      history
+ * @param {string}      promptTemplate
  * @param {string|null} profileId
- * @returns {Promise<string|null>}
+ * @returns {Promise<boolean>}  true = is the main subject
  */
-export async function detectOutfitClassifier(
-    message, characterName, outfitKeys, outfits, history, promptTemplate, profileId
-) {
-    const outfitList = outfitKeys
-        .map(k => `[${k}] ${outfits[k].label} — ${outfits[k].description}`)
-        .join('\n');
-
+export async function detectSubjectMatch(messageMes, characterName, history, promptTemplate, profileId) {
     const prompt = promptTemplate
         .replace('{{character_name}}', characterName ?? 'Unknown')
-        .replace('{{outfit_list}}',    outfitList)
-        .replace('{{history}}',        history ?? '')
-        .replace('{{message}}',        message ?? '');
+        .replace('{{history}}',        history       ?? '')
+        .replace('{{message}}',        messageMes    ?? '');
 
-    try {
-        const raw = await dispatch(prompt, profileId, 'OutfitClassifier', { temperature: 0.1 });
-        return parseClassifierResponse(raw, outfitKeys, 'OutfitClassifier');
-    } catch (err) {
-        error('OutfitClassifier', 'Failed:', err);
-        return null;
-    }
+    const raw = await dispatch(prompt, profileId, 'SubjectMatch', { temperature: 0.1 });
+    return parseYesNo(raw, 'SubjectMatch');
 }
 
-// ─── Step 2b: Expression Classifier ──────────────────────────────────────────
+// ─── Step 2: Subject From List ────────────────────────────────────────────────
 
 /**
- * Matches the current message against the character's known expression portfolio.
- * Returns a matched key, 'NEW' if unrecognised, or null (no expression mentioned).
+ * Asks the LLM to identify the main subject from the registered character list.
+ * Returns the matched characterId, or null if NONE.
  *
- * @param {string}   message
- * @param {string}   characterName
- * @param {string[]} expressionKeys
- * @param {object}   expressions    { key: { label, description } }
- * @param {string}   history
- * @param {string}   promptTemplate
+ * @param {string}      messageMes
+ * @param {string[]}    characterIds   All registered character IDs.
+ * @param {string}      userName       The ST user name to exclude.
+ * @param {string}      history
+ * @param {string}      promptTemplate
  * @param {string|null} profileId
  * @returns {Promise<string|null>}
  */
-export async function detectExpressionClassifier(
-    message, characterName, expressionKeys, expressions, history, promptTemplate, profileId
-) {
-    const expressionList = expressionKeys
-        .map(k => `[${k}] ${expressions[k].label} — ${expressions[k].description}`)
+export async function detectSubjectFromList(messageMes, characterIds, userName, history, promptTemplate, profileId) {
+    const characterList = characterIds
+        .map(id => `[${id}] ${id.replace(/_/g, ' ')}`)
         .join('\n');
 
     const prompt = promptTemplate
-        .replace('{{character_name}}',  characterName ?? 'Unknown')
-        .replace('{{expression_list}}', expressionList)
-        .replace('{{history}}',         history ?? '')
-        .replace('{{message}}',         message ?? '');
+        .replace('{{character_list}}', characterList)
+        .replace(/\{\{user_name\}\}/g, userName ?? 'User')
+        .replace('{{history}}',        history  ?? '')
+        .replace('{{message}}',        messageMes ?? '');
 
-    try {
-        const raw = await dispatch(prompt, profileId, 'ExpressionClassifier', { temperature: 0.1 });
-        return parseClassifierResponse(raw, expressionKeys, 'ExpressionClassifier');
-    } catch (err) {
-        error('ExpressionClassifier', 'Failed:', err);
+    const raw = await dispatch(prompt, profileId, 'SubjectList', { temperature: 0.1 });
+    const text = String(raw ?? '').trim();
+
+    if (/\bNONE\b/i.test(text)) {
+        log('SubjectList', 'Result: NONE');
         return null;
     }
+
+    // Word-boundary match against known IDs
+    for (const id of characterIds) {
+        const regex = new RegExp(`\\b${id.replace(/_/g, '[_ ]')}\\b`, 'i');
+        if (regex.test(text)) {
+            log('SubjectList', `Result: matched "${id}"`);
+            return id;
+        }
+    }
+
+    warn('SubjectList', `No character matched in response. Treating as NONE.`);
+    return null;
 }
 
-// ─── Step 3a: Outfit Describer ────────────────────────────────────────────────
+// ─── Step 2.9: Change Check ───────────────────────────────────────────────────
+
+/**
+ * Asks whether the character's outfit and expression are unchanged from the current state.
+ * Returns true if UNCHANGED (no action needed), false if something changed.
+ *
+ * @param {string}      messageMes
+ * @param {string}      characterName
+ * @param {string}      currentOutfit      Label of the current outfit.
+ * @param {string}      currentExpression  Key/label of the current expression.
+ * @param {string}      history
+ * @param {string}      promptTemplate
+ * @param {string|null} profileId
+ * @returns {Promise<boolean>}  true = unchanged, false = changed
+ */
+export async function detectChangeCheck(messageMes, characterName, currentOutfit, currentExpression, history, promptTemplate, profileId) {
+    const prompt = promptTemplate
+        .replace('{{character_name}}',    characterName     ?? 'Unknown')
+        .replace('{{current_outfit}}',    currentOutfit     ?? 'unknown')
+        .replace('{{current_expression}}',currentExpression ?? 'neutral')
+        .replace('{{history}}',           history           ?? '')
+        .replace('{{message}}',           messageMes        ?? '');
+
+    const raw = await dispatch(prompt, profileId, 'ChangeCheck', { temperature: 0.1 });
+    // YES = still the same = unchanged = true
+    return parseYesNo(raw, 'ChangeCheck');
+}
+
+// ─── Step 3: Combined Classifier ─────────────────────────────────────────────
+
+/**
+ * Classifies both the current outfit and expression in a single LLM call.
+ * Returns:
+ *   outfitKey:     matched outfit key | 'NEW' | null (NULL / no change)
+ *   expressionKey: matched expression label | null (NULL / no change)
+ *
+ * @param {string}      messageMes
+ * @param {string}      characterName
+ * @param {string[]}    outfitKeys
+ * @param {object}      outfits        { key: { label, description } }
+ * @param {string[]}    expressionLabels
+ * @param {string}      history
+ * @param {string}      promptTemplate
+ * @param {string|null} profileId
+ * @returns {Promise<{ outfitKey: string|'NEW'|null, expressionKey: string|null }>}
+ */
+export async function detectCombined(messageMes, characterName, outfitKeys, outfits, expressionLabels, history, promptTemplate, profileId) {
+    const outfitList = outfitKeys.length > 0
+        ? outfitKeys.map(k => `[${k}] ${outfits[k].label} — ${outfits[k].description}`).join('\n')
+        : '(none registered — reply NEW if any outfit is described)';
+
+    const expressionList = expressionLabels.join(', ');
+
+    const prompt = promptTemplate
+        .replace('{{character_name}}',  characterName  ?? 'Unknown')
+        .replace('{{outfit_list}}',     outfitList)
+        .replace('{{expression_list}}', expressionList)
+        .replace('{{history}}',         history        ?? '')
+        .replace('{{message}}',         messageMes     ?? '');
+
+    const raw = await dispatch(prompt, profileId, 'Combined', { temperature: 0.1 });
+
+    return {
+        outfitKey:     parseOutfitLine(raw, outfitKeys),
+        expressionKey: parseExpressionLine(raw, expressionLabels),
+    };
+}
+
+// ─── Step 3 Parsers ───────────────────────────────────────────────────────────
+
+/**
+ * Extracts the Outfit line result from a combined classifier response.
+ * @param {string}   raw
+ * @param {string[]} outfitKeys
+ * @returns {string|'NEW'|null}
+ */
+function parseOutfitLine(raw, outfitKeys) {
+    const line = extractLine(raw, 'outfit');
+
+    if (!line) {
+        warn('Combined', 'No "Outfit:" line found in response.');
+        return null;
+    }
+
+    if (/\bNULL\b/i.test(line)) return null;
+    if (/\bNEW\b/i.test(line))  return 'NEW';
+
+    for (const key of outfitKeys) {
+        const regex = new RegExp(`\\b${key.replace(/_/g, '[_ ]')}\\b`, 'i');
+        if (regex.test(line)) {
+            log('Combined', `Outfit matched: "${key}"`);
+            return key;
+        }
+    }
+
+    warn('Combined', `Outfit line could not be matched: "${line}"`);
+    return null;
+}
+
+/**
+ * Extracts the Expression line result from a combined classifier response.
+ * @param {string}   raw
+ * @param {string[]} expressionLabels
+ * @returns {string|null}
+ */
+function parseExpressionLine(raw, expressionLabels) {
+    const line = extractLine(raw, 'expression');
+
+    if (!line) {
+        warn('Combined', 'No "Expression:" line found in response.');
+        return null;
+    }
+
+    if (/\bNULL\b/i.test(line)) return null;
+
+    for (const label of expressionLabels) {
+        const regex = new RegExp(`\\b${label}\\b`, 'i');
+        if (regex.test(line)) {
+            log('Combined', `Expression matched: "${label}"`);
+            return label;
+        }
+    }
+
+    warn('Combined', `Expression line could not be matched: "${line}"`);
+    return null;
+}
+
+/**
+ * Extracts the value portion of a labelled line (e.g. "Outfit: casual" → "casual").
+ * @param {string} raw
+ * @param {string} fieldName   e.g. 'outfit' or 'expression'
+ * @returns {string|null}
+ */
+function extractLine(raw, fieldName) {
+    const match = raw.match(new RegExp(`${fieldName}\\s*:\\s*(.+)`, 'i'));
+    return match ? match[1].trim() : null;
+}
+
+// ─── Outfit Describer ─────────────────────────────────────────────────────────
 
 /**
  * Extracts a label and visual description for a newly discovered outfit.
+ * @param {string}      context        Transcript context window.
+ * @param {string}      characterName
+ * @param {string}      anchor         Identity anchor for the character.
+ * @param {string}      promptTemplate
+ * @param {string|null} profileId
  * @returns {Promise<{ label: string, description: string }|null>}
  */
 export async function detectOutfitDescriber(context, characterName, anchor, promptTemplate, profileId) {
     const prompt = promptTemplate
         .replace('{{character_name}}',  characterName ?? 'Unknown')
-        .replace('{{identity_anchor}}', anchor ?? '')
-        .replace('{{context}}',         context ?? '');
+        .replace('{{identity_anchor}}', anchor        ?? '')
+        .replace('{{context}}',         context       ?? '');
 
-    try {
-        const raw = await dispatch(prompt, profileId, 'OutfitDescriber', { temperature: 0.3 });
-        return parseDescriberResponse(raw);
-    } catch (err) {
-        error('OutfitDescriber', 'Failed:', err);
-        return null;
-    }
+    const raw = await dispatch(prompt, profileId, 'OutfitDescriber', { temperature: 0.3 });
+    return parseDescriberResponse(raw);
 }
 
-// ─── Step 3b: Expression Describer ───────────────────────────────────────────
-
-/**
- * Extracts a label and visual description for a newly discovered expression.
- * @returns {Promise<{ label: string, description: string }|null>}
- */
-export async function detectExpressionDescriber(context, characterName, anchor, promptTemplate, profileId) {
-    const prompt = promptTemplate
-        .replace('{{character_name}}',  characterName ?? 'Unknown')
-        .replace('{{identity_anchor}}', anchor ?? '')
-        .replace('{{context}}',         context ?? '');
-
-    try {
-        const raw = await dispatch(prompt, profileId, 'ExpressionDescriber', { temperature: 0.3 });
-        return parseDescriberResponse(raw);
-    } catch (err) {
-        error('ExpressionDescriber', 'Failed:', err);
-        return null;
-    }
-}
-
-// ─── Parsers ──────────────────────────────────────────────────────────────────
-
-/**
- * Parses a classifier response using word-boundary heuristics.
- *
- * Precedence:
- *   1. NULL  → null  (LLM says nothing relevant happening)
- *   2. NEW   → 'NEW' (LLM says it's something not in the portfolio)
- *   3. exact key match anywhere in response → that key
- *   4. fallback → null
- *
- * @param {string}   raw
- * @param {string[]} validKeys
- * @param {string}   label   For log output.
- * @returns {string|null}
- */
-function parseClassifierResponse(raw, validKeys, label) {
-    const text = String(raw ?? '').trim();
-
-    if (/\bNULL\b/i.test(text)) {
-        log(label, 'Result: NULL (no change)');
-        return null;
-    }
-
-    if (/\bNEW\b/i.test(text)) {
-        log(label, 'Result: NEW');
-        return 'NEW';
-    }
-
-    for (const key of validKeys) {
-        // Word-boundary match to avoid partial key collisions (e.g. "red" matching "red_dress")
-        const regex = new RegExp(`\\b${key.replace(/_/g, '[_ ]')}\\b`, 'i');
-        if (regex.test(text)) {
-            log(label, `Result: matched key "${key}"`);
-            return key;
-        }
-    }
-
-    warn(label, 'No key matched in response. Treating as NULL.');
-    return null;
-}
+// ─── Describer Parser ─────────────────────────────────────────────────────────
 
 /**
  * Parses a describer response into { label, description }.
  * Tolerates bold markdown around the field names (e.g. **Label:**).
  * Returns null if the required fields cannot be extracted.
- *
  * @param {string} raw
  * @returns {{ label: string, description: string }|null}
  */

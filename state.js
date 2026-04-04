@@ -22,6 +22,8 @@
  * resetState()                             — Restores state to factory defaults.
  * updateActiveCharacter(characterId)       — Sets the currently tracked character.
  * updateActivePointers(outfit, expression) — Updates the active outfit/expression keys.
+ * updateChainEntry(characterId, outfit, expression, image) — Updates one character's chain slot.
+ * getChainEntry(characterId)              — Returns a character's last-known state or null.
  * bulkInitState(data)                      — Hydrates state from a reconstruction pass.
  * setFileIndex(files)                      — Overwrites the known image file set.
  * addToFileIndex(file)                     — Appends a single filename to the known set.
@@ -41,6 +43,12 @@ export const state = {
     activeOutfitKey:      null,  // string | null
     activeExpressionKey:  null,  // string | null
     activeImageFile:      null,  // string | null — resolved filename on disk
+
+    // DNA Chain — last-known visual state per character.
+    // Keyed by characterId. Rebuilt from message pointers on every chat load
+    // so it correctly reflects the active branch of the conversation.
+    // Future: outfit frequency counts for Markov prediction can be added here.
+    characterChain: {},   // { [characterId]: { outfit, expression, image } }
 
     // Filesystem cache — set of filenames confirmed present on the server
     fileIndex: new Set(),
@@ -62,11 +70,12 @@ export function setWorkshopCharacter(characterId) {
  * Called on chat change.
  */
 export function resetState() {
-    state.activeCharacterId   = null;
-    state.activeOutfitKey     = null;
-    state.activeExpressionKey = null;
-    state.activeImageFile     = null;
-    state.fileIndex           = new Set();
+    state.activeCharacterId    = null;
+    state.activeOutfitKey      = null;
+    state.activeExpressionKey  = null;
+    state.activeImageFile      = null;
+    state.characterChain       = {};
+    state.fileIndex            = new Set();
     state._workshopCharacterId = null;
 }
 
@@ -97,15 +106,38 @@ export function updateActiveImage(filename) {
 }
 
 /**
+ * Updates a single character's DNA chain slot with their latest visual state.
+ * Called by the pipeline after each resolved turn.
+ * @param {string}      characterId
+ * @param {string|null} outfit
+ * @param {string|null} expression
+ * @param {string|null} image
+ */
+export function updateChainEntry(characterId, outfit, expression, image) {
+    state.characterChain[characterId] = { outfit, expression, image };
+}
+
+/**
+ * Returns the last-known visual state for a character, or null if unseen.
+ * @param {string} characterId
+ * @returns {{ outfit: string|null, expression: string|null, image: string|null }|null}
+ */
+export function getChainEntry(characterId) {
+    return state.characterChain[characterId] ?? null;
+}
+
+/**
  * Performs a bulk hydration of state from a reconstruction pass.
  * Called by the bootstrapper after reading the chat's pointer history.
  * @param {object} data
+ * @param {object} data.characterChain
  * @param {string|null} data.activeCharacterId
  * @param {string|null} data.activeOutfitKey
  * @param {string|null} data.activeExpressionKey
  * @param {string|null} data.activeImageFile
  */
-export function bulkInitState({ activeCharacterId, activeOutfitKey, activeExpressionKey, activeImageFile }) {
+export function bulkInitState({ characterChain, activeCharacterId, activeOutfitKey, activeExpressionKey, activeImageFile }) {
+    state.characterChain      = characterChain      ?? {};
     state.activeCharacterId   = activeCharacterId   ?? null;
     state.activeOutfitKey     = activeOutfitKey     ?? null;
     state.activeExpressionKey = activeExpressionKey ?? null;

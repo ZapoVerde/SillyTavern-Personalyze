@@ -38,12 +38,14 @@ import { setPortraitPosition } from '../portrait.js';
 import { handleOpenWorkshop, handleOpenRegister } from '../logic/characterWorkshop.js';
 import { warn, error, log, setVerbose } from '../utils/logger.js';
 import {
-    DEFAULT_BOOLEAN_PROMPT,
-    DEFAULT_OUTFIT_CLASSIFIER_PROMPT,
-    DEFAULT_EXPRESSION_CLASSIFIER_PROMPT,
+    DEFAULT_SUBJECT_MATCH_PROMPT,
+    DEFAULT_SUBJECT_LIST_PROMPT,
+    DEFAULT_CHANGE_CHECK_PROMPT,
+    DEFAULT_COMBINED_CLASSIFIER_PROMPT,
     DEFAULT_OUTFIT_DESCRIBER_PROMPT,
     DEFAULT_EXPRESSION_DESCRIBER_PROMPT,
     DEFAULT_VN_STYLE_SUFFIX,
+    DEFAULT_EXPRESSION_LABELS,
     POLLINATIONS_MODELS,
 } from '../defaults.js';
 
@@ -52,7 +54,7 @@ const SECRET_KEY_NAME = 'api_key_pollinations';
 
 // ─── HTML Builders ────────────────────────────────────────────────────────────
 
-function buildCallRow(id, label, promptKey, profileKey, historyKey) {
+function buildCallRow(id, label, promptKey, profileKey, historyKey, extraButtons = '') {
     const historyRow = historyKey ? `
         <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
             <label style="font-size:0.85em;opacity:0.75;white-space:nowrap;">History:</label>
@@ -62,12 +64,16 @@ function buildCallRow(id, label, promptKey, profileKey, historyKey) {
             <span style="font-size:0.83em;opacity:0.6;">pairs (0 = off)</span>
         </div>` : '';
 
+    const editBtn = promptKey
+        ? `<button class="menu_button plz-open-prompt" data-prompt-key="${promptKey}"
+                   style="font-size:0.8em;padding:2px 8px;">Edit Prompt</button>`
+        : '';
+
     return `
     <div class="plz-call-row" style="margin-bottom:14px;padding:12px;border:1px solid var(--SmartThemeBorderColor,#555);border-radius:6px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
             <strong style="font-size:0.9em;">${label}</strong>
-            <button class="menu_button plz-open-prompt" data-prompt-key="${promptKey}"
-                    style="font-size:0.8em;padding:2px 8px;">Edit Prompt</button>
+            <div style="display:flex;gap:4px;">${editBtn}${extraButtons}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
             <label style="font-size:0.85em;opacity:0.75;white-space:nowrap;">Connection:</label>
@@ -115,10 +121,12 @@ function buildPanelHTML() {
                     Leave connection blank to use the chat's active API.
                 </p>
 
-                ${buildCallRow('boolean',     'Step 1 — Visual Change? (Boolean)',    'booleanPrompt',             'booleanProfileId',              'booleanHistory')}
-                ${buildCallRow('outfit',      'Step 2a — Outfit Classifier',          'outfitClassifierPrompt',    'outfitClassifierProfileId',     'outfitClassifierHistory')}
-                ${buildCallRow('expression',  'Step 2b — Expression Classifier',      'expressionClassifierPrompt','expressionClassifierProfileId', 'expressionClassifierHistory')}
-                ${buildCallRow('describer',   'Step 3 — Describe New Entry',          'outfitDescriberPrompt',     'describerProfileId',            'describerHistory')}
+                ${buildCallRow('detection', 'Detection — Subject / Change / Classifier', null, 'detectionProfileId', 'detectionHistory', `
+                    <button class="menu_button plz-open-prompt" data-prompt-key="subjectMatchPrompt"       style="font-size:0.75em;padding:2px 6px;">Subject?</button>
+                    <button class="menu_button plz-open-prompt" data-prompt-key="subjectListPrompt"        style="font-size:0.75em;padding:2px 6px;">Who?</button>
+                    <button class="menu_button plz-open-prompt" data-prompt-key="changeCheckPrompt"        style="font-size:0.75em;padding:2px 6px;">Changed?</button>
+                    <button class="menu_button plz-open-prompt" data-prompt-key="combinedClassifierPrompt" style="font-size:0.75em;padding:2px 6px;">Classify</button>`)}
+                ${buildCallRow('describer', 'Describer — New Outfit Description', 'outfitDescriberPrompt', 'describerProfileId', 'describerHistory')}
 
                 <!-- Image Generation -->
                 <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--SmartThemeBorderColor,#444);">
@@ -172,6 +180,19 @@ function buildPanelHTML() {
                     </div>
                 </div>
 
+                <!-- Expression List -->
+                <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--SmartThemeBorderColor,#444);display:flex;align-items:center;justify-content:space-between;">
+                    <div>
+                        <strong style="font-size:0.95em;">Expression List</strong>
+                        <p style="font-size:0.83em;opacity:0.65;margin:3px 0 0;">
+                            Labels the classifier picks from. Add custom entries for unusual characters.
+                        </p>
+                    </div>
+                    <button class="menu_button" id="plz-edit-expressions" style="white-space:nowrap;flex-shrink:0;margin-left:12px;">
+                        Edit List
+                    </button>
+                </div>
+
                 <!-- Character Workshop -->
                 <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--SmartThemeBorderColor,#444);display:flex;gap:8px;">
                     <button class="menu_button" id="plz-open-workshop" style="flex:1;">
@@ -209,10 +230,8 @@ function populateInputs() {
 function initConnectionDropdowns() {
     const s = getSettings();
     const dropdowns = [
-        { id: '#plz-profile-boolean',    key: 'booleanProfileId'             },
-        { id: '#plz-profile-outfit',     key: 'outfitClassifierProfileId'    },
-        { id: '#plz-profile-expression', key: 'expressionClassifierProfileId'},
-        { id: '#plz-profile-describer',  key: 'describerProfileId'           },
+        { id: '#plz-profile-detection', key: 'detectionProfileId' },
+        { id: '#plz-profile-describer', key: 'describerProfileId' },
     ];
 
     for (const { id, key } of dropdowns) {
@@ -244,18 +263,20 @@ function updateKeyStatusIndicator() {
 // ─── Event Bindings ───────────────────────────────────────────────────────────
 
 const PROMPT_TITLES = {
-    booleanPrompt:              'Step 1 — Visual Change? (Boolean)',
-    outfitClassifierPrompt:     'Step 2a — Outfit Classifier',
-    expressionClassifierPrompt: 'Step 2b — Expression Classifier',
-    outfitDescriberPrompt:      'Step 3 — Outfit Describer',
-    expressionDescriberPrompt:  'Step 3 — Expression Describer',
+    subjectMatchPrompt:         'Step 1 — Subject Match (YES/NO)',
+    subjectListPrompt:          'Step 2 — Subject From List',
+    changeCheckPrompt:          'Step 2.9 — Change Check (YES/NO)',
+    combinedClassifierPrompt:   'Step 3 — Combined Outfit + Expression Classifier',
+    outfitDescriberPrompt:      'Describer — New Outfit',
+    expressionDescriberPrompt:  'Describer — New Expression',
     vnStyleSuffix:              'VN Portrait Style Suffix',
 };
 
 const PROMPT_DEFAULTS = {
-    booleanPrompt:              DEFAULT_BOOLEAN_PROMPT,
-    outfitClassifierPrompt:     DEFAULT_OUTFIT_CLASSIFIER_PROMPT,
-    expressionClassifierPrompt: DEFAULT_EXPRESSION_CLASSIFIER_PROMPT,
+    subjectMatchPrompt:         DEFAULT_SUBJECT_MATCH_PROMPT,
+    subjectListPrompt:          DEFAULT_SUBJECT_LIST_PROMPT,
+    changeCheckPrompt:          DEFAULT_CHANGE_CHECK_PROMPT,
+    combinedClassifierPrompt:   DEFAULT_COMBINED_CLASSIFIER_PROMPT,
     outfitDescriberPrompt:      DEFAULT_OUTFIT_DESCRIBER_PROMPT,
     expressionDescriberPrompt:  DEFAULT_EXPRESSION_DESCRIBER_PROMPT,
     vnStyleSuffix:              DEFAULT_VN_STYLE_SUFFIX,
@@ -362,8 +383,44 @@ function bindHandlers() {
         }
     });
 
-    // Portfolio Manager
-    $panel.on('click', '#plz-open-portfolio', () => openPortfolio());
+    // Expression list editor
+    $panel.on('click', '#plz-edit-expressions', async function () {
+        const s       = getSettings();
+        const current = (s.expressionLabels ?? []).join('\n');
+
+        const result = await callPopup(
+            `<h3>Expression List</h3>
+             <p style="font-size:0.85em;opacity:0.7;margin:0 0 10px;">
+                 One label per line. The classifier will pick from this list.<br>
+                 Add unusual entries for specific characters (e.g. "sultry", "determined").
+             </p>
+             <textarea id="plz-expr-editor" class="text_pole" rows="16"
+                       style="width:100%;font-family:monospace;font-size:0.88em;">${current}</textarea>
+             <div style="margin-top:8px;display:flex;gap:8px;">
+                 <button class="menu_button" id="plz-expr-reset" style="font-size:0.8em;">Reset to Defaults</button>
+             </div>`,
+            'confirm',
+        );
+
+        $('#plz-expr-reset').on('click', () => {
+            $('#plz-expr-editor').val(DEFAULT_EXPRESSION_LABELS.join('\n'));
+        });
+
+        if (result) {
+            const labels = $('#plz-expr-editor').val()
+                .split('\n')
+                .map(l => l.trim().toLowerCase())
+                .filter(Boolean);
+            if (labels.length > 0) {
+                updateSetting('expressionLabels', labels);
+                if (window.toastr) window.toastr.success(`Expression list updated (${labels.length} labels).`, 'PersonaLyze');
+            }
+        }
+    });
+
+    // Character Workshop buttons
+    $panel.on('click', '#plz-open-workshop',  () => handleOpenWorkshop());
+    $panel.on('click', '#plz-open-register',  () => handleOpenRegister());
 }
 
 // ─── Entry Point ──────────────────────────────────────────────────────────────

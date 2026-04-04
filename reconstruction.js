@@ -3,17 +3,31 @@
  * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
- * Derives the active PersonaLyze runtime state from a single forward pass over
- * the chat log. Reads pointer records written by pointerWriter.js and returns
- * the resolved state at the end of the chat.
+ * Derives PersonaLyze runtime state from a single forward pass over the chat log.
+ * Reads pointer records written by pointerWriter.js.
+ *
+ * Builds two outputs:
+ *   1. characterChain — last-known visual state per character.
+ *      This is the DNA chain: every character seen in this chat branch retains
+ *      their own outfit/expression slot, independent of which character spoke last.
+ *      On a branched chat, the chain correctly reflects only the history that
+ *      exists in that branch.
+ *
+ *   2. Derived "active" pointers — the last character seen and their state,
+ *      used to restore the portrait on chat load.
  *
  * Because character definitions live in the Global Registry (extension_settings),
- * this module only needs to track which keys were active — not what they mean.
- * Unresolvable pointer keys (e.g. from a registry that no longer contains them)
- * are silently treated as null rather than throwing.
+ * this module only tracks which keys were active — not what they mean.
+ * Unresolvable keys are silently treated as null rather than throwing.
  *
  * @api-declaration
- * reconstruct(chat) → { activeCharacterId, activeOutfitKey, activeExpressionKey, activeImageFile }
+ * reconstruct(chat) → {
+ *   characterChain:      { [characterId]: { outfit, expression, image } },
+ *   activeCharacterId:   string|null,
+ *   activeOutfitKey:     string|null,
+ *   activeExpressionKey: string|null,
+ *   activeImageFile:     string|null,
+ * }
  *
  * @contract
  *   assertions:
@@ -23,11 +37,13 @@
  */
 
 /**
- * Reads all PLZ pointer records from the chat array and returns the final
- * visual state at the end of the conversation.
+ * Reads all PLZ pointer records from the chat array and returns:
+ *  - A per-character chain of last-known visual state (characterChain)
+ *  - The globally last-seen active state (for portrait restoration)
  *
  * @param {object[]} chat  The full context.chat array.
  * @returns {{
+ *   characterChain:      object,
  *   activeCharacterId:   string|null,
  *   activeOutfitKey:     string|null,
  *   activeExpressionKey: string|null,
@@ -35,26 +51,40 @@
  * }}
  */
 export function reconstruct(chat) {
+    const characterChain = {};
+
     let activeCharacterId   = null;
     let activeOutfitKey     = null;
     let activeExpressionKey = null;
     let activeImageFile     = null;
 
     for (const message of chat) {
-        const plzData = message.extra?.personalyze;
-        if (!plzData || typeof plzData !== 'object') continue;
+        const plz = message.extra?.personalyze;
+        if (!plz || typeof plz !== 'object') continue;
 
-        // A pointer record must always include a characterId.
-        // Records missing characterId are legacy/corrupt — skip them.
-        if (!plzData.characterId) continue;
+        // Records missing characterId are legacy/corrupt — skip.
+        if (!plz.characterId) continue;
 
-        activeCharacterId   = plzData.characterId;
-        activeOutfitKey     = plzData.outfit     ?? activeOutfitKey;
-        activeExpressionKey = plzData.expression ?? activeExpressionKey;
-        activeImageFile     = plzData.image      ?? activeImageFile;
+        const id      = plz.characterId;
+        const prior   = characterChain[id] ?? {};
+
+        // Update this character's chain slot. Null values fall back to whatever
+        // this character had previously — a partial record never erases good data.
+        characterChain[id] = {
+            outfit:     plz.outfit     ?? prior.outfit     ?? null,
+            expression: plz.expression ?? prior.expression ?? null,
+            image:      plz.image      ?? prior.image      ?? null,
+        };
+
+        // Track the globally last-active character for portrait restoration.
+        activeCharacterId   = id;
+        activeOutfitKey     = characterChain[id].outfit;
+        activeExpressionKey = characterChain[id].expression;
+        activeImageFile     = characterChain[id].image;
     }
 
     return {
+        characterChain,
         activeCharacterId,
         activeOutfitKey,
         activeExpressionKey,

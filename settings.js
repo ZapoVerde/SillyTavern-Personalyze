@@ -10,6 +10,11 @@
  * registry.js. Settings here control how the pipeline behaves, not what
  * characters look like.
  *
+ * Pipeline profile split:
+ *   detectionProfileId — used for all cheap boolean/classifier calls
+ *                        (subject match, subject list, change check, combined classifier)
+ *   describerProfileId — used for outfit describer (more tokens, higher temp)
+ *
  * STRICT CONTRACT:
  * 1. This module is the ONLY module permitted to mutate extension_settings.personalyze
  *    settings keys (non-character keys).
@@ -34,44 +39,47 @@ import { warn } from './utils/logger.js';
 import {
     DEFAULT_IMAGE_MODEL,
     DEFAULT_VN_STYLE_SUFFIX,
-    DEFAULT_BOOLEAN_PROMPT,
-    DEFAULT_OUTFIT_CLASSIFIER_PROMPT,
-    DEFAULT_EXPRESSION_CLASSIFIER_PROMPT,
+    DEFAULT_SUBJECT_MATCH_PROMPT,
+    DEFAULT_SUBJECT_LIST_PROMPT,
+    DEFAULT_CHANGE_CHECK_PROMPT,
+    DEFAULT_COMBINED_CLASSIFIER_PROMPT,
     DEFAULT_OUTFIT_DESCRIBER_PROMPT,
     DEFAULT_EXPRESSION_DESCRIBER_PROMPT,
-    DEFAULT_BOOLEAN_HISTORY,
-    DEFAULT_OUTFIT_CLASSIFIER_HISTORY,
-    DEFAULT_EXPRESSION_CLASSIFIER_HISTORY,
+    DEFAULT_DETECTION_HISTORY,
     DEFAULT_DESCRIBER_HISTORY,
     DEFAULT_DEV_MODE,
     DEFAULT_VERBOSE_LOGGING,
+    DEFAULT_EXPRESSION_LABELS,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
 
 export const SETTINGS_DEFAULTS = Object.freeze({
-    enabled:                        true,
-    portraitPosition:               'bottom-right',   // 'bottom-right' | 'center-left'
-    imageModel:                     DEFAULT_IMAGE_MODEL,
-    vnStyleSuffix:                  DEFAULT_VN_STYLE_SUFFIX,
-    devMode:                        DEFAULT_DEV_MODE,
-    verboseLogging:                 DEFAULT_VERBOSE_LOGGING,
-    // LLM profile IDs — null means "use the active ST connection profile"
-    booleanProfileId:               null,
-    outfitClassifierProfileId:      null,
-    expressionClassifierProfileId:  null,
-    describerProfileId:             null,
+    enabled:                true,
+    portraitPosition:       'bottom-right',       // 'bottom-right' | 'center-left'
+    imageModel:             DEFAULT_IMAGE_MODEL,
+    vnStyleSuffix:          DEFAULT_VN_STYLE_SUFFIX,
+    devMode:                DEFAULT_DEV_MODE,
+    verboseLogging:         DEFAULT_VERBOSE_LOGGING,
+
+    // LLM profile IDs — null means "use the active ST connection"
+    detectionProfileId:     null,   // subject match / subject list / change check / combined classifier
+    describerProfileId:     null,   // outfit describer
+
     // History window sizes (turn pairs)
-    booleanHistory:                 DEFAULT_BOOLEAN_HISTORY,
-    outfitClassifierHistory:        DEFAULT_OUTFIT_CLASSIFIER_HISTORY,
-    expressionClassifierHistory:    DEFAULT_EXPRESSION_CLASSIFIER_HISTORY,
-    describerHistory:               DEFAULT_DESCRIBER_HISTORY,
+    detectionHistory:       DEFAULT_DETECTION_HISTORY,
+    describerHistory:       DEFAULT_DESCRIBER_HISTORY,
+
+    // Expression label palette — editable so unusual characters can have custom entries added.
+    expressionLabels:           DEFAULT_EXPRESSION_LABELS,
+
     // Prompt overrides
-    booleanPrompt:                  DEFAULT_BOOLEAN_PROMPT,
-    outfitClassifierPrompt:         DEFAULT_OUTFIT_CLASSIFIER_PROMPT,
-    expressionClassifierPrompt:     DEFAULT_EXPRESSION_CLASSIFIER_PROMPT,
-    outfitDescriberPrompt:          DEFAULT_OUTFIT_DESCRIBER_PROMPT,
-    expressionDescriberPrompt:      DEFAULT_EXPRESSION_DESCRIBER_PROMPT,
+    subjectMatchPrompt:         DEFAULT_SUBJECT_MATCH_PROMPT,
+    subjectListPrompt:          DEFAULT_SUBJECT_LIST_PROMPT,
+    changeCheckPrompt:          DEFAULT_CHANGE_CHECK_PROMPT,
+    combinedClassifierPrompt:   DEFAULT_COMBINED_CLASSIFIER_PROMPT,
+    outfitDescriberPrompt:      DEFAULT_OUTFIT_DESCRIBER_PROMPT,
+    expressionDescriberPrompt:  DEFAULT_EXPRESSION_DESCRIBER_PROMPT,
 });
 
 /**
