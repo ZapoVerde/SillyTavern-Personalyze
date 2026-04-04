@@ -19,7 +19,7 @@
  */
 
 import { escapeHtml } from '../../utils/history.js';
-import { buildFilename } from '../../imageCache.js';
+import { buildFilenamePrefix, findCachedImage } from '../../imageCache.js';
 
 /**
  * Main modal shell.
@@ -98,8 +98,9 @@ export function getRosterHTML(characters, activeId) {
  * @param {object}   character       { identityAnchor, outfits, expressions }
  * @param {Set<string>} fileIndex    Known image filenames on disk.
  * @param {string[]} expressionLabels  Global expression palette for the portrait picker.
+ * @param {string|null} defaultExpression  Pre-selected expression (last-known from chain).
  */
-export function getStudioHTML(characterId, character, fileIndex, expressionLabels = []) {
+export function getStudioHTML(characterId, character, fileIndex, expressionLabels = [], defaultExpression = null) {
     const label = characterId.replace(/_/g, ' ');
 
     return `
@@ -131,7 +132,7 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
         </button>
     </div>
     <div id="plz-studio-outfits" style="margin-bottom:20px;">
-        ${getEntryListHTML(characterId, character.outfits ?? {}, 'outfit', fileIndex, expressionLabels)}
+        ${getEntryListHTML(characterId, character.outfits ?? {}, 'outfit', fileIndex, expressionLabels, defaultExpression)}
     </div>
 
     <!-- Expressions -->
@@ -152,9 +153,10 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
  * @param {object}   entries          { key: { label, description } }
  * @param {'outfit'|'expression'} dimension
  * @param {Set<string>} fileIndex
- * @param {string[]} expressionLabels  Portrait picker labels (outfit entries only).
+ * @param {string[]} expressionLabels   Portrait picker labels (outfit entries only).
+ * @param {string|null} defaultExpression  Pre-selected expression for the portrait section.
  */
-export function getEntryListHTML(characterId, entries, dimension, fileIndex, expressionLabels = []) {
+export function getEntryListHTML(characterId, entries, dimension, fileIndex, expressionLabels = [], defaultExpression = null) {
     const keys = Object.keys(entries);
 
     if (keys.length === 0) {
@@ -165,11 +167,11 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex, exp
         const entry    = entries[key];
         // Count generated images that use this entry
         const imgCount = dimension === 'outfit'
-            ? [...fileIndex].filter(f => f.startsWith(`plz_${characterId}_${key}_`)).length
-            : [...fileIndex].filter(f => f.includes(`_${key}.png`)).length;
+            ? [...fileIndex].filter(f => f.startsWith(buildFilenamePrefix(characterId, key, ''))).length
+            : [...fileIndex].filter(f => f.includes(`_${key}_`)).length;
 
         const portraitSection = dimension === 'outfit'
-            ? getOutfitPortraitSectionHTML(characterId, key, fileIndex, expressionLabels)
+            ? getOutfitPortraitSectionHTML(characterId, key, fileIndex, expressionLabels, defaultExpression)
             : '';
 
         return `
@@ -201,18 +203,24 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex, exp
  * @param {Set<string>} fileIndex
  * @param {string[]} expressionLabels
  */
-function getOutfitPortraitSectionHTML(characterId, outfitKey, fileIndex, expressionLabels) {
+function getOutfitPortraitSectionHTML(characterId, outfitKey, fileIndex, expressionLabels, defaultExpression = null) {
     if (expressionLabels.length === 0) return '';
 
+    // Use defaultExpression only if it's actually in the label list
+    const preSelected = expressionLabels.includes(defaultExpression) ? defaultExpression : null;
+    const buttonsDisabled = preSelected ? '' : 'disabled';
+
     const pills = expressionLabels.map(label => {
-        const hasImage = fileIndex.has(buildFilename(characterId, outfitKey, label));
-        const cls      = hasImage ? ' plz-expr-has-image' : '';
-        const check    = hasImage ? '<i class="fa-solid fa-check" style="font-size:0.8em;margin-right:3px;opacity:0.7;"></i>' : '';
+        const hasImage  = findCachedImage(buildFilenamePrefix(characterId, outfitKey, label), fileIndex) !== null;
+        const isSelected = label === preSelected;
+        let cls = hasImage ? ' plz-expr-has-image' : '';
+        if (isSelected) cls += ' plz-expr-selected';
+        const check = hasImage ? '<i class="fa-solid fa-check" style="font-size:0.8em;margin-right:3px;opacity:0.7;"></i>' : '';
         return `<span class="plz-expr-pill${cls}" data-label="${escapeHtml(label)}">${check}${escapeHtml(label)}</span>`;
     }).join('');
 
     return `
-    <div class="plz-portrait-section" data-outfit-key="${escapeHtml(outfitKey)}" data-selected-expr="">
+    <div class="plz-portrait-section" data-outfit-key="${escapeHtml(outfitKey)}" data-selected-expr="${escapeHtml(preSelected ?? '')}">
         <div class="plz-portrait-section-label">Generate Portrait — pick an expression:</div>
         <div class="plz-expr-pills">
             ${pills}
@@ -220,11 +228,11 @@ function getOutfitPortraitSectionHTML(characterId, outfitKey, fileIndex, express
         </div>
         <div class="plz-portrait-actions">
             <button class="menu_button plz-portrait-preview-btn" data-key="${escapeHtml(outfitKey)}"
-                    disabled style="font-size:0.78em;padding:2px 8px;">
+                    ${buttonsDisabled} style="font-size:0.78em;padding:2px 8px;">
                 <i class="fa-solid fa-eye"></i> Thumbnail
             </button>
             <button class="menu_button plz-portrait-generate-btn" data-key="${escapeHtml(outfitKey)}"
-                    disabled style="font-size:0.78em;padding:2px 8px;">
+                    ${buttonsDisabled} style="font-size:0.78em;padding:2px 8px;">
                 <i class="fa-solid fa-image"></i> Generate &amp; Save
             </button>
         </div>

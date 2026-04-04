@@ -27,7 +27,7 @@ import {
 import { getSettings, updateSetting } from '../../settings.js';
 import { slugify, buildDescriberContext } from '../../utils/history.js';
 import { detectAnchorScan } from '../../detector.js';
-import { buildPortraitPrompt, fetchPreviewBlob, generate, buildFilename } from '../../imageCache.js';
+import { buildPortraitPrompt, fetchPreviewBlob, generate } from '../../imageCache.js';
 import { error } from '../../utils/logger.js';
 
 /**

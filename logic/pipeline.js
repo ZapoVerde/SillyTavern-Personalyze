@@ -40,7 +40,7 @@ import {
     detectCombined,
     detectOutfitDescriber,
 } from '../detector.js';
-import { generate, buildFilename } from '../imageCache.js';
+import { generate, buildFilenamePrefix, findCachedImage } from '../imageCache.js';
 import { setPortrait } from '../portrait.js';
 import { lockedWritePointer, lockedPatchPointerImage } from './pointerWriter.js';
 import { openDressingRoom } from '../ui/dressingRoom.js';
@@ -206,7 +206,8 @@ export async function runPipeline(messageId) {
  * @param {object} character       Full character record from the registry.
  */
 async function applyVisual(messageId, characterId, outfitKey, expressionKey, character) {
-    const filename = buildFilename(characterId, outfitKey, expressionKey);
+    const prefix     = buildFilenamePrefix(characterId, outfitKey, expressionKey);
+    const cachedFile = findCachedImage(prefix, state.fileIndex);
 
     // Write pointer immediately so the chat record is consistent even before
     // the image is available.
@@ -214,13 +215,13 @@ async function applyVisual(messageId, characterId, outfitKey, expressionKey, cha
         characterId,
         outfit:     outfitKey,
         expression: expressionKey,
-        image:      state.fileIndex.has(filename) ? filename : null,
+        image:      cachedFile,
     });
 
-    if (state.fileIndex.has(filename)) {
+    if (cachedFile) {
         // Cache hit — instant display.
-        updateActiveImage(filename);
-        setPortrait(filename);
+        updateActiveImage(cachedFile);
+        setPortrait(cachedFile);
         return;
     }
 

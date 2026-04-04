@@ -70,8 +70,9 @@ export function renderStudio(characterId) {
     }
 
     setWorkshopCharacter(id);
-    const s = getSettings();
-    $('#plz-tab-studio').html(getStudioHTML(id, character, state.fileIndex, s.expressionLabels ?? []));
+    const s           = getSettings();
+    const lastExpr    = state.characterChain[id]?.expression ?? null;
+    $('#plz-tab-studio').html(getStudioHTML(id, character, state.fileIndex, s.expressionLabels ?? [], lastExpr));
 }
 
 // ─── Tab Switcher ─────────────────────────────────────────────────────────────

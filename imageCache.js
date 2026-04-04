@@ -14,7 +14,8 @@
  * fetcher used by the Dressing Room modal before committing a new entry.
  *
  * @api-declaration
- * buildFilename(characterId, outfitKey, expressionKey) → string
+ * buildFilenamePrefix(characterId, outfitKey, expressionKey) → string  (no extension, used as search prefix)
+ * findCachedImage(prefix, fileIndex) → string|null
  * buildPortraitPrompt(anchor, outfitDescription, expressionDescription) → string
  * fetchFileIndex() → Promise<{ fileIndex: Set<string>, allImages: string[] }>
  * fetchPreviewBlob(prompt) → Promise<string> (Object URL)
@@ -46,14 +47,50 @@ const FILE_PREFIX     = 'plz_';
 // ─── Naming ───────────────────────────────────────────────────────────────────
 
 /**
- * Builds the deterministic filename for an outfit × expression combination.
+ * Returns the filename prefix for an outfit × expression combination.
+ * Actual saved files append a Unix-ms timestamp before the extension:
+ *   plz_{characterId}_{outfitKey}_{expressionKey}_{timestamp}.png
+ * Use this prefix with findCachedImage() to locate existing files.
  * @param {string} characterId
  * @param {string} outfitKey
  * @param {string} expressionKey
- * @returns {string}
+ * @returns {string}  e.g. "plz_claire_armor_joy_"
  */
-export function buildFilename(characterId, outfitKey, expressionKey) {
-    return `${FILE_PREFIX}${characterId}_${outfitKey}_${expressionKey}.png`;
+export function buildFilenamePrefix(characterId, outfitKey, expressionKey) {
+    return `${FILE_PREFIX}${characterId}_${outfitKey}_${expressionKey}_`;
+}
+
+/**
+ * Finds the most recent cached image file for a given prefix.
+ * Returns the matching filename, or null if none exists.
+ * When multiple timestamped versions exist the last one (highest timestamp) wins.
+ * @param {string}      prefix     From buildFilenamePrefix().
+ * @param {Set<string>} fileIndex
+ * @returns {string|null}
+ */
+export function findCachedImage(prefix, fileIndex) {
+    let best = null;
+    for (const f of fileIndex) {
+        if (f.startsWith(prefix) && (!best || f > best)) best = f;
+    }
+    return best;
+}
+
+// ─── Seed ─────────────────────────────────────────────────────────────────────
+
+/**
+ * FNV-1a 32-bit hash — maps a string to a stable unsigned integer seed.
+ * Same key string always produces the same Pollinations image (continuity).
+ * @param {string} str
+ * @returns {number}
+ */
+function seedFromString(str) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < str.length; i++) {
+        h = (h ^ str.charCodeAt(i)) >>> 0;
+        h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -92,13 +129,15 @@ export function buildPortraitPrompt(anchor, outfitDescription, expressionDescrip
 
 // ─── Pollinations Helpers ─────────────────────────────────────────────────────
 
-function buildPollinationsUrl(prompt, width, height) {
+function buildPollinationsUrl(prompt, width, height, seed) {
     const s = getSettings();
     const params = new URLSearchParams({
         width:  String(width),
         height: String(height),
         model:  s.imageModel ?? DEFAULT_IMAGE_MODEL,
         nologo: 'true',
+        seed:   String(seed),
+        safe:   'false',
     });
     return `${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(prompt)}?${params.toString()}`;
 }
@@ -140,7 +179,8 @@ export async function fetchFileIndex() {
  * @returns {Promise<string>}  An object URL valid for this session.
  */
 export async function fetchPreviewBlob(prompt) {
-    const url     = buildPollinationsUrl(prompt, DEV_IMAGE_WIDTH, DEV_IMAGE_HEIGHT);
+    const seed    = seedFromString(prompt);
+    const url     = buildPollinationsUrl(prompt, DEV_IMAGE_WIDTH, DEV_IMAGE_HEIGHT, seed);
     const headers = await getAuthHeaders();
     const res     = await fetch(url, { headers });
     await validateImageResponse(res);
@@ -172,13 +212,14 @@ export async function generate(
     const height   = devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
 
     const prompt   = buildPortraitPrompt(anchor, outfitDescription, expressionLabel);
-    const url      = buildPollinationsUrl(prompt, width, height);
+    const seed     = seedFromString(`${characterId}_${outfitKey}_${expressionKey}`);
+    const url      = buildPollinationsUrl(prompt, width, height, seed);
     const headers  = await getAuthHeaders();
 
     const imgRes = await fetch(url, { headers });
     await validateImageResponse(imgRes);
 
-    const filename = buildFilename(characterId, outfitKey, expressionKey);
+    const filename = `${buildFilenamePrefix(characterId, outfitKey, expressionKey)}${Date.now()}.png`;
     const blob     = await imgRes.blob();
     const file     = new File([blob], filename, { type: 'image/png' });
 
