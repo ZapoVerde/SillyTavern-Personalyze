@@ -160,9 +160,9 @@ function buildPanelHTML() {
                     </div>
 
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                        <label style="font-size:0.85em;opacity:0.75;white-space:nowrap;min-width:80px;">Style Suffix:</label>
+                        <label style="font-size:0.85em;opacity:0.75;white-space:nowrap;min-width:80px;">Image Prompt:</label>
                         <button class="menu_button plz-open-prompt" data-prompt-key="vnStyleSuffix"
-                                style="font-size:0.8em;padding:2px 8px;">Edit Suffix</button>
+                                style="font-size:0.8em;padding:2px 8px;">Edit Prompt</button>
                     </div>
 
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
@@ -272,7 +272,7 @@ const PROMPT_TITLES = {
     combinedClassifierPrompt:   'Step 3 — Combined Outfit + Expression Classifier',
     outfitDescriberPrompt:      'Describer — New Outfit',
     expressionDescriberPrompt:  'Describer — New Expression',
-    vnStyleSuffix:              'VN Portrait Style Suffix',
+    vnStyleSuffix:              'Portrait Image Prompt — supports {{character}}, {{outfit}}, {{expression}}',
 };
 
 const PROMPT_DEFAULTS = {

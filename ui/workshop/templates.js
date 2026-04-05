@@ -121,8 +121,14 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
         </button>
     </div>
     <textarea id="plz-studio-anchor" class="text_pole" rows="3"
-              style="width:100%;resize:vertical;margin-bottom:16px;">${escapeHtml(character.identityAnchor ?? '')}</textarea>
-    <button id="plz-studio-anchor-save" class="menu_button" style="margin-bottom:20px;">Save Anchor</button>
+              style="width:100%;resize:vertical;margin-bottom:12px;">${escapeHtml(character.identityAnchor ?? '')}</textarea>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+        <button id="plz-studio-anchor-save" class="menu_button">Save Anchor</button>
+        <label style="font-size:0.85em;opacity:0.7;margin:0;">Seed
+            <input id="plz-studio-seed" type="number" min="1" max="98" value="${escapeHtml(String(character.seed ?? 1))}"
+                   style="width:60px;margin-left:5px;" class="text_pole" />
+        </label>
+    </div>
 
     <!-- Outfits -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-shrink:0;">

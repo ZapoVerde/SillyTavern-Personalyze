@@ -21,6 +21,7 @@ import {
     getAllCharacterIds,
     getCharacter,
     upsertCharacter,
+    setCharacterSeed,
     upsertOutfit,
     upsertExpression
 } from '../../registry.js';
@@ -86,13 +87,17 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
 
     // ─── Studio Tab ───────────────────────────────────────────────────────────
 
-    // Save identity anchor
+    // Save identity anchor (and seed)
     $overlay.on('click', '#plz-studio-anchor-save', function () {
         const id     = state._workshopCharacterId;
         const anchor = $('#plz-studio-anchor').val().trim();
         if (!id || !anchor) return;
 
         upsertCharacter(id, anchor);
+
+        const seedVal = parseInt($('#plz-studio-seed').val(), 10);
+        if (!isNaN(seedVal)) setCharacterSeed(id, seedVal);
+
         if (window.toastr) window.toastr.success('Identity Anchor saved.', 'PersonaLyze');
     });
 
@@ -319,7 +324,7 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
 
         try {
             const prompt  = buildPortraitPrompt(character.identityAnchor, outfitDef.description, exprLabel);
-            const blobUrl = await fetchPreviewBlob(prompt);
+            const blobUrl = await fetchPreviewBlob(prompt, id);
 
             const $area = $section.find('.plz-portrait-preview-area');
             $area.find('.plz-portrait-preview-img').attr('src', blobUrl);

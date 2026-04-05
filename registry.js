@@ -21,6 +21,7 @@
  * getCharacter(characterId)                         — Returns the full character record or null.
  * getAllCharacterIds()                               — Returns all registered character IDs.
  * upsertCharacter(characterId, anchor)              — Creates or updates an identity anchor.
+ * setCharacterSeed(characterId, seed)               — Sets the image generation seed (1–98) for a character.
  * upsertOutfit(characterId, key, label, description) — Adds or updates an outfit definition.
  * upsertExpression(characterId, key, label, description) — Adds or updates an expression definition.
  * getOutfit(characterId, outfitKey)                 — Returns a single outfit entry or null.
@@ -123,6 +124,7 @@ export function upsertCharacter(characterId, anchor) {
     if (!root.characters[characterId]) {
         root.characters[characterId] = {
             identityAnchor: anchor,
+            seed: 1,
             outfits: {},
             expressions: {},
         };
@@ -131,6 +133,21 @@ export function upsertCharacter(characterId, anchor) {
         root.characters[characterId].identityAnchor = anchor;
         log('Registry', `Identity anchor updated for: "${characterId}"`);
     }
+    saveSettingsDebounced();
+}
+
+/**
+ * Sets the image generation seed for a character. Clamped to 1–98.
+ * @param {string} characterId
+ * @param {number} seed
+ */
+export function setCharacterSeed(characterId, seed) {
+    const character = getRoot().characters[characterId];
+    if (!character) {
+        warn('Registry', `setCharacterSeed called for unknown character: "${characterId}"`);
+        return;
+    }
+    character.seed = Math.max(1, Math.min(98, Math.round(Number(seed)) || 1));
     saveSettingsDebounced();
 }
 

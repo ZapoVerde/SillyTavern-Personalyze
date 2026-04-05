@@ -104,12 +104,14 @@ export const DEFAULT_EXPRESSION_LABELS = [
 ]
 
 /**
- * Style suffix appended to every Pollinations prompt.
- * Targets the visual novel / character portrait aesthetic.
+ * Image prompt template for Pollinations portrait generation.
+ * Supports {{character}}, {{outfit}}, and {{expression}} variables.
+ * When any variable is present the template is used as the full prompt;
+ * otherwise it is appended to the assembled sandwich as before.
  */
 export const DEFAULT_VN_STYLE_SUFFIX =
-    'visual novel character portrait, centered composition, plain or softly blurred background, ' +
-    'high detail, anime-adjacent illustration style, front-facing or three-quarter view'
+    '{{character}}, {{outfit}}, {{expression}}, visual novel character portrait, ' +
+    'centered composition, plain or softly blurred background, high detail, anime-adjacent illustration style'
 
 // ─── Prompt Templates ────────────────────────────────────────────────────────
 

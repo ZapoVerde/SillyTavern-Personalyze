@@ -18,7 +18,7 @@
  * findCachedImage(prefix, fileIndex) → string|null
  * buildPortraitPrompt(anchor, outfitDescription, expressionDescription) → string
  * fetchFileIndex() → Promise<{ fileIndex: Set<string>, allImages: string[] }>
- * fetchPreviewBlob(prompt) → Promise<string> (Object URL)
+ * fetchPreviewBlob(prompt, characterId) → Promise<string> (Object URL)
  * generate(characterId, outfitKey, expressionKey, outfitDef, expressionDef, anchor) → Promise<string> (filename)
  *
  * @contract
@@ -30,6 +30,7 @@
 
 import { getRequestHeaders } from '../../../../script.js';
 import { findSecret } from '../../../secrets.js';
+import { getCharacter } from './registry.js';
 import {
     POLLINATIONS_BASE_URL,
     DEFAULT_IMAGE_MODEL,
@@ -76,23 +77,6 @@ export function findCachedImage(prefix, fileIndex) {
     return best;
 }
 
-// ─── Seed ─────────────────────────────────────────────────────────────────────
-
-/**
- * FNV-1a 32-bit hash — maps a string to a stable unsigned integer seed.
- * Same key string always produces the same Pollinations image (continuity).
- * @param {string} str
- * @returns {number}
- */
-function seedFromString(str) {
-    let h = 2166136261 >>> 0;
-    for (let i = 0; i < str.length; i++) {
-        h = (h ^ str.charCodeAt(i)) >>> 0;
-        h = Math.imul(h, 16777619) >>> 0;
-    }
-    return h;
-}
-
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 async function getAuthHeaders() {
@@ -112,8 +96,16 @@ async function getAuthHeaders() {
 // ─── Prompt Builder ───────────────────────────────────────────────────────────
 
 /**
- * Assembles the Prompt Sandwich:
- *   [Identity Anchor] + [Outfit Description] + [Expression Description] + [VN Style Suffix]
+ * Assembles the portrait prompt.
+ *
+ * When the suffix template contains any of {{character}}, {{outfit}}, or
+ * {{expression}}, those variables are substituted and the result is used as
+ * the entire prompt.  Unresolved variables (empty value) are replaced with an
+ * empty string and the surrounding comma+space is collapsed.
+ *
+ * When the suffix contains no variables the legacy "sandwich" behaviour is
+ * preserved: [anchor, outfit, expression, suffix] joined by ", ".
+ *
  * @param {string} anchor           The character's permanent appearance description.
  * @param {string} outfitDescription
  * @param {string} expressionDescription
@@ -122,6 +114,19 @@ async function getAuthHeaders() {
 export function buildPortraitPrompt(anchor, outfitDescription, expressionDescription) {
     const s = getSettings();
     const suffix = s.vnStyleSuffix ?? DEFAULT_VN_STYLE_SUFFIX;
+
+    const hasVars = /\{\{(character|outfit|expression)\}\}/.test(suffix);
+    if (hasVars) {
+        return suffix
+            .replace(/\{\{character\}\}/g,  anchor              ?? '')
+            .replace(/\{\{outfit\}\}/g,      outfitDescription   ?? '')
+            .replace(/\{\{expression\}\}/g,  expressionDescription ?? '')
+            // collapse ", , " or leading/trailing ", " left by empty vars
+            .replace(/(,\s*)+,/g, ',')
+            .replace(/^[,\s]+|[,\s]+$/g, '')
+            .trim();
+    }
+
     return [anchor, outfitDescription, expressionDescription, suffix]
         .filter(Boolean)
         .join(', ');
@@ -175,11 +180,12 @@ export async function fetchFileIndex() {
 /**
  * Fetches a small preview image from Pollinations and returns a local blob URL.
  * Used by the Dressing Room modal before the user approves a new definition.
- * @param {string} prompt  The fully assembled image prompt.
+ * @param {string} prompt        The fully assembled image prompt.
+ * @param {string} characterId   Used to look up the character's seed (1–98).
  * @returns {Promise<string>}  An object URL valid for this session.
  */
-export async function fetchPreviewBlob(prompt) {
-    const seed    = seedFromString(prompt);
+export async function fetchPreviewBlob(prompt, characterId) {
+    const seed    = getCharacter(characterId)?.seed ?? 1;
     const url     = buildPollinationsUrl(prompt, DEV_IMAGE_WIDTH, DEV_IMAGE_HEIGHT, seed);
     const headers = await getAuthHeaders();
     const res     = await fetch(url, { headers });
@@ -212,7 +218,7 @@ export async function generate(
     const height   = devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
 
     const prompt   = buildPortraitPrompt(anchor, outfitDescription, expressionLabel);
-    const seed     = seedFromString(`${characterId}_${outfitKey}_${expressionKey}`);
+    const seed     = getCharacter(characterId)?.seed ?? 1;
     const url      = buildPollinationsUrl(prompt, width, height, seed);
     const headers  = await getAuthHeaders();
 
