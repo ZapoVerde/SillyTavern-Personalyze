@@ -518,46 +518,41 @@ body.plz-vn-active #plz-vn-panel {
     font-size: 2.2em;
 }
 
-/* ── Drag handle ── */
+/* ── Drag handle — corner grip ── */
 
 #plz-vn-drag-handle {
     display: none;
-    position: fixed;
-    left: 0;
-    width: 100%;
-    height: 44px; /* generous touch target */
-    /* centred on the split line */
-    top: calc(var(--plz-vn-split, 40) * 1dvh - 22px);
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 52px;  /* large enough for a mobile tap target */
+    height: 52px;
     z-index: 5000;
     cursor: ns-resize;
     touch-action: none;
-    align-items: center;
-    justify-content: center;
-    /* subtle gradient so the grip is visible over both image and chat */
-    background: linear-gradient(
-        to bottom,
-        transparent 0%,
-        rgba(0, 0, 0, 0.18) 40%,
-        rgba(0, 0, 0, 0.18) 60%,
-        transparent 100%
-    );
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 8px;
+    /* stop the portrait-area click handler firing when the handle is tapped */
+    pointer-events: all;
 }
 
 body.plz-vn-active #plz-vn-drag-handle {
     display: flex;
 }
 
+/* Three diagonal notch lines drawn with box-shadow */
 .plz-vn-grip {
-    width: 44px;
-    height: 4px;
-    border-radius: 2px;
-    background: rgba(255, 255, 255, 0.45);
+    width: 14px;
+    height: 14px;
+    border-right: 3px solid rgba(255, 255, 255, 0.55);
+    border-bottom: 3px solid rgba(255, 255, 255, 0.55);
+    border-radius: 0 0 3px 0;
     pointer-events: none;
-    transition: background 0.15s ease, width 0.15s ease;
+    transition: border-color 0.15s ease;
 }
 
 #plz-vn-drag-handle:hover .plz-vn-grip,
 #plz-vn-drag-handle:active .plz-vn-grip {
-    background: rgba(255, 255, 255, 0.8);
-    width: 56px;
+    border-color: rgba(255, 255, 255, 0.9);
 }

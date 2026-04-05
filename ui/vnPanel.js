@@ -62,10 +62,10 @@ export function injectVnPanel() {
                     <i class="fa-solid fa-shuffle"></i>
                     Click to change
                 </div>
+                <div id="${HANDLE_ID}" title="Drag to resize">
+                    <div class="plz-vn-grip"></div>
+                </div>
             </div>
-        </div>
-        <div id="${HANDLE_ID}" title="Drag to resize">
-            <div class="plz-vn-grip"></div>
         </div>
     `);
 
@@ -107,6 +107,8 @@ export function injectVnPanel() {
     const $handle = $(`#${HANDLE_ID}`);
     $handle.on('mousedown',  _onDragStart);
     $handle.on('touchstart', _onDragStart, { passive: false });
+    // Prevent the handle tap from bubbling to the portrait-area click (char picker).
+    $handle.on('click', e => e.stopPropagation());
 
     // ── Restore saved state ───────────────────────────────────────────────────
     const settings = getSettings();
