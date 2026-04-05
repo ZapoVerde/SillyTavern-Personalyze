@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role Orchestrator / Narrative Logic
  * @description
  * Implements the PersonaLyze "Falling Water" detection pipeline.
@@ -31,7 +31,7 @@ import { getContext } from '../../../../extensions.js';
 import { error } from '../utils/logger.js';
 import { state, updateActiveCharacter, updateActivePointers, updateActiveImage, addToFileIndex, getChainEntry, updateChainEntry } from '../state.js';
 import { getSettings } from '../settings.js';
-import { getAllCharacterIds, getCharacter, upsertOutfit } from '../registry.js';
+import { getCharacter, upsertOutfit } from '../registry.js';
 import { buildHistoryText, buildDescriberContext, slugify } from '../utils/history.js';
 import {
     detectSubjectMatch,
@@ -60,15 +60,19 @@ export async function runPipeline(messageId) {
     const s       = getSettings();
     if (!s.enabled) return;
 
+    // Roster gate — if no characters are enabled for this chat, do nothing.
+    if (state.activeRoster.length === 0) return;
+
     const history = buildHistoryText(context.chat, messageId, s.detectionHistory ?? 2);
 
     // ── Step 1: Subject Match ────────────────────────────────────────────────
     // Check whether the currently tracked character is the main subject.
-    // Fast path: if we already know who's active, a cheap YES/NO confirms it.
+    // Fast path: if we already know who's active AND they're in the roster,
+    // a cheap YES/NO confirms it.
 
     let characterId = null;
 
-    if (state.activeCharacterId) {
+    if (state.activeCharacterId && state.activeRoster.includes(state.activeCharacterId)) {
         const activeCharacter = getCharacter(state.activeCharacterId);
         if (activeCharacter) {
             const isMatch = await detectSubjectMatch(
@@ -83,11 +87,12 @@ export async function runPipeline(messageId) {
     }
 
     // ── Step 2: Subject From List ────────────────────────────────────────────
-    // Current character wasn't the subject — identify from the full roster.
+    // Current character wasn't the subject — identify from the active roster.
+    // Only characters explicitly enabled for this chat are candidates.
 
     if (!characterId) {
-        const allIds = getAllCharacterIds();
-        if (allIds.length === 0) return;   // Nothing registered — nothing to do.
+        const allIds = state.activeRoster.filter(id => getCharacter(id));
+        if (allIds.length === 0) return;   // Roster enabled but no registered chars — nothing to do.
 
         const userName = context.name1 ?? 'User';
         characterId = await detectSubjectFromList(

@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pointerWriter.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role IO Executor / Pointer Writer
  * @description
  * Handles all writes to message.extra.personalyze with integrated concurrency
@@ -21,6 +21,7 @@
  * @api-declaration
  * lockedWritePointer(messageId, record)       → Promise<void>
  * lockedPatchPointerImage(messageId, filename) → Promise<void>
+ * lockedWriteRoster(messageId, roster)        → Promise<void>
  *
  * @contract
  *   assertions:
@@ -55,6 +56,33 @@ export async function lockedWritePointer(messageId, record) {
 
         message.extra = message.extra ?? {};
         message.extra.personalyze = { ...record };
+
+        await saveChatConditional();
+    } finally {
+        writeLock.release();
+    }
+}
+
+/**
+ * Writes or updates the roster field on a message's personalyze record.
+ * Merges with any existing pointer data on that message so the character
+ * pointer and the roster can coexist on the same turn.
+ *
+ * @param {number}   messageId
+ * @param {string[]} roster  The full enabled character ID list at this point.
+ */
+export async function lockedWriteRoster(messageId, roster) {
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (!message) return;
+
+        message.extra = message.extra ?? {};
+        message.extra.personalyze = {
+            ...(message.extra.personalyze ?? {}),
+            roster: [...roster],
+        };
 
         await saveChatConditional();
     } finally {

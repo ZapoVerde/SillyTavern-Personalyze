@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/state.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role Stateful Owner (Runtime State)
  * @description
  * Single source of truth for all PersonaLyze in-memory runtime state.
@@ -27,6 +27,7 @@
  * bulkInitState(data)                      — Hydrates state from a reconstruction pass.
  * setFileIndex(files)                      — Overwrites the known image file set.
  * addToFileIndex(file)                     — Appends a single filename to the known set.
+ * setActiveRoster(roster)                  — Replaces the active character roster for this chat.
  *
  * @contract
  *   assertions:
@@ -43,6 +44,13 @@ export const state = {
     activeOutfitKey:      null,  // string | null
     activeExpressionKey:  null,  // string | null
     activeImageFile:      null,  // string | null — resolved filename on disk
+
+    // Per-chat roster — the set of character IDs enabled for the active chat.
+    // Empty array = nothing enabled; pipeline stays dormant.
+    // Rebuilt from the chat's pointer history on every chat load (last roster
+    // record in the DNA chain wins). Changed explicitly by the user via the
+    // Workshop Roster tab; each change writes a roster record to the last AI turn.
+    activeRoster: [],   // string[]
 
     // DNA Chain — last-known visual state per character.
     // Keyed by characterId. Rebuilt from message pointers on every chat load
@@ -74,6 +82,7 @@ export function resetState() {
     state.activeOutfitKey      = null;
     state.activeExpressionKey  = null;
     state.activeImageFile      = null;
+    state.activeRoster         = [];
     state.characterChain       = {};
     state.fileIndex            = new Set();
     state._workshopCharacterId = null;
@@ -129,19 +138,30 @@ export function getChainEntry(characterId) {
 /**
  * Performs a bulk hydration of state from a reconstruction pass.
  * Called by the bootstrapper after reading the chat's pointer history.
- * @param {object} data
- * @param {object} data.characterChain
+ * @param {object}   data
+ * @param {object}   data.characterChain
+ * @param {string[]} data.activeRoster
  * @param {string|null} data.activeCharacterId
  * @param {string|null} data.activeOutfitKey
  * @param {string|null} data.activeExpressionKey
  * @param {string|null} data.activeImageFile
  */
-export function bulkInitState({ characterChain, activeCharacterId, activeOutfitKey, activeExpressionKey, activeImageFile }) {
+export function bulkInitState({ characterChain, activeRoster, activeCharacterId, activeOutfitKey, activeExpressionKey, activeImageFile }) {
     state.characterChain      = characterChain      ?? {};
+    state.activeRoster        = Array.isArray(activeRoster) ? activeRoster : [];
     state.activeCharacterId   = activeCharacterId   ?? null;
     state.activeOutfitKey     = activeOutfitKey     ?? null;
     state.activeExpressionKey = activeExpressionKey ?? null;
     state.activeImageFile     = activeImageFile     ?? null;
+}
+
+/**
+ * Replaces the active character roster for this chat.
+ * Called when the user toggles characters in the Workshop Roster tab.
+ * @param {string[]} roster
+ */
+export function setActiveRoster(roster) {
+    state.activeRoster = Array.isArray(roster) ? [...roster] : [];
 }
 
 /**

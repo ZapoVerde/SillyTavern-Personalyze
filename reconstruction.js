@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/reconstruction.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Derives PersonaLyze runtime state from a single forward pass over the chat log.
@@ -23,6 +23,7 @@
  * @api-declaration
  * reconstruct(chat) → {
  *   characterChain:      { [characterId]: { outfit, expression, image } },
+ *   activeRoster:        string[],
  *   activeCharacterId:   string|null,
  *   activeOutfitKey:     string|null,
  *   activeExpressionKey: string|null,
@@ -44,6 +45,7 @@
  * @param {object[]} chat  The full context.chat array.
  * @returns {{
  *   characterChain:      object,
+ *   activeRoster:        string[],
  *   activeCharacterId:   string|null,
  *   activeOutfitKey:     string|null,
  *   activeExpressionKey: string|null,
@@ -53,6 +55,7 @@
 export function reconstruct(chat) {
     const characterChain = {};
 
+    let activeRoster        = [];   // last roster record wins (forward pass)
     let activeCharacterId   = null;
     let activeOutfitKey     = null;
     let activeExpressionKey = null;
@@ -62,7 +65,13 @@ export function reconstruct(chat) {
         const plz = message.extra?.personalyze;
         if (!plz || typeof plz !== 'object') continue;
 
-        // Records missing characterId are legacy/corrupt — skip.
+        // Roster record — independent of character pointer presence.
+        // Every time the user changed the roster a new record was written here.
+        if (Array.isArray(plz.roster)) {
+            activeRoster = plz.roster;
+        }
+
+        // Character pointer records require a characterId — skip roster-only records.
         if (!plz.characterId) continue;
 
         const id      = plz.characterId;
@@ -85,6 +94,7 @@ export function reconstruct(chat) {
 
     return {
         characterChain,
+        activeRoster,
         activeCharacterId,
         activeOutfitKey,
         activeExpressionKey,

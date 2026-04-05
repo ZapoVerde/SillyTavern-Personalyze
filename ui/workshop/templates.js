@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/templates.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Pure functions for generating the PersonaLyze Character Workshop HTML.
@@ -54,11 +54,14 @@ export function getBaseWorkshopHTML() {
 }
 
 /**
- * Roster tab — list of all registered characters.
- * @param {object} characters  { characterId: { identityAnchor, outfits, expressions } }
- * @param {string|null} activeId  Currently active character from runtime state.
+ * Roster tab — list of all registered characters with per-chat enable/disable toggles.
+ * Enabled characters (in activeRoster) sort to the top; disabled sink to the bottom.
+ *
+ * @param {object}      characters   { characterId: { identityAnchor, outfits, expressions } }
+ * @param {string|null} activeId     Currently active character from runtime state.
+ * @param {string[]}    activeRoster IDs of characters enabled for this chat.
  */
-export function getRosterHTML(characters, activeId) {
+export function getRosterHTML(characters, activeId, activeRoster = []) {
     const entries = Object.entries(characters);
 
     if (entries.length === 0) {
@@ -71,25 +74,55 @@ export function getRosterHTML(characters, activeId) {
         </div>`;
     }
 
-    return entries.map(([id, char]) => {
+    // Enabled characters first, then disabled — stable within each group.
+    const sorted = [...entries].sort(([aId], [bId]) => {
+        const aOn = activeRoster.includes(aId);
+        const bOn = activeRoster.includes(bId);
+        if (aOn === bOn) return 0;
+        return aOn ? -1 : 1;
+    });
+
+    const enabledCount = activeRoster.filter(id => id in characters).length;
+    const hint = enabledCount === 0
+        ? `<p style="font-size:0.82em;opacity:0.5;margin:0 0 10px;">
+               No characters enabled for this chat. Toggle one on to start.
+           </p>`
+        : `<p style="font-size:0.82em;opacity:0.5;margin:0 0 10px;">
+               ${enabledCount} character${enabledCount !== 1 ? 's' : ''} enabled for this chat.
+           </p>`;
+
+    const rows = sorted.map(([id, char]) => {
         const isActive  = id === activeId;
+        const isEnabled = activeRoster.includes(id);
         const outfitCount = Object.keys(char.outfits ?? {}).length;
         const exprCount   = Object.keys(char.expressions ?? {}).length;
         const label       = id.replace(/_/g, ' ');
 
+        const toggleIcon  = isEnabled
+            ? `<i class="fa-solid fa-toggle-on  plz-roster-toggle" title="Enabled — click to disable"
+                  style="font-size:1.3em;color:var(--SmartThemeQuoteColor);cursor:pointer;"></i>`
+            : `<i class="fa-solid fa-toggle-off plz-roster-toggle" title="Disabled — click to enable"
+                  style="font-size:1.3em;opacity:0.35;cursor:pointer;"></i>`;
+
+        const dimStyle = isEnabled ? '' : 'opacity:0.45;';
+
         return `
-        <div class="plz-roster-item ${isActive ? 'plz-active-char' : ''}" data-id="${escapeHtml(id)}">
+        <div class="plz-roster-item ${isActive ? 'plz-active-char' : ''}" data-id="${escapeHtml(id)}"
+             style="${dimStyle}">
             <div class="plz-roster-text">
                 <strong>${isActive ? '<i class="fa-solid fa-user"></i> ' : ''}${escapeHtml(label)}</strong>
                 <small>${escapeHtml(char.identityAnchor ?? '—')}</small>
                 <small style="opacity:0.5;">${outfitCount} outfit(s) · ${exprCount} expression(s)</small>
             </div>
             <div class="plz-roster-actions">
+                ${toggleIcon}
                 <i class="fa-solid fa-pen-to-square plz-roster-edit"   title="Open in Studio"></i>
                 <i class="fa-solid fa-trash          plz-roster-delete" title="Delete character"></i>
             </div>
         </div>`;
     }).join('');
+
+    return hint + rows;
 }
 
 /**

@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/characterWorkshopModal.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role UI Orchestrator
  * @description
  * High-level coordinator for the PersonaLyze Character Workshop modal.
@@ -46,7 +46,7 @@ export function renderRoster() {
     const characters = Object.fromEntries(
         getAllCharacterIds().map(id => [id, getCharacter(id)])
     );
-    const html = getRosterHTML(characters, state.activeCharacterId);
+    const html = getRosterHTML(characters, state.activeCharacterId, state.activeRoster);
     $('#plz-tab-roster').html(
         `<p style="margin-top:0;opacity:0.7;font-size:0.9em;flex-shrink:0;">
             Browse registered characters. Click the edit icon to open in Studio.

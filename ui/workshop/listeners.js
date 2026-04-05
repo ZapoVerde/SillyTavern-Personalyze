@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/listeners.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role UI Event Listeners
  * @description
  * Centralizes all DOM event bindings for the Character Workshop modal.
@@ -16,7 +16,8 @@
  */
 
 import { getContext } from '../../../../../extensions.js';
-import { state, setWorkshopCharacter, addToFileIndex, updateChainEntry } from '../../state.js';
+import { state, setWorkshopCharacter, setActiveRoster, addToFileIndex, updateChainEntry } from '../../state.js';
+import { lockedWriteRoster } from '../../logic/pointerWriter.js';
 import {
     getAllCharacterIds,
     getCharacter,
@@ -61,6 +62,48 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
     });
 
     // ─── Roster Tab ───────────────────────────────────────────────────────────
+
+    // Toggle character enabled/disabled for this chat
+    $overlay.on('click', '.plz-roster-toggle', async function (e) {
+        e.stopPropagation();
+        const id      = $(this).closest('.plz-roster-item').data('id');
+        const context = getContext();
+
+        // Roster changes must be anchored to an AI message so reconstruction
+        // can restore them. Require at least one AI turn before allowing changes.
+        let lastAiIdx = -1;
+        for (let i = context.chat.length - 1; i >= 0; i--) {
+            if (!context.chat[i].is_user) { lastAiIdx = i; break; }
+        }
+
+        if (lastAiIdx === -1) {
+            if (window.toastr) window.toastr.warning(
+                'No AI message to attach roster change to — start the conversation first.',
+                'PersonaLyze'
+            );
+            return;
+        }
+
+        const isEnabled = state.activeRoster.includes(id);
+        const newRoster = isEnabled
+            ? state.activeRoster.filter(x => x !== id)
+            : [...state.activeRoster, id];
+
+        try {
+            await lockedWriteRoster(lastAiIdx, newRoster);
+            setActiveRoster(newRoster);
+            renderRoster();
+
+            const name = id.replace(/_/g, ' ');
+            if (window.toastr) window.toastr.success(
+                isEnabled ? `"${name}" disabled for this chat.` : `"${name}" enabled for this chat.`,
+                'PersonaLyze'
+            );
+        } catch (err) {
+            error('Workshop', 'Roster toggle failed:', err);
+            if (window.toastr) window.toastr.error(`Roster update failed: ${err.message}`, 'PersonaLyze');
+        }
+    });
 
     // Open in Studio
     $overlay.on('click', '.plz-roster-edit', function (e) {
