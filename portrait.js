@@ -11,25 +11,51 @@
  * until the animation completes.
  *
  * The container position (bottom-right / center-left) is driven by a CSS class
- * toggled by the settings panel.
+ * toggled by the settings panel. When SillyTavern's waifuMode is active the
+ * portrait is automatically repositioned into the VN window area above the chat
+ * regardless of the saved preference; it reverts when waifuMode is removed.
  *
  * @api-declaration
  * injectPortraitContainer()          — Creates and appends the portrait DOM structure (idempotent).
  * setPortrait(filename)              — Crossfades to a new portrait image.
  * clearPortrait()                    — Fades out and hides the portrait container.
- * setPortraitPosition(position)      — Switches the container's layout position class.
+ * setPortraitPosition(position)      — Stores the preferred position and applies it (waifuMode overrides).
  *
  * @contract
  *   assertions:
  *     purity: IO
- *     state_ownership: []
- *     external_io: [#plz-portrait-container DOM (write), CSS transitions]
+ *     state_ownership: [_preferredPosition]
+ *     external_io: [#plz-portrait-container DOM (write), CSS transitions, document.body MutationObserver]
  */
 
 import { log } from './utils/logger.js';
 
 const CONTAINER_ID     = 'plz-portrait-container';
 const FADE_DURATION_MS = 300;
+
+/** The user's saved position preference (used when waifuMode is off). */
+let _preferredPosition = 'bottom-right';
+
+/**
+ * Applies the correct position class based on whether waifuMode is currently active.
+ * If `body.waifuMode` is present the portrait moves into the VN area; otherwise
+ * the stored preferred position is used.
+ */
+function _applyPosition() {
+    const $container = $(`#${CONTAINER_ID}`);
+    if (!$container.length) return;
+
+    const isWaifu = document.body.classList.contains('waifuMode');
+    const posClass = isWaifu
+        ? 'plz-position-waifu'
+        : `plz-position-${_preferredPosition}`;
+
+    $container
+        .removeClass('plz-position-bottom-right plz-position-center-left plz-position-waifu')
+        .addClass(posClass);
+
+    log('Portrait', 'Position applied:', posClass);
+}
 
 /** Builds the portrait HTML and appends it to the body if not already present. */
 export function injectPortraitContainer() {
@@ -45,6 +71,14 @@ export function injectPortraitContainer() {
     `);
 
     $('body').append(container);
+
+    // Watch for SillyTavern toggling waifuMode on/off
+    const observer = new MutationObserver(() => _applyPosition());
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+    // Apply initial position in case waifuMode is already active
+    _applyPosition();
+
     log('Portrait', 'Container injected.');
 }
 
@@ -104,16 +138,11 @@ export function clearPortrait() {
 }
 
 /**
- * Switches the portrait container's CSS position class.
+ * Stores the user's preferred position and applies it (unless waifuMode overrides).
  * @param {'bottom-right'|'center-left'} position
  */
 export function setPortraitPosition(position) {
-    const $container = $(`#${CONTAINER_ID}`);
-    if (!$container.length) return;
-
-    $container
-        .removeClass('plz-position-bottom-right plz-position-center-left')
-        .addClass(position === 'center-left' ? 'plz-position-center-left' : 'plz-position-bottom-right');
-
-    log('Portrait', 'Position set:', position);
+    _preferredPosition = (position === 'center-left') ? 'center-left' : 'bottom-right';
+    _applyPosition();
+    log('Portrait', 'Preferred position stored:', _preferredPosition);
 }

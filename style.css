@@ -28,6 +28,15 @@
     left: 20px;
 }
 
+/* In waifuMode the portrait sits centered at the bottom of the VN window,
+   just above the chat panel which occupies the bottom 40vh. */
+#plz-portrait-container.plz-position-waifu {
+    bottom: calc(40vh + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 160px;
+}
+
 /* ─── Portrait Frame ──────────────────────────────────────────────────────── */
 
 .plz-portrait-frame {

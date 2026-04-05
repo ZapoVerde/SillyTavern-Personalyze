@@ -216,6 +216,7 @@ function populateInputs() {
 
     $(`#${PANEL_ID} #plz-enabled`).prop('checked', s.enabled ?? true);
     $(`#${PANEL_ID} #plz-portrait-position`).val(s.portraitPosition ?? 'bottom-right');
+    setPortraitPosition(s.portraitPosition ?? 'bottom-right');
     $(`#${PANEL_ID} #plz-image-model`).val(s.imageModel);
     $(`#${PANEL_ID} #plz-dev-mode`).prop('checked', s.devMode ?? false);
     $(`#${PANEL_ID} #plz-verbose-logging`).prop('checked', s.verboseLogging ?? false);
