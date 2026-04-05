@@ -7,7 +7,7 @@
  * Completely independent of SillyTavern's built-in VN mode.
  *
  * When active, injects a character portrait panel above ST's chat window
- * (#sheld) and provides a drag handle so the user can resize the split.
+ * (#sheld). A cycle button on the right edge steps through preset split sizes.
  * The split ratio is persisted to settings.
  *
  * Portrait images are received via a DOM CustomEvent ('plz:portrait-set')
@@ -20,7 +20,7 @@
  * @contract
  *   assertions:
  *     purity: IO
- *     state_ownership: [_currentSplit, _dragging]
+ *     state_ownership: [_splitIndex]
  *     external_io: [#plz-vn-panel DOM, #sheld inline styles, body class, settings.js]
  */
 
@@ -28,19 +28,22 @@ import { state } from '../state.js';
 import { getSettings, updateSetting } from '../settings.js';
 import { log } from '../utils/logger.js';
 
-const PANEL_ID   = 'plz-vn-panel';
-const HANDLE_ID  = 'plz-vn-drag-handle';
-const IMG_ID     = 'plz-vn-portrait-img';
-const BODY_CLASS = 'plz-vn-active';
-const SPLIT_VAR  = '--plz-vn-split';
+const PANEL_ID    = 'plz-vn-panel';
+const IMG_ID      = 'plz-vn-portrait-img';
+const CYCLE_ID    = 'plz-vn-cycle-btn';
+const BODY_CLASS  = 'plz-vn-active';
+const SPLIT_VAR   = '--plz-vn-split';
 
-/** Clamp bounds for the split (percent of screen height). */
-const MIN_SPLIT = 15;
-const MAX_SPLIT = 75;
+/** Preset split sizes (% of viewport height) cycling through 2/3 → 1/2 → 1/3 → 1/4 → 1/5. */
+const SPLIT_PRESETS = [
+    { pct: 66.67, label: '⅔' },
+    { pct: 50,    label: '½' },
+    { pct: 33.33, label: '⅓' },
+    { pct: 25,    label: '¼' },
+    { pct: 20,    label: '⅕' },
+];
 
-let _currentSplit = 40;
-let _dragging     = false;
-let _justDragged  = false;
+let _splitIndex = 1; // default: ½
 
 // ─── Injection ────────────────────────────────────────────────────────────────
 
@@ -63,10 +66,8 @@ export function injectVnPanel() {
                     <i class="fa-solid fa-shuffle"></i>
                     Click to change
                 </div>
-                <div id="${HANDLE_ID}" title="Drag to resize">
-                    <div class="plz-vn-grip"></div>
-                </div>
             </div>
+            <button id="${CYCLE_ID}" title="Cycle portrait size" type="button">½</button>
         </div>
     `);
 
@@ -100,22 +101,26 @@ export function injectVnPanel() {
 
     // ── Portrait area click → character picker ────────────────────────────────
     $('#plz-vn-portrait-area').on('click', async () => {
-        if (_justDragged) return;
         const { openCharPicker } = await import('./charPicker.js');
         await openCharPicker();
     });
 
-    // ── Drag bindings ─────────────────────────────────────────────────────────
-    const $handle = $(`#${HANDLE_ID}`);
-    $handle.on('mousedown',  _onDragStart);
-    $handle.on('touchstart', _onDragStart, { passive: false });
-    // Prevent the handle tap from bubbling to the portrait-area click (char picker).
-    $handle.on('click', e => e.stopPropagation());
+    // ── Cycle button ──────────────────────────────────────────────────────────
+    $(`#${CYCLE_ID}`).on('click', () => {
+        _splitIndex = (_splitIndex + 1) % SPLIT_PRESETS.length;
+        _applySplit();
+    });
 
     // ── Restore saved state ───────────────────────────────────────────────────
     const settings = getSettings();
-    _currentSplit = settings.plzVnSplitPercent ?? 40;
-    _applySplit(_currentSplit, false /* don't save on init */);
+    const savedPct = settings.plzVnSplitPercent;
+    if (savedPct != null) {
+        // Find the closest preset to the saved value.
+        _splitIndex = SPLIT_PRESETS.reduce((best, p, i) =>
+            Math.abs(p.pct - savedPct) < Math.abs(SPLIT_PRESETS[best].pct - savedPct) ? i : best
+        , 0);
+    }
+    _applySplit(false /* don't save on init */);
 
     if (settings.plzVnMode) {
         _activate();
@@ -143,7 +148,7 @@ export function setVnPanelEnabled(enabled) {
 
 function _activate() {
     document.body.classList.add(BODY_CLASS);
-    _applySheldOverride(_currentSplit);
+    _applySheldOverride(SPLIT_PRESETS[_splitIndex].pct);
 
     // Suppress the floating portrait overlay while split-screen is active.
     $('#plz-portrait-container').hide();
@@ -155,7 +160,7 @@ function _activate() {
         $(`#${IMG_ID}`).attr('src', existingSrc).show();
     }
 
-    log('VnPanel', 'Activated. Split:', _currentSplit + '%');
+    log('VnPanel', 'Activated. Split:', SPLIT_PRESETS[_splitIndex].label);
 }
 
 function _deactivate() {
@@ -175,26 +180,26 @@ function _deactivate() {
 // ─── Split Management ─────────────────────────────────────────────────────────
 
 /**
- * Updates the CSS variable and #sheld override to reflect a new split percentage.
- * @param {number}  raw     — unclamped percentage
- * @param {boolean} [save]  — whether to persist to settings (default true)
+ * Applies the current preset split, updates the CSS variable, #sheld, and button label.
+ * @param {boolean} [save=true]
  */
-function _applySplit(raw, save = true) {
-    _currentSplit = Math.max(MIN_SPLIT, Math.min(MAX_SPLIT, raw));
-    document.body.style.setProperty(SPLIT_VAR, _currentSplit);
+function _applySplit(save = true) {
+    const { pct, label } = SPLIT_PRESETS[_splitIndex];
+    document.body.style.setProperty(SPLIT_VAR, pct);
+    $(`#${CYCLE_ID}`).text(label);
 
     if (document.body.classList.contains(BODY_CLASS)) {
-        _applySheldOverride(_currentSplit);
+        _applySheldOverride(pct);
     }
 
     if (save) {
-        updateSetting('plzVnSplitPercent', _currentSplit);
+        updateSetting('plzVnSplitPercent', pct);
+        log('VnPanel', `Split set: ${label} (${pct.toFixed(1)}%)`);
     }
 }
 
 /**
  * Pushes #sheld down to start at the split point.
- * Uses inline styles (highest specificity) to override ST's normal positioning.
  * @param {number} split — percentage of screen height for the portrait panel
  */
 function _applySheldOverride(split) {
@@ -211,37 +216,4 @@ function _applySheldOverride(split) {
  */
 function _removeSheldOverride() {
     $('#sheld').css({ top: '', height: '', maxHeight: '' });
-}
-
-// ─── Drag Logic ───────────────────────────────────────────────────────────────
-
-function _onDragStart(e) {
-    e.preventDefault();
-    _dragging    = true;
-    _justDragged = false;
-
-    $(document).on('mousemove.plz-vn  touchmove.plz-vn',  _onDragMove);
-    $(document).on('mouseup.plz-vn    touchend.plz-vn',   _onDragEnd);
-}
-
-function _onDragMove(e) {
-    if (!_dragging) return;
-    e.preventDefault();
-
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const splitPct = (clientY / window.innerHeight) * 100;
-    _applySplit(splitPct, false /* save on end, not on every move */);
-}
-
-function _onDragEnd() {
-    if (!_dragging) return;
-    _dragging    = false;
-    _justDragged = true;
-    setTimeout(() => { _justDragged = false; }, 100);
-
-    $(document).off('mousemove.plz-vn touchmove.plz-vn mouseup.plz-vn touchend.plz-vn');
-
-    // Persist the final position
-    updateSetting('plzVnSplitPercent', _currentSplit);
-    log('VnPanel', `Split saved: ${_currentSplit.toFixed(1)}%`);
 }

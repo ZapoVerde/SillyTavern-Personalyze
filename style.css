@@ -444,7 +444,6 @@
     top: var(--topBarBlockSize, 50px);
     left: 0;
     width: 100%;
-    overflow: hidden;
     z-index: 31; /* above #sheld (z-index: 30) */
 }
 
@@ -518,41 +517,37 @@ body.plz-vn-active #plz-vn-panel {
     font-size: 2.2em;
 }
 
-/* ── Drag handle — corner grip ── */
+/* ── Size cycle button ── */
 
-#plz-vn-drag-handle {
+#plz-vn-cycle-btn {
     display: none;
     position: absolute;
-    bottom: 0;
     right: 0;
-    width: 52px;  /* large enough for a mobile tap target */
-    height: 52px;
+    top: 50%;
+    transform: translateY(-50%);
     z-index: 5000;
-    cursor: ns-resize;
-    touch-action: none;
-    align-items: flex-end;
-    justify-content: flex-end;
-    padding: 8px;
-    /* stop the portrait-area click handler firing when the handle is tapped */
-    pointer-events: all;
+    width: 36px;
+    height: 52px; /* generous touch target */
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 1.1em;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease;
+    padding: 0;
+    line-height: 1;
 }
 
-body.plz-vn-active #plz-vn-drag-handle {
+body.plz-vn-active #plz-vn-cycle-btn {
     display: flex;
 }
 
-/* Three diagonal notch lines drawn with box-shadow */
-.plz-vn-grip {
-    width: 14px;
-    height: 14px;
-    border-right: 3px solid rgba(255, 255, 255, 0.55);
-    border-bottom: 3px solid rgba(255, 255, 255, 0.55);
-    border-radius: 0 0 3px 0;
-    pointer-events: none;
-    transition: border-color 0.15s ease;
-}
-
-#plz-vn-drag-handle:hover .plz-vn-grip,
-#plz-vn-drag-handle:active .plz-vn-grip {
-    border-color: rgba(255, 255, 255, 0.9);
+#plz-vn-cycle-btn:hover,
+#plz-vn-cycle-btn:active {
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
 }
