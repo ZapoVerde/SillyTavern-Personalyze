@@ -51,6 +51,7 @@ import {
     DEFAULT_DEV_MODE,
     DEFAULT_VERBOSE_LOGGING,
     DEFAULT_EXPRESSION_LABELS,
+    DEFAULT_PLZ_VN_SPLIT,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
@@ -58,6 +59,8 @@ const EXT_NAME = 'personalyze';
 export const SETTINGS_DEFAULTS = Object.freeze({
     enabled:                true,
     portraitPosition:       'bottom-right',       // 'bottom-right' | 'center-left'
+    plzVnMode:              false,                // PLZ split-screen character view
+    plzVnSplitPercent:      DEFAULT_PLZ_VN_SPLIT, // portrait area height as % of screen (15–75)
     imageModel:             DEFAULT_IMAGE_MODEL,
     vnStyleSuffix:          DEFAULT_VN_STYLE_SUFFIX,
     devMode:                DEFAULT_DEV_MODE,

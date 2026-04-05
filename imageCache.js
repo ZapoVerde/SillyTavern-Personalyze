@@ -147,6 +147,42 @@ function buildPollinationsUrl(prompt, width, height, seed) {
     return `${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(prompt)}?${params.toString()}`;
 }
 
+/**
+ * Fetches a Pollinations URL with up to 3 automatic retries on 5xx errors,
+ * using exponential backoff (1 s, 2 s, 4 s).
+ * 4xx and network errors on the final attempt are re-thrown as-is.
+ * @param {string} url
+ * @param {Record<string, string>} headers
+ * @param {number} [maxRetries=3]
+ * @returns {Promise<Response>}
+ */
+async function fetchPollinationsWithRetry(url, headers, maxRetries = 3) {
+    let lastResponse;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await fetch(url, { headers });
+            if (response.status < 500) return response;
+            lastResponse = response;
+        } catch (err) {
+            if (attempt < maxRetries) {
+                const delay = 1000 * Math.pow(2, attempt);
+                console.debug(`PersonaLyze: Pollinations network error – retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})…`);
+                await new Promise(r => setTimeout(r, delay));
+                continue;
+            }
+            console.error('PersonaLyze: Pollinations network error after all retries:', err);
+            throw err;
+        }
+        if (attempt < maxRetries) {
+            const delay = 1000 * Math.pow(2, attempt);
+            console.debug(`PersonaLyze: Pollinations ${lastResponse.status} – retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})…`);
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+    console.error(`PersonaLyze: Pollinations ${lastResponse.status} after all retries – giving up.`);
+    return lastResponse;
+}
+
 async function validateImageResponse(response) {
     if (!response.ok) {
         const text = await response.text();
@@ -188,7 +224,7 @@ export async function fetchPreviewBlob(prompt, characterId) {
     const seed    = getCharacter(characterId)?.seed ?? 1;
     const url     = buildPollinationsUrl(prompt, DEV_IMAGE_WIDTH, DEV_IMAGE_HEIGHT, seed);
     const headers = await getAuthHeaders();
-    const res     = await fetch(url, { headers });
+    const res     = await fetchPollinationsWithRetry(url, headers);
     await validateImageResponse(res);
     return URL.createObjectURL(await res.blob());
 }
@@ -222,7 +258,7 @@ export async function generate(
     const url      = buildPollinationsUrl(prompt, width, height, seed);
     const headers  = await getAuthHeaders();
 
-    const imgRes = await fetch(url, { headers });
+    const imgRes = await fetchPollinationsWithRetry(url, headers);
     await validateImageResponse(imgRes);
 
     const filename = `${buildFilenamePrefix(characterId, outfitKey, expressionKey)}${Date.now()}.png`;

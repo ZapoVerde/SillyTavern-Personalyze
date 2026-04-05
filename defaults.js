@@ -53,6 +53,9 @@ export const DEFAULT_IMAGE_MODEL = 'flux'
 export const DEFAULT_IMAGE_WIDTH  = 512
 export const DEFAULT_IMAGE_HEIGHT = 768
 
+/** Default split percentage for PLZ split-screen character view (portrait area height as % of screen). */
+export const DEFAULT_PLZ_VN_SPLIT = 40
+
 /** Dev mode — generates recognizable but low-cost images. */
 export const DEFAULT_DEV_MODE = false
 export const DEV_IMAGE_WIDTH  = 256

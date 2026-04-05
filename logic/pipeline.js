@@ -172,6 +172,10 @@ export async function runPipeline(messageId) {
         );
 
         if (described) {
+            // Don't prompt if the user is in the character editor (not viewing chat)
+            const charEditorOpen = document.getElementById('rm_ch_create_block')?.offsetParent !== null;
+            if (charEditorOpen) return;
+
             const newKey  = slugify(described.label);
             const approved = await openDressingRoom({ dimension: 'outfit', ...described, key: newKey });
             if (approved) {

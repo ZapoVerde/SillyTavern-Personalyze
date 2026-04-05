@@ -35,6 +35,7 @@ import { ConnectionManagerRequestService } from '../../../shared.js';
 import { getSettings, updateSetting, SETTINGS_DEFAULTS } from '../settings.js';
 import { fetchPreviewBlob } from '../imageCache.js';
 import { setPortraitPosition } from '../portrait.js';
+import { setVnPanelEnabled } from './vnPanel.js';
 import { handleOpenWorkshop, handleOpenRegister } from '../logic/characterWorkshop.js';
 import { warn, error, log, setVerbose } from '../utils/logger.js';
 import {
@@ -106,13 +107,25 @@ function buildPanelHTML() {
                     </label>
                 </div>
 
-                <!-- Portrait Position -->
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
+                <!-- Portrait Position (floating overlay, used when split-screen is off) -->
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                     <label style="font-size:0.85em;opacity:0.75;white-space:nowrap;min-width:110px;">Portrait Position</label>
                     <select id="plz-portrait-position" class="text_pole" style="flex:1;">
                         <option value="bottom-right">Bottom Right</option>
                         <option value="center-left">Center Left</option>
                     </select>
+                </div>
+
+                <!-- Split-Screen Character View -->
+                <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
+                    <label class="checkbox_label" style="font-size:0.9em;cursor:pointer;margin-bottom:6px;">
+                        <input type="checkbox" id="plz-vn-mode" />
+                        <span>Split-Screen Character View</span>
+                    </label>
+                    <p style="font-size:0.8em;opacity:0.6;margin:0 0 0 22px;">
+                        Shows the portrait in a resizable panel above the chat.
+                        Drag the handle at the split to resize. Overrides the floating portrait above.
+                    </p>
                 </div>
 
                 <!-- Pipeline Steps -->
@@ -217,6 +230,7 @@ function populateInputs() {
     $(`#${PANEL_ID} #plz-enabled`).prop('checked', s.enabled ?? true);
     $(`#${PANEL_ID} #plz-portrait-position`).val(s.portraitPosition ?? 'bottom-right');
     setPortraitPosition(s.portraitPosition ?? 'bottom-right');
+    $(`#${PANEL_ID} #plz-vn-mode`).prop('checked', s.plzVnMode ?? false);
     $(`#${PANEL_ID} #plz-image-model`).val(s.imageModel);
     $(`#${PANEL_ID} #plz-dev-mode`).prop('checked', s.devMode ?? false);
     $(`#${PANEL_ID} #plz-verbose-logging`).prop('checked', s.verboseLogging ?? false);
@@ -296,6 +310,10 @@ function bindHandlers() {
         const val = $(this).val();
         updateSetting('portraitPosition', val);
         setPortraitPosition(val);
+    });
+
+    $panel.on('change', '#plz-vn-mode', function () {
+        setVnPanelEnabled($(this).prop('checked'));
     });
 
     $panel.on('change', '#plz-image-model', function () {

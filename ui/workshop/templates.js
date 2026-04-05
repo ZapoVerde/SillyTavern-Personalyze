@@ -120,8 +120,8 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
             <i class="fa-solid fa-wand-magic-sparkles"></i> Scan Chat
         </button>
     </div>
-    <textarea id="plz-studio-anchor" class="text_pole" rows="3"
-              style="width:100%;resize:vertical;margin-bottom:12px;">${escapeHtml(character.identityAnchor ?? '')}</textarea>
+    <textarea id="plz-studio-anchor" class="text_pole plz-auto-textarea" rows="3"
+              style="width:100%;margin-bottom:12px;">${escapeHtml(character.identityAnchor ?? '')}</textarea>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
         <button id="plz-studio-anchor-save" class="menu_button">Save Anchor</button>
         <label style="font-size:0.85em;opacity:0.7;margin:0;">Seed
@@ -187,9 +187,9 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex, exp
                 <span style="font-size:0.75em;opacity:0.45;">[${escapeHtml(key)}]</span>
                 <span style="font-size:0.72em;opacity:0.4;margin-left:auto;">${imgCount} image${imgCount !== 1 ? 's' : ''}</span>
             </div>
-            <textarea class="text_pole plz-entry-description" rows="2"
+            <textarea class="text_pole plz-auto-textarea plz-entry-description" rows="2"
                       data-key="${escapeHtml(key)}" data-dimension="${dimension}"
-                      style="width:100%;resize:vertical;font-family:monospace;font-size:0.85em;">${escapeHtml(entry.description ?? '')}</textarea>
+                      style="width:100%;font-family:monospace;font-size:0.85em;">${escapeHtml(entry.description ?? '')}</textarea>
             <div style="display:flex;gap:6px;margin-top:4px;">
                 <button class="menu_button plz-entry-save-btn" data-key="${escapeHtml(key)}" data-dimension="${dimension}"
                         style="font-size:0.78em;padding:2px 8px;">Save</button>
@@ -280,9 +280,9 @@ export function getRegisterHTML() {
         <label class="plz-studio-label">Identity Anchor
             <span style="font-size:0.78em;opacity:0.55;margin-left:6px;">permanent appearance used in every portrait prompt</span>
         </label>
-        <textarea id="plz-reg-anchor" class="text_pole" rows="4"
+        <textarea id="plz-reg-anchor" class="text_pole plz-auto-textarea" rows="4"
                   placeholder="e.g. A 25-year-old athletic woman with silver hair in a ponytail and blue eyes."
-                  style="width:100%;resize:vertical;margin-bottom:16px;"></textarea>
+                  style="width:100%;margin-bottom:16px;"></textarea>
     </div>
 
     <button id="plz-reg-submit" class="menu_button" style="width:100%;padding:10px;">

@@ -91,6 +91,19 @@
     display: none !important;
 }
 
+/* ─── Auto-growing Textareas ─────────────────────────────────────────────── */
+/* Replaces broken resize handle (overridden by .text_pole) and avoids the   */
+/* resize grip landing on ST's mobile send-slider.                            */
+
+.plz-auto-textarea {
+    resize: none !important;
+    overflow: hidden !important;
+    min-height: 4.5em;
+    box-sizing: border-box;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
 /* ─── Workshop Modal Overlay ──────────────────────────────────────────────── */
 
 .plz-overlay {
@@ -366,4 +379,109 @@
     font-size: 0.75em;
     opacity: 0.45;
     margin-top: 5px;
+}
+
+/* ─── PLZ Split-Screen Character View ────────────────────────────────────── */
+
+/*
+ * --plz-vn-split is a unitless percentage (e.g. 40) set on body by vnPanel.js.
+ * The portrait panel takes that % of the viewport height.
+ * #sheld is pushed down to the same point via inline styles set by vnPanel.js.
+ */
+
+#plz-vn-panel {
+    display: none;
+    position: fixed;
+    top: var(--topBarBlockSize, 50px);
+    left: 0;
+    width: 100%;
+    overflow: hidden;
+    z-index: 31; /* above #sheld (z-index: 30) */
+    background: var(--SmartThemeBlurTintColor, #0e0e18);
+}
+
+body.plz-vn-active #plz-vn-panel {
+    display: flex;
+    flex-direction: column;
+    /* portrait area = split% of viewport, minus the top bar */
+    height: calc(var(--plz-vn-split, 40) * 1dvh - var(--topBarBlockSize, 50px));
+}
+
+/* ── Portrait area ── */
+
+#plz-vn-portrait-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+}
+
+#plz-vn-portrait-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    display: none;
+}
+
+/* Placeholder shown when no portrait has been generated yet */
+#plz-vn-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    opacity: 0.3;
+    font-size: 0.9em;
+    pointer-events: none;
+}
+
+#plz-vn-placeholder i {
+    font-size: 2.2em;
+}
+
+/* ── Drag handle ── */
+
+#plz-vn-drag-handle {
+    display: none;
+    position: fixed;
+    left: 0;
+    width: 100%;
+    height: 44px; /* generous touch target */
+    /* centred on the split line */
+    top: calc(var(--plz-vn-split, 40) * 1dvh - 22px);
+    z-index: 5000;
+    cursor: ns-resize;
+    touch-action: none;
+    align-items: center;
+    justify-content: center;
+    /* subtle gradient so the grip is visible over both image and chat */
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(0, 0, 0, 0.18) 40%,
+        rgba(0, 0, 0, 0.18) 60%,
+        transparent 100%
+    );
+}
+
+body.plz-vn-active #plz-vn-drag-handle {
+    display: flex;
+}
+
+.plz-vn-grip {
+    width: 44px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.45);
+    pointer-events: none;
+    transition: background 0.15s ease, width 0.15s ease;
+}
+
+#plz-vn-drag-handle:hover .plz-vn-grip,
+#plz-vn-drag-handle:active .plz-vn-grip {
+    background: rgba(255, 255, 255, 0.8);
+    width: 56px;
 }

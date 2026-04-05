@@ -85,18 +85,29 @@ export function injectPortraitContainer() {
 /**
  * Crossfades the portrait to a new image file.
  * Promotes the front layer over the back layer once the transition completes.
+ * When PLZ split-screen mode is active (body.plz-vn-active) the floating
+ * overlay is suppressed — vnPanel.js handles display via the plz:portrait-set event.
  * @param {string} filename  The background-relative image path.
  */
 export function setPortrait(filename) {
     if (!filename) return;
 
+    const cacheBuster = `?v=${Date.now()}`;
+    const src = `backgrounds/${encodeURIComponent(filename)}${cacheBuster}`;
+
+    // Always notify the VN panel regardless of which display mode is active.
+    document.dispatchEvent(new CustomEvent('plz:portrait-set', { detail: { src } }));
+
+    // In PLZ split-screen mode the floating overlay is not used.
+    if (document.body.classList.contains('plz-vn-active')) {
+        log('Portrait', 'Split-screen active — floating overlay skipped.');
+        return;
+    }
+
     const $container = $(`#${CONTAINER_ID}`);
     if (!$container.length) {
         injectPortraitContainer();
     }
-
-    const cacheBuster = `?v=${Date.now()}`;
-    const src = `backgrounds/${encodeURIComponent(filename)}${cacheBuster}`;
 
     const $back  = $container.find('.plz-layer-back');
     const $front = $container.find('.plz-layer-front');
@@ -121,8 +132,18 @@ export function setPortrait(filename) {
 
 /**
  * Fades out and hides the portrait container.
+ * When PLZ split-screen mode is active, only notifies the VN panel.
  */
 export function clearPortrait() {
+    // Notify VN panel.
+    document.dispatchEvent(new CustomEvent('plz:portrait-cleared'));
+
+    // In PLZ split-screen mode the floating overlay is not used.
+    if (document.body.classList.contains('plz-vn-active')) {
+        log('Portrait', 'Split-screen active — floating overlay clear skipped.');
+        return;
+    }
+
     const $container = $(`#${CONTAINER_ID}`);
     if (!$container.length) return;
 

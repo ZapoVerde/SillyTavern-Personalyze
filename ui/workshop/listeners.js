@@ -38,6 +38,13 @@ import { error } from '../../utils/logger.js';
 export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
     const $overlay = $('#plz-workshop-overlay');
 
+    // ─── Auto-grow Textareas ──────────────────────────────────────────────────
+
+    $overlay.on('input', '.plz-auto-textarea', function () {
+        this.style.height = 'auto';
+        this.style.height = `${this.scrollHeight}px`;
+    });
+
     // ─── Structural ───────────────────────────────────────────────────────────
 
     $overlay.on('click', '.plz-tab-btn', function () {
@@ -367,7 +374,15 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
             updateChainEntry(id, outfitKey, exprLabel, newFile);
 
             if (window.toastr) window.toastr.success(`Saved: ${newFile}`, 'PersonaLyze');
-            renderStudio(id);   // re-render to add checkmark to the pill
+            // Add checkmark to the pill without a full re-render (which would wipe unsaved edits)
+            $section.find('.plz-expr-pill').each(function () {
+                if ($(this).data('label') === exprLabel) {
+                    $(this).addClass('plz-expr-has-image');
+                    if (!$(this).children('i').length) {
+                        $(this).prepend('<i class="fa-solid fa-check" style="font-size:0.8em;margin-right:3px;opacity:0.7;"></i>');
+                    }
+                }
+            });
         } catch (err) {
             error('Studio', 'Portrait generation failed:', err);
             if (window.toastr) window.toastr.error(`Generate failed: ${err.message}`, 'PersonaLyze');

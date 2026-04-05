@@ -1,7 +1,7 @@
 /**
  * @file data/default-user/extensions/personalyze/index.js
  * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
- * @version 0.1.10
+ * @version 0.1.11
  * @architectural-role Feature Entry Point / Orchestrator
  * @description
  * SillyTavern Personalyze (PLZ) — extension entry point.
@@ -33,6 +33,7 @@ import { runPipeline } from './logic/pipeline.js';
 import { injectSettingsPanel } from './ui/panel.js';
 import { injectMessageBadge, reinjectAllBadges } from './ui/badge.js';
 import { injectPortraitContainer } from './portrait.js';
+import { injectVnPanel } from './ui/vnPanel.js';
 import { handleOpenWorkshop } from './logic/characterWorkshop.js';
 
 /**
@@ -122,6 +123,7 @@ async function init() {
         // 2. UI Layer — Inject persistent elements into the ST DOM.
         injectSettingsPanel();
         injectPortraitContainer();
+        injectVnPanel();
         injectToolbarButton();
 
         // 3. Host Events — Bind core SillyTavern lifecycle events.

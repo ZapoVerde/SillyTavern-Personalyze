@@ -65,14 +65,41 @@ export function renderStudio(characterId) {
     const character = id ? getCharacter(id) : null;
 
     if (!id || !character) {
-        $('#plz-tab-studio').html(getStudioEmptyHTML());
+        $('#plz-tab-studio').html(getStudioEmptyHTML()).removeData('rendered-for');
         return;
     }
 
+    // Preserve unsaved textarea edits when re-rendering the same character
+    const $panel    = $('#plz-tab-studio');
+    const sameChar  = $panel.data('rendered-for') === id;
+    let preservedAnchor = null;
+    const preservedDescs = {};
+
+    if (sameChar) {
+        preservedAnchor = $('#plz-studio-anchor').val() ?? null;
+        $panel.find('.plz-entry-description').each(function () {
+            preservedDescs[`${$(this).data('dimension')}:${$(this).data('key')}`] = $(this).val();
+        });
+    }
+
     setWorkshopCharacter(id);
-    const s           = getSettings();
-    const lastExpr    = state.characterChain[id]?.expression ?? null;
-    $('#plz-tab-studio').html(getStudioHTML(id, character, state.fileIndex, s.expressionLabels ?? [], lastExpr));
+    const s        = getSettings();
+    const lastExpr = state.characterChain[id]?.expression ?? null;
+    $panel.html(getStudioHTML(id, character, state.fileIndex, s.expressionLabels ?? [], lastExpr))
+          .data('rendered-for', id);
+
+    // Restore any unsaved edits
+    if (preservedAnchor !== null) $('#plz-studio-anchor').val(preservedAnchor);
+    $panel.find('.plz-entry-description').each(function () {
+        const saved = preservedDescs[`${$(this).data('dimension')}:${$(this).data('key')}`];
+        if (saved !== undefined) $(this).val(saved);
+    });
+
+    // Initialize auto-grow heights for all textareas after render
+    $panel.find('.plz-auto-textarea').each(function () {
+        this.style.height = 'auto';
+        this.style.height = `${this.scrollHeight}px`;
+    });
 }
 
 // ─── Tab Switcher ─────────────────────────────────────────────────────────────
@@ -88,8 +115,12 @@ export function switchTab(tabName) {
     $('.plz-tab-panel').addClass('plz-hidden');
     $(`#plz-tab-${tabName}`).removeClass('plz-hidden');
 
-    if (tabName === 'roster')  renderRoster();
-    if (tabName === 'studio')  renderStudio(state._workshopCharacterId);
+    if (tabName === 'roster') renderRoster();
+    if (tabName === 'studio') {
+        // Only re-render if the active character has changed — preserves unsaved edits on revisit
+        const renderedFor = $('#plz-tab-studio').data('rendered-for');
+        if (renderedFor !== state._workshopCharacterId) renderStudio(state._workshopCharacterId);
+    }
 }
 
 // ─── Injection & Entry Point ──────────────────────────────────────────────────
