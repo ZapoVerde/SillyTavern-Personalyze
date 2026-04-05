@@ -446,7 +446,6 @@
     width: 100%;
     overflow: hidden;
     z-index: 31; /* above #sheld (z-index: 30) */
-    background: var(--SmartThemeBlurTintColor, #0e0e18);
 }
 
 body.plz-vn-active #plz-vn-panel {
