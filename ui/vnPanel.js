@@ -40,6 +40,7 @@ const MAX_SPLIT = 75;
 
 let _currentSplit = 40;
 let _dragging     = false;
+let _justDragged  = false;
 
 // ─── Injection ────────────────────────────────────────────────────────────────
 
@@ -99,6 +100,7 @@ export function injectVnPanel() {
 
     // ── Portrait area click → character picker ────────────────────────────────
     $('#plz-vn-portrait-area').on('click', async () => {
+        if (_justDragged) return;
         const { openCharPicker } = await import('./charPicker.js');
         await openCharPicker();
     });
@@ -215,7 +217,8 @@ function _removeSheldOverride() {
 
 function _onDragStart(e) {
     e.preventDefault();
-    _dragging = true;
+    _dragging    = true;
+    _justDragged = false;
 
     $(document).on('mousemove.plz-vn  touchmove.plz-vn',  _onDragMove);
     $(document).on('mouseup.plz-vn    touchend.plz-vn',   _onDragEnd);
@@ -232,7 +235,9 @@ function _onDragMove(e) {
 
 function _onDragEnd() {
     if (!_dragging) return;
-    _dragging = false;
+    _dragging    = false;
+    _justDragged = true;
+    setTimeout(() => { _justDragged = false; }, 100);
 
     $(document).off('mousemove.plz-vn touchmove.plz-vn mouseup.plz-vn touchend.plz-vn');
 
