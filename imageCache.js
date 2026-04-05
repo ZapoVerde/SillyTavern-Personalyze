@@ -223,6 +223,7 @@ export async function fetchFileIndex() {
 export async function fetchPreviewBlob(prompt, characterId) {
     const seed    = getCharacter(characterId)?.seed ?? 1;
     const url     = buildPollinationsUrl(prompt, DEV_IMAGE_WIDTH, DEV_IMAGE_HEIGHT, seed);
+    console.log(`PersonaLyze: pollinations prompt → ${prompt}`);
     const headers = await getAuthHeaders();
     const res     = await fetchPollinationsWithRetry(url, headers);
     await validateImageResponse(res);
