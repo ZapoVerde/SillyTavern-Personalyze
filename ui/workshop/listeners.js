@@ -92,6 +92,7 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         try {
             await lockedWriteRoster(lastAiIdx, newRoster);
             setActiveRoster(newRoster);
+            document.dispatchEvent(new CustomEvent('plz:roster-changed'));
             renderRoster();
 
             const name = id.replace(/_/g, ' ');

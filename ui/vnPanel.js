@@ -24,6 +24,7 @@
  *     external_io: [#plz-vn-panel DOM, #sheld inline styles, body class, settings.js]
  */
 
+import { state } from '../state.js';
 import { getSettings, updateSetting } from '../settings.js';
 import { log } from '../utils/logger.js';
 
@@ -53,10 +54,14 @@ export function injectVnPanel() {
         <div id="${PANEL_ID}">
             <div id="plz-vn-portrait-area">
                 <div id="plz-vn-placeholder">
-                    <i class="fa-solid fa-image"></i>
-                    <span>Portrait will appear here</span>
+                    <i class="fa-solid fa-user-slash"></i>
+                    <span id="plz-vn-placeholder-text">Enable characters to load</span>
                 </div>
                 <img id="${IMG_ID}" src="" alt="Character portrait" />
+                <div id="plz-vn-change-hint">
+                    <i class="fa-solid fa-shuffle"></i>
+                    Click to change
+                </div>
             </div>
         </div>
         <div id="${HANDLE_ID}" title="Drag to resize">
@@ -67,15 +72,35 @@ export function injectVnPanel() {
     // ── Portrait events from portrait.js ─────────────────────────────────────
     document.addEventListener('plz:portrait-set', ({ detail: { src } }) => {
         $('#plz-vn-placeholder').hide();
+        $('#plz-vn-change-hint').css('display', 'flex');
         $(`#${IMG_ID}`).attr('src', src).css('opacity', 0).show()
             .animate({ opacity: 1 }, 300);
     });
 
     document.addEventListener('plz:portrait-cleared', () => {
-        $(`#${IMG_ID}`).fadeOut(300, function () {
-            $(this).attr('src', '');
-        });
+        $(`#${IMG_ID}`).fadeOut(300, function () { $(this).attr('src', ''); });
+        $('#plz-vn-change-hint').hide();
+        const text = state.activeRoster.length === 0
+            ? 'Enable characters to load'
+            : 'Click to change character';
+        $('#plz-vn-placeholder-text').text(text);
         $('#plz-vn-placeholder').delay(300).fadeIn(200);
+    });
+
+    document.addEventListener('plz:roster-changed', () => {
+        const hasPortrait = !!$(`#${IMG_ID}`).attr('src');
+        if (!hasPortrait) {
+            const text = state.activeRoster.length === 0
+                ? 'Enable characters to load'
+                : 'Click to change character';
+            $('#plz-vn-placeholder-text').text(text);
+        }
+    });
+
+    // ── Portrait area click → character picker ────────────────────────────────
+    $('#plz-vn-portrait-area').on('click', async () => {
+        const { openCharPicker } = await import('./charPicker.js');
+        await openCharPicker();
     });
 
     // ── Drag bindings ─────────────────────────────────────────────────────────
@@ -133,12 +158,12 @@ function _deactivate() {
     document.body.classList.remove(BODY_CLASS);
     _removeSheldOverride();
 
-    // Restore floating portrait if there's already an image in the VN panel.
+    // Mirror the VN portrait back to the floating overlay and always show it.
     const src = $(`#${IMG_ID}`).attr('src');
     if (src) {
         $('#plz-portrait-container .plz-layer-back').attr('src', src);
-        $('#plz-portrait-container').show();
     }
+    $('#plz-portrait-container').show();
 
     log('VnPanel', 'Deactivated.');
 }

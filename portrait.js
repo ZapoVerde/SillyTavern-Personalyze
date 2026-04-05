@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/portrait.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role IO Executor (DOM)
  * @description
  * Owns the floating Visual Novel portrait container in the SillyTavern DOM.
@@ -28,6 +28,7 @@
  *     external_io: [#plz-portrait-container DOM (write), CSS transitions, document.body MutationObserver]
  */
 
+import { state } from './state.js';
 import { log } from './utils/logger.js';
 
 const CONTAINER_ID     = 'plz-portrait-container';
@@ -62,15 +63,32 @@ export function injectPortraitContainer() {
     if (document.getElementById(CONTAINER_ID)) return;
 
     const container = $(`
-        <div id="${CONTAINER_ID}" class="plz-position-bottom-right" style="display:none;">
+        <div id="${CONTAINER_ID}" class="plz-position-bottom-right">
             <div class="plz-portrait-frame">
                 <img class="plz-layer-back"  src="" alt="" draggable="false" />
                 <img class="plz-layer-front" src="" alt="" draggable="false" style="opacity:0;" />
+                <div id="plz-portrait-empty-hint">
+                    <i class="fa-solid fa-user-slash"></i>
+                    <span>Enable characters to load</span>
+                </div>
+                <div id="plz-portrait-change-hint">
+                    <i class="fa-solid fa-shuffle"></i>
+                    Click to change
+                </div>
             </div>
         </div>
     `);
 
     $('body').append(container);
+
+    // Open the character picker on click
+    container.on('click', async () => {
+        const { openCharPicker } = await import('./ui/charPicker.js');
+        await openCharPicker();
+    });
+
+    // Update hint text when the roster changes
+    document.addEventListener('plz:roster-changed', _refreshEmptyHint);
 
     // Watch for SillyTavern toggling waifuMode on/off
     const observer = new MutationObserver(() => _applyPosition());
@@ -115,8 +133,10 @@ export function setPortrait(filename) {
     // Load the new image on the hidden front layer
     $front.attr('src', src).css('opacity', 0);
 
-    // Show the container if hidden
+    // Show the container and switch to the "click to change" hint
     $container.show();
+    $('#plz-portrait-empty-hint').hide();
+    $('#plz-portrait-change-hint').css('display', 'flex');
 
     // Fade front layer in
     $front.css('transition', `opacity ${FADE_DURATION_MS}ms ease`).css('opacity', 1);
@@ -147,15 +167,31 @@ export function clearPortrait() {
     const $container = $(`#${CONTAINER_ID}`);
     if (!$container.length) return;
 
-    $container.css('transition', `opacity ${FADE_DURATION_MS}ms ease`).css('opacity', 0);
+    // Fade out the image layers but keep the container visible — show empty hint instead.
+    $container.find('.plz-layer-back, .plz-layer-front')
+        .css('transition', `opacity ${FADE_DURATION_MS}ms ease`)
+        .css('opacity', 0);
 
     setTimeout(() => {
-        $container.hide().css('opacity', '').css('transition', '');
-        $container.find('.plz-layer-back').attr('src', '');
-        $container.find('.plz-layer-front').attr('src', '');
+        $container.find('.plz-layer-back, .plz-layer-front')
+            .css('transition', '').css('opacity', '').attr('src', '');
+        $('#plz-portrait-change-hint').hide();
+        _refreshEmptyHint();
+        $('#plz-portrait-empty-hint').show();
     }, FADE_DURATION_MS);
 
     log('Portrait', 'Cleared.');
+}
+
+/**
+ * Updates the empty-hint text to reflect the current roster state.
+ * Called on clearPortrait and whenever the roster changes.
+ */
+function _refreshEmptyHint() {
+    const text = state.activeRoster.length === 0
+        ? 'Enable characters to load'
+        : 'Click to change character';
+    $('#plz-portrait-empty-hint span').text(text);
 }
 
 /**
