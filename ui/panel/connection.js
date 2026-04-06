@@ -3,14 +3,21 @@
  * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role UI Logic (ST Bridge)
  * @description
- * Manages SillyTavern Connection Manager dropdowns for PersonaLyze settings.
- * Ensures the three pipeline steps are mapped to the correct AI profiles.
+ * Manages the integration with SillyTavern's ConnectionManagerRequestService.
+ * Maps pipeline stages (Boolean, Classifier, Describer) to specific AI profiles
+ * selected by the user in the settings panel.
  *
  * @api-declaration
- * refreshConnectionDropdowns(updateDirty) — Re-initializes ST dropdowns from activeState.
+ * refreshConnectionDropdowns(onUpdate) -> void
+ *
+ * @contract
+ *   assertions:
+ *     purity: IO / Side-effect
+ *     state_ownership: []
+ *     external_io: [ConnectionManagerRequestService, DOM (select inputs)]
  */
 
-import { ConnectionManagerRequestService } from '../../../../../shared.js';
+import { ConnectionManagerRequestService } from '../../../../shared.js';
 import { getSettings, updateSetting } from '../../settings.js';
 import { warn } from '../../utils/logger.js';
 

@@ -3,17 +3,18 @@
  * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
- * Pure functions for generating the PersonaLyze Settings Panel HTML.
- * Includes the Profile Management bar and pipeline step sections.
- * 
- * Updated per feedback:
- * - Standardized button sizes and classes.
- * - Added informational icons (i) for all controls.
- * - Moved Test Connection next to Vault.
- * - Created Developer Settings section at bottom.
+ * Generates the HTML strings for the PersonaLyze settings panel.
+ * Uses a modular approach to build the profile bar, pipeline step rows, 
+ * and developer configuration sections.
  *
  * @api-declaration
- * buildPanelHTML(settings, meta, profileNames) → string
+ * buildPanelHTML(settings, meta, profileNames) -> string (HTML)
+ *
+ * @contract
+ *   assertions:
+ *     purity: Pure (Structural)
+ *     state_ownership: []
+ *     external_io: []
  */
 
 import { 

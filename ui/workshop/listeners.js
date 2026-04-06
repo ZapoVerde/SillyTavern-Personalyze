@@ -1,18 +1,20 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/listeners.js
  * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
- * @architectural-role UI Event Listeners
+ * @architectural-role UI Controller (Workshop)
  * @description
- * Centralizes all DOM event bindings for the Character Workshop modal.
+ * Event orchestrator for the Character Workshop modal. Binds user interactions
+ * for roster management, character registration, and the Studio's image 
+ * generation and anchor scanning features.
  *
  * @api-declaration
- * bindWorkshopEvents(handlers) → void
+ * bindWorkshopEvents(handlers) -> void
  *
  * @contract
  *   assertions:
- *     purity: IO
- *     state_ownership: [state (via setWorkshopCharacter)]
- *     external_io: [jQuery DOM Events, registry.js, characterWorkshop.js]
+ *     purity: Stateful Controller
+ *     state_ownership: [state (mutates via setters)]
+ *     external_io: [jQuery DOM Events, Registry Setters, LLM (Anchor Scan), Image Generation]
  */
 
 import { getContext } from '../../../../../extensions.js';

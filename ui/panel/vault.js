@@ -3,12 +3,19 @@
  * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role UI Logic (Secrets)
  * @description
- * Manages the Pollinations API key vault and connection testing.
- * Updates the 'key status' indicator in the settings panel.
+ * Interface for the Pollinations API key vault. Handles the secure storage 
+ * of API keys into SillyTavern's secrets store and provides connection 
+ * testing feedback via the "Test Connection" image generation check.
  *
  * @api-declaration
- * updateKeyStatusIndicator()   — Refreshes the vault status icon/text.
- * bindVaultHandlers($panel)    — Binds save and test buttons.
+ * updateKeyStatusIndicator() -> void
+ * bindVaultHandlers($panel) -> void
+ *
+ * @contract
+ *   assertions:
+ *     purity: IO
+ *     state_ownership: [secret_state]
+ *     external_io: [writeSecret, fetchPreviewBlob, callPopup, toastr]
  */
 
 import { callPopup } from '../../../../../../script.js';

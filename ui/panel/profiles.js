@@ -3,13 +3,20 @@
  * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role UI Logic (Profiles)
  * @description
- * Implements CNZ-style profile management for PersonaLyze.
- * Supports cloning the 'activeState' (Working Table) into new profiles.
+ * Implements the profile-switching and "Working Table" architecture.
+ * Manages the synchronization between activeState and the saved profile bookshelf.
+ * Handles the "dirty" indicator logic for unsaved changes.
  *
  * @api-declaration
- * bindProfileHandlers($panel, refreshAll) — Binds bar buttons and dropdown.
- * refreshProfileDropdown()              — Rebuilds the <select> options.
- * updateDirtyIndicator()                — Appends '*' to profile name if unsaved.
+ * bindProfileHandlers($panel, refreshUI) -> void
+ * refreshProfileDropdown() -> void
+ * updateDirtyIndicator() -> void
+ *
+ * @contract
+ *   assertions:
+ *     purity: Stateful UI Logic
+ *     state_ownership: [extension_settings.personalyze.activeState]
+ *     external_io: [saveSettingsDebounced, callPopup, DOM (.plz-profile-select)]
  */
 
 import { callPopup, saveSettingsDebounced } from '../../../../../../script.js';
