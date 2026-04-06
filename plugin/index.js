@@ -16,7 +16,7 @@ export async function init(router) {
                 return res.status(401).json({ error: 'HuggingFace API key not configured.' });
             }
 
-            const url = `https://router.huggingface.co/hf-inference/models/${model}`;
+            const url = `https://router.huggingface.co/together/models/${model}`;
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -26,7 +26,6 @@ export async function init(router) {
                 body: JSON.stringify({
                     inputs: prompt,
                     parameters: { width, height },
-                    options: { wait_for_model: true },
                 }),
             });
 
@@ -37,7 +36,8 @@ export async function init(router) {
 
             const contentType = response.headers.get('Content-Type');
             if (contentType) res.setHeader('Content-Type', contentType);
-            response.body.pipe(res);
+            const buffer = await response.arrayBuffer();
+            res.send(Buffer.from(buffer));
         } catch (err) {
             res.status(500).json({ error: err.message });
         }

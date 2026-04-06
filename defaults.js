@@ -54,7 +54,7 @@ export const POLLINATIONS_MODELS = [
 export const DEFAULT_IMAGE_MODEL = 'flux';
 
 /** Default Hugging Face model (typically a Flux variant for consistency). */
-export const DEFAULT_HF_IMAGE_MODEL = 'black-forest-labs/FLUX.1-dev';
+export const DEFAULT_HF_IMAGE_MODEL = 'black-forest-labs/FLUX.1-schnell';
 
 /** Portrait dimensions — tall aspect ratio for VN-style character cards. */
 export const DEFAULT_IMAGE_WIDTH  = 512;
