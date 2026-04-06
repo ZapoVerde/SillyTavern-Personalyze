@@ -55,7 +55,11 @@ export async function lockedWritePointer(messageId, record) {
         if (!message) return;
 
         message.extra = message.extra ?? {};
+        const existingRoster = message.extra.personalyze?.roster;
         message.extra.personalyze = { ...record };
+        if (existingRoster !== undefined) {
+            message.extra.personalyze.roster = existingRoster;
+        }
 
         await saveChatConditional();
     } finally {

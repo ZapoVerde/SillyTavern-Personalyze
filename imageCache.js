@@ -282,3 +282,24 @@ export async function generate(
 
     return filename;
 }
+
+/**
+ * Deletes all PLZ portrait images for a character from the server.
+ * @param {string} characterId
+ * @returns {Promise<string[]>}  List of filenames that were deleted.
+ */
+export async function flushCharacterImages(characterId) {
+    const { fileIndex } = await fetchFileIndex();
+    const prefix = `${FILE_PREFIX}${characterId}_`;
+    const toDelete = [...fileIndex].filter(f => f.startsWith(prefix));
+
+    await Promise.all(toDelete.map(f =>
+        fetch('/api/backgrounds/delete', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ bg: f }),
+        })
+    ));
+
+    return toDelete;
+}

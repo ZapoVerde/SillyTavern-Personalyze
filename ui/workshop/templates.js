@@ -170,9 +170,14 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
     <!-- Outfits -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-shrink:0;">
         <strong>Outfits</strong>
-        <button class="menu_button plz-add-entry-btn" data-dimension="outfit" style="font-size:0.8em;padding:2px 8px;">
-            <i class="fa-solid fa-plus"></i> Add Outfit
-        </button>
+        <div style="display:flex;gap:6px;">
+            <button class="menu_button plz-flush-images-btn" style="font-size:0.8em;padding:2px 8px;" title="Delete all generated portrait images for this character">
+                <i class="fa-solid fa-trash-can"></i> Flush Images
+            </button>
+            <button class="menu_button plz-add-entry-btn" data-dimension="outfit" style="font-size:0.8em;padding:2px 8px;">
+                <i class="fa-solid fa-plus"></i> Add Outfit
+            </button>
+        </div>
     </div>
     <div id="plz-studio-outfits" style="margin-bottom:20px;">
         ${getEntryListHTML(characterId, character.outfits ?? {}, 'outfit', fileIndex, expressionLabels, defaultExpression)}

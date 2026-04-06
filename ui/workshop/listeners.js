@@ -18,7 +18,7 @@
  */
 
 import { getContext } from '../../../../../extensions.js';
-import { state, setWorkshopCharacter, setActiveRoster, addToFileIndex, updateChainEntry } from '../../state.js';
+import { state, setWorkshopCharacter, setActiveRoster, addToFileIndex, removeFromFileIndex, updateChainEntry } from '../../state.js';
 import { lockedWriteRoster } from '../../logic/pointerWriter.js';
 import {
     getAllCharacterIds,
@@ -31,7 +31,7 @@ import {
 import { getSettings, updateSetting } from '../../settings.js';
 import { slugify, buildDescriberContext } from '../../utils/history.js';
 import { detectAnchorScan } from '../../detector.js';
-import { buildPortraitPrompt, fetchPreviewBlob, generate } from '../../imageCache.js';
+import { buildPortraitPrompt, fetchPreviewBlob, generate, flushCharacterImages } from '../../imageCache.js';
 import { error } from '../../utils/logger.js';
 import { smartResize } from '../../utils/dom.js';
 
@@ -209,6 +209,32 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
 
         renderStudio(id);
         if (window.toastr) window.toastr.success(`${dimension} "${label ?? key}" removed.`, 'PersonaLyze');
+    });
+
+    // Flush all portrait images for this character
+    $overlay.on('click', '.plz-flush-images-btn', async function () {
+        const id = state._workshopCharacterId;
+        if (!id) return;
+
+        const name = id.replace(/_/g, ' ');
+        if (!confirm(`Delete all generated portrait images for "${name}"?\n\nThis cannot be undone.`)) return;
+
+        const $btn  = $(this);
+        const $icon = $btn.find('i');
+        $icon.removeClass('fa-trash-can').addClass('fa-spinner fa-spin');
+        $btn.prop('disabled', true);
+
+        try {
+            const deleted = await flushCharacterImages(id);
+            removeFromFileIndex(deleted);
+            renderStudio(id);
+            if (window.toastr) window.toastr.success(`Flushed ${deleted.length} image(s) for "${name}".`, 'PersonaLyze');
+        } catch (err) {
+            error('Studio', 'Flush images failed:', err);
+            if (window.toastr) window.toastr.error(`Flush failed: ${err.message}`, 'PersonaLyze');
+            $icon.removeClass('fa-spinner fa-spin').addClass('fa-trash-can');
+            $btn.prop('disabled', false);
+        }
     });
 
     // Add a new outfit or expression
@@ -492,6 +518,20 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         $('#plz-reg-anchor').val('').trigger('input');
         $('#plz-reg-key-preview').text('—');
         $('#plz-reg-status').text('');
+
+        // Auto-add to the current chat's roster if there's an AI message to anchor to.
+        const context = getContext();
+        let lastAiIdx = -1;
+        for (let i = context.chat.length - 1; i >= 0; i--) {
+            if (!context.chat[i].is_user) { lastAiIdx = i; break; }
+        }
+        if (lastAiIdx !== -1 && !state.activeRoster.includes(key)) {
+            const newRoster = [...state.activeRoster, key];
+            setActiveRoster(newRoster);
+            lockedWriteRoster(lastAiIdx, newRoster).catch(err =>
+                error('Workshop', 'Auto-roster write failed:', err)
+            );
+        }
 
         setWorkshopCharacter(key);
         renderRoster();

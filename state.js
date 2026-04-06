@@ -179,3 +179,11 @@ export function setFileIndex(files) {
 export function addToFileIndex(filename) {
     state.fileIndex.add(filename);
 }
+
+/**
+ * Removes a list of filenames from the in-memory file index.
+ * @param {string[]} filenames
+ */
+export function removeFromFileIndex(filenames) {
+    for (const f of filenames) state.fileIndex.delete(f);
+}
