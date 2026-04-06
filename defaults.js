@@ -34,7 +34,7 @@
 export const POLLINATIONS_BASE_URL = 'https://gen.pollinations.ai';
 
 /** Primary API gateway for Hugging Face Inference. */
-export const HUGGINGFACE_BASE_URL = 'https://api-inference.huggingface.co/models';
+export const HUGGINGFACE_BASE_URL = 'https://router.huggingface.co/models';
 
 /** Publishable app key — identifies Personalyze to Pollinations for attribution. */
 export const POLLINATIONS_APP_KEY = '';
