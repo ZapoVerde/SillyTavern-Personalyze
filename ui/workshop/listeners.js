@@ -32,7 +32,7 @@ import { getSettings, updateSetting } from '../../settings.js';
 import { slugify, buildDescriberContext } from '../../utils/history.js';
 import { detectAnchorScan } from '../../detector.js';
 import { buildPortraitPrompt, fetchPreviewBlob, generate, flushCharacterImages } from '../../imageCache.js';
-import { startTurn } from '../../utils/callLog.js';
+import { startWorkshopTurn } from '../../utils/callLog.js';
 import { error } from '../../utils/logger.js';
 import { smartResize } from '../../utils/dom.js';
 
@@ -331,7 +331,7 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
                 ? (state._workshopCharacterId?.replace(/_/g, ' ') ?? null)
                 : ($('#plz-reg-name').val().trim() || null);
 
-            startTurn('Anchor Scan');
+            startWorkshopTurn('Anchor Scan');
             const result = await detectAnchorScan(
                 transcript,
                 focusName,

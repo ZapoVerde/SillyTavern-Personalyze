@@ -29,7 +29,7 @@ import { setPortraitPosition } from '../portrait.js';
 import { setVnPanelEnabled } from './vnPanel.js';
 import { handleOpenWorkshop, handleOpenRegister } from '../logic/characterWorkshop.js';
 import { log, setVerbose } from '../utils/logger.js';
-import { getLogs } from '../utils/callLog.js';
+import { getLogs, getWorkshopLogs } from '../utils/callLog.js';
 import { smartResize } from '../utils/dom.js';
 
 // Sub-system imports
@@ -194,14 +194,14 @@ function bindHandlers() {
             smartResize(this);
         });
 
-        $('#plz-prompt-reset').on('click', () => {
+        $(document).on('click', '#plz-prompt-reset', () => {
             const $editor = $('#plz-prompt-editor');
             $editor.val(defaultValue);
             smartResize($editor[0]);
         });
 
         const result = await popupPromise;
-        
+
         if (result) {
             const newValue = $('#plz-prompt-editor').val();
             if (Object.prototype.hasOwnProperty.call(SETTINGS_DEFAULTS, key)) {
@@ -209,8 +209,9 @@ function bindHandlers() {
                 updateDirtyIndicator();
             }
         }
-        
+
         $(document).off('input', '#plz-prompt-editor');
+        $(document).off('click', '#plz-prompt-reset');
     });
 
     // 7. Workshop Links
@@ -244,7 +245,8 @@ function bindHandlers() {
 // ─── Log Modal Builder ────────────────────────────────────────────────────────
 
 function buildLogModalHTML() {
-    const turns = getLogs();
+    const pipelineTurns = getLogs();
+    const workshopTurns = getWorkshopLogs();
 
     function esc(str) {
         return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -272,12 +274,7 @@ function buildLogModalHTML() {
         </div>`;
     }
 
-    if (!turns.length) {
-        return `<h3 style="margin:0 0 12px;">AI Call Log</h3>
-        <p style="opacity:0.6;font-size:0.9em;">No AI calls logged yet. Logs appear here as the pipeline runs.</p>`;
-    }
-
-    const turnsHTML = [...turns].reverse().map(turn => {
+    function buildTurnHTML(turn) {
         const callsHTML = turn.calls.map(call => `
         <div style="border-top:1px solid var(--SmartThemeBorderColor,#444);">
             <button class="plz-log-toggle"
@@ -304,10 +301,27 @@ function buildLogModalHTML() {
             </div>
             ${callsHTML}
         </div>`;
-    }).join('');
+    }
 
-    return `<h3 style="margin:0 0 12px;">AI Call Log</h3>
-    <div style="max-height:65vh;overflow-y:auto;">${turnsHTML}</div>`;
+    function buildSection(title, subtitle, turns) {
+        const body = turns.length
+            ? [...turns].reverse().map(buildTurnHTML).join('')
+            : `<p style="opacity:0.5;font-size:0.85em;margin:8px 0;">No calls logged yet.</p>`;
+        return `
+        <div style="margin-bottom:20px;">
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
+                <strong style="font-size:0.95em;">${title}</strong>
+                <span style="font-size:0.78em;opacity:0.5;">${subtitle}</span>
+            </div>
+            ${body}
+        </div>`;
+    }
+
+    return `<h3 style="margin:0 0 14px;">AI Call Log</h3>
+    <div style="max-height:65vh;overflow-y:auto;">
+        ${buildSection('Pipeline', 'last 2 turn pairs', pipelineTurns)}
+        ${buildSection('Workshop', 'last 3 queries', workshopTurns)}
+    </div>`;
 }
 
 // ─── Entry Point ──────────────────────────────────────────────────────────────
