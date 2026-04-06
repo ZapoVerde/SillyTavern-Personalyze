@@ -223,9 +223,13 @@ function bindHandlers() {
         const popupPromise = callPopup(buildLogModalHTML(), 'text');
 
         $(document).on('click.plz-logs', '.plz-log-toggle', function () {
-            const $body = $(this).next('.plz-log-body');
+            const $body     = $(this).next('.plz-log-body');
+            const expanding = $body.hasClass('plz-hidden');
             $body.toggleClass('plz-hidden');
-            $(this).find('.plz-log-arrow').text($body.hasClass('plz-hidden') ? '▶' : '▼');
+            $(this).find('.plz-log-arrow').text(expanding ? '▼' : '▶');
+            if (expanding) {
+                $body.find('textarea').each(function () { smartResize(this); });
+            }
         });
 
         $(document).on('click.plz-logs', '.plz-log-copy', function () {
@@ -269,7 +273,7 @@ function buildLogModalHTML() {
                 <button class="menu_button plz-log-copy" style="font-size:0.73em;padding:1px 6px;">Copy</button>
             </div>
             <textarea class="text_pole" readonly rows="3"
-                      style="width:100%;font-family:monospace;font-size:0.78em;min-height:48px;max-height:180px;overflow-y:auto;resize:none;"
+                      style="width:100%;font-family:monospace;font-size:0.78em;overflow:hidden;resize:none;"
                       >${esc(content)}</textarea>
         </div>`;
     }

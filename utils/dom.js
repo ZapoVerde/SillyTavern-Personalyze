@@ -30,14 +30,13 @@ export function smartResize(el) {
     // 1. Prevent internal scrollbars so the parent container is forced to grow
     el.style.overflow = 'hidden';
 
-    // 2. Force a "shrink" to find the true minimum height of the content
-    el.style.height = '0px'; 
-    
-    // 3. Set height to content height (plus a tiny buffer for borders/rounding)
-    const newHeight = el.scrollHeight + 4;
-    el.style.height = newHeight + 'px';
+    // 2. Reset to 'auto' so the browser re-measures natural content height.
+    //    Using '0px' causes some engines to return the previous pixel value from
+    //    scrollHeight on the next read, producing runaway growth on each keystroke.
+    el.style.height = 'auto';
 
-    // 4. Cleanup: If the element is an input or has a fixed max-height elsewhere,
-    // ensure the transition is smooth.
+    // 3. Set height exactly to content height.
+    el.style.height = el.scrollHeight + 'px';
+
     el.style.resize = 'none';
 }
