@@ -19,10 +19,11 @@
  */
 
 import { callPopup } from '../../../../../script.js';
-import { fetchPreviewBlob } from '../imageCache.js';
+import { fetchPreviewBlob, buildPortraitPrompt } from '../imageCache.js';
 import { slugify, escapeHtml } from '../utils/history.js';
 import { smartResize } from '../utils/dom.js';
 import { error } from '../utils/logger.js';
+import { startWorkshopTurn } from '../utils/callLog.js';
 
 /**
  * Opens the Dressing Room modal for an outfit or expression.
@@ -86,8 +87,10 @@ export async function openDressingRoom(proposed) {
         if (!description) return;
         const $btn = $(this);
         $btn.prop('disabled', true).text('Fetching...');
+        startWorkshopTurn('Dressing Room Preview');
         try {
-            const objectUrl = await fetchPreviewBlob(description);
+            const prompt    = buildPortraitPrompt(proposed.anchor ?? '', description, '');
+            const objectUrl = await fetchPreviewBlob(prompt, proposed.characterId);
             $('#plz-dr-preview-container').show();
             $('#plz-dr-preview-img').attr('src', objectUrl);
         } catch (err) {

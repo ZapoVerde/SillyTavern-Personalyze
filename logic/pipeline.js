@@ -185,7 +185,7 @@ export async function runPipeline(messageId) {
             if (charEditorOpen) return;
 
             const newKey  = slugify(described.label);
-            const approved = await openDressingRoom({ dimension: 'outfit', ...described, key: newKey });
+            const approved = await openDressingRoom({ dimension: 'outfit', ...described, key: newKey, characterId, anchor: character.identityAnchor });
             if (approved) {
                 upsertOutfit(characterId, approved.key, approved.label, approved.description);
                 finalOutfitKey = approved.key;

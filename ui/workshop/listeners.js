@@ -423,6 +423,7 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         $icon.removeClass('fa-eye').addClass('fa-spinner fa-spin');
         $btn.prop('disabled', true);
 
+        startWorkshopTurn('Image Preview');
         try {
             const prompt  = buildPortraitPrompt(character.identityAnchor, outfitDef.description, exprLabel);
             const blobUrl = await fetchPreviewBlob(prompt, id);
@@ -458,6 +459,7 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         $btn.prop('disabled', true);
         $section.find('.plz-portrait-preview-btn').prop('disabled', true);
 
+        startWorkshopTurn('Portrait Generate');
         try {
             const newFile = await generate(
                 id, outfitKey, exprLabel,

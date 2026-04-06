@@ -42,6 +42,7 @@ import {
 } from './defaults.js';
 import { getSettings } from './settings.js';
 import { log, warn, error as logError } from './utils/logger.js';
+import { logCall } from './utils/callLog.js';
 
 const SECRET_KEY_NAME = 'api_key_pollinations';
 const FILE_PREFIX     = 'plz_';
@@ -225,6 +226,7 @@ export async function fetchPreviewBlob(prompt, characterId) {
     const seed    = getCharacter(characterId)?.seed ?? 1;
     const url     = buildPollinationsUrl(prompt, DEV_IMAGE_WIDTH, DEV_IMAGE_HEIGHT, seed);
     log('ImageCache', 'pollinations prompt →', prompt);
+    logCall('ImagePreview', prompt, null, null);
     const headers = await getAuthHeaders();
     const res     = await fetchPollinationsWithRetry(url, headers);
     await validateImageResponse(res);
@@ -256,6 +258,7 @@ export async function generate(
     const height   = devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
 
     const prompt   = buildPortraitPrompt(anchor, outfitDescription, expressionLabel);
+    logCall('PortraitGenerate', prompt, null, null);
     const seed     = getCharacter(characterId)?.seed ?? 1;
     const url      = buildPollinationsUrl(prompt, width, height, seed);
     const headers  = await getAuthHeaders();
