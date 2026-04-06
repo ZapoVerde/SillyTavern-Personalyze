@@ -19,8 +19,8 @@
 
 import {
     POLLINATIONS_MODELS,
+    HF_PROVIDER_MODELS,
 } from '../../defaults.js';
-import { escapeHtml } from '../../utils/history.js';
 
 /**
  * Generates a styled informational icon with a hover tooltip.
@@ -188,11 +188,24 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
                         ${tip("The base model used for Pollinations generations.")}
                     </div>
 
-                    <!-- Hugging Face Model -->
+                    <!-- Hugging Face Provider + Model -->
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">HF Provider:</label>
+                        <select id="plz-hf-provider" class="text_pole" style="flex:1;">
+                            ${Object.entries(HF_PROVIDER_MODELS).map(([id, p]) =>
+                                `<option value="${id}"${id === s.hfProvider ? ' selected' : ''}>${p.label}</option>`
+                            ).join('')}
+                        </select>
+                        ${tip("The inference provider that runs the model. Different providers support different models and have different pricing.")}
+                    </div>
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
                         <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">HF Model:</label>
-                        <input type="text" id="plz-hf-image-model" class="text_pole" style="flex:1;" placeholder="e.g. black-forest-labs/FLUX.1-dev" value="${escapeHtml(s.hfImageModel ?? '')}" />
-                        ${tip("The Hugging Face model repository ID. Used when an outfit is toggled to Hugging Face.")}
+                        <select id="plz-hf-image-model" class="text_pole" style="flex:1;">
+                            ${(HF_PROVIDER_MODELS[s.hfProvider]?.models ?? []).map(m =>
+                                `<option value="${m}"${m === s.hfImageModel ? ' selected' : ''}>${m}</option>`
+                            ).join('')}
+                        </select>
+                        ${tip("The model to generate with. Options update based on the selected provider.")}
                     </div>
 
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">

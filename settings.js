@@ -25,6 +25,7 @@ import { warn, log } from './utils/logger.js';
 import {
     DEFAULT_IMAGE_MODEL,
     DEFAULT_HF_IMAGE_MODEL,
+    DEFAULT_HF_PROVIDER,
     DEFAULT_VN_STYLE_SUFFIX,
     DEFAULT_SUBJECT_MATCH_PROMPT,
     DEFAULT_SUBJECT_LIST_PROMPT,
@@ -50,6 +51,7 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     plzVnMode:              false,
     plzVnSplitPercent:      DEFAULT_PLZ_VN_SPLIT,
     imageModel:             DEFAULT_IMAGE_MODEL,
+    hfProvider:             DEFAULT_HF_PROVIDER,
     hfImageModel:           DEFAULT_HF_IMAGE_MODEL,
     vnStyleSuffix:          DEFAULT_VN_STYLE_SUFFIX,
     devMode:                DEFAULT_DEV_MODE,

@@ -38,7 +38,7 @@ import {
     DEFAULT_VN_STYLE_SUFFIX,
 } from './defaults.js';
 import { getSettings } from './settings.js';
-import { log, warn, error as logError } from './utils/logger.js';
+import { log, warn } from './utils/logger.js';
 import { logCall } from './utils/callLog.js';
 
 const SECRET_POLLINATIONS = 'api_key_pollinations';
@@ -153,6 +153,7 @@ async function fetchHuggingFaceWithRetry(prompt, maxRetries = 5) {
     const s = getSettings();
 
     const body = JSON.stringify({
+        provider: s.hfProvider,
         model: s.hfImageModel,
         prompt,
         width: DEFAULT_IMAGE_WIDTH,

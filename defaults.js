@@ -33,8 +33,73 @@
 /** Primary API gateway for Pollinations. */
 export const POLLINATIONS_BASE_URL = 'https://gen.pollinations.ai';
 
-/** Primary API gateway for Hugging Face Inference. */
-export const HUGGINGFACE_BASE_URL = 'https://router.huggingface.co/hf-inference/models';
+/** Base URL for the HuggingFace Inference Router. Provider and model are appended at call time. */
+export const HUGGINGFACE_ROUTER_BASE = 'https://router.huggingface.co';
+
+/**
+ * Available HuggingFace inference providers and the text-to-image models each supports.
+ * Source: https://huggingface.co/docs/inference-providers/en/index (verified 2026-04-06)
+ */
+export const HF_PROVIDER_MODELS = {
+    'fal-ai': {
+        label: 'Fal AI',
+        models: [
+            'black-forest-labs/FLUX.1-schnell',
+            'black-forest-labs/FLUX.1-dev',
+            'Tongyi-MAI/Z-Image-Turbo',
+            'Tongyi-MAI/Z-Image',
+            'stabilityai/stable-diffusion-3.5-large',
+            'stabilityai/stable-diffusion-3-medium',
+            'stabilityai/stable-diffusion-xl-base-1.0',
+            'Qwen/Qwen-Image',
+            'Qwen/Qwen-Image-2512',
+        ],
+    },
+    'replicate': {
+        label: 'Replicate',
+        models: [
+            'black-forest-labs/FLUX.1-schnell',
+            'black-forest-labs/FLUX.1-dev',
+            'black-forest-labs/FLUX.1-Krea-dev',
+            'Tongyi-MAI/Z-Image-Turbo',
+            'stabilityai/stable-diffusion-3.5-large',
+            'stabilityai/stable-diffusion-3.5-large-turbo',
+            'stabilityai/stable-diffusion-3.5-medium',
+            'stabilityai/stable-diffusion-xl-base-1.0',
+            'stabilityai/stable-diffusion-3-medium',
+            'tencent/HunyuanImage-3.0',
+            'ByteDance/SDXL-Lightning',
+            'Qwen/Qwen-Image',
+            'Qwen/Qwen-Image-2512',
+        ],
+    },
+    'wavespeed': {
+        label: 'WaveSpeed AI',
+        models: [
+            'black-forest-labs/FLUX.1-schnell',
+            'black-forest-labs/FLUX.1-dev',
+            'Tongyi-MAI/Z-Image-Turbo',
+            'Qwen/Qwen-Image-Edit',
+            'Qwen/Qwen-Image-Edit-2509',
+        ],
+    },
+    'together': {
+        label: 'Together AI',
+        models: [
+            'black-forest-labs/FLUX.1-schnell',
+        ],
+    },
+    'nscale': {
+        label: 'Nscale',
+        models: [
+            'black-forest-labs/FLUX.1-schnell',
+            'stabilityai/stable-diffusion-xl-base-1.0',
+        ],
+    },
+};
+
+/** Default HuggingFace provider. */
+export const DEFAULT_HF_PROVIDER = 'fal-ai';
 
 /** Publishable app key — identifies Personalyze to Pollinations for attribution. */
 export const POLLINATIONS_APP_KEY = '';

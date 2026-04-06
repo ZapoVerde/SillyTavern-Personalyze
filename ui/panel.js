@@ -40,6 +40,8 @@ import { bindProfileHandlers, refreshProfileDropdown, updateDirtyIndicator } fro
 import { refreshConnectionDropdowns } from './panel/connection.js';
 import { bindVaultHandlers, updateKeyStatusIndicator } from './panel/vault.js';
 
+import { HF_PROVIDER_MODELS } from '../defaults.js';
+
 import {
     DEFAULT_SUBJECT_MATCH_PROMPT,
     DEFAULT_SUBJECT_LIST_PROMPT,
@@ -72,6 +74,16 @@ const PROMPT_DEFAULTS = {
     vnStyleSuffix:              DEFAULT_VN_STYLE_SUFFIX,
 };
 
+// ─── HF Model Dropdown ────────────────────────────────────────────────────────
+
+function refreshHfModelDropdown(provider, selectedModel) {
+    const models = HF_PROVIDER_MODELS[provider]?.models ?? [];
+    const options = models.map(m =>
+        `<option value="${m}"${m === selectedModel ? ' selected' : ''}>${m}</option>`
+    ).join('');
+    $('#plz-hf-image-model').html(options);
+}
+
 // ─── UI Refresh ───────────────────────────────────────────────────────────────
 
 /**
@@ -88,7 +100,8 @@ function refreshUI() {
     $(`#plz-verbose-logging`).prop('checked', s.verboseLogging);
     $(`#plz-portrait-position`).val(s.portraitPosition);
     $(`#plz-image-model`).val(s.imageModel);
-    $(`#plz-hf-image-model`).val(s.hfImageModel ?? '');
+    $(`#plz-hf-provider`).val(s.hfProvider);
+    refreshHfModelDropdown(s.hfProvider, s.hfImageModel);
 
     // 2. Numerical Inputs
     $(`.plz-history-input`).each(function () {
@@ -140,8 +153,17 @@ function bindHandlers() {
         updateDirtyIndicator();
     });
 
-    $panel.on('input', '#plz-hf-image-model', function () {
-        updateSetting('hfImageModel', $(this).val().trim());
+    $panel.on('change', '#plz-hf-provider', function () {
+        const provider = $(this).val();
+        updateSetting('hfProvider', provider);
+        const models = HF_PROVIDER_MODELS[provider]?.models ?? [];
+        refreshHfModelDropdown(provider, models[0] ?? '');
+        updateSetting('hfImageModel', models[0] ?? '');
+        updateDirtyIndicator();
+    });
+
+    $panel.on('change', '#plz-hf-image-model', function () {
+        updateSetting('hfImageModel', $(this).val());
         updateDirtyIndicator();
     });
 

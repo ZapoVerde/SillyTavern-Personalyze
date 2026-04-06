@@ -9,14 +9,14 @@ export const info = {
 export async function init(router) {
     router.post('/hf-generate', async (req, res) => {
         try {
-            const { model, prompt, width, height } = req.body;
+            const { provider, model, prompt, width, height } = req.body;
             const apiKey = readSecret(req.user.directories, 'api_key_huggingface');
 
             if (!apiKey) {
                 return res.status(401).json({ error: 'HuggingFace API key not configured.' });
             }
 
-            const url = `https://router.huggingface.co/fal-ai/models/${model}`;
+            const url = `https://router.huggingface.co/${provider}/models/${model}`;
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
