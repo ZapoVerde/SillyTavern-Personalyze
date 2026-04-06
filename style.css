@@ -150,14 +150,9 @@
     overflow-y: hidden;
     transition: height 0.1s ease;
     min-height: 100px;
-    max-height: 50vh;
     line-height: 1.5; /* More breathing room for text */
     padding: 12px !important;
     font-size: 0.95em;
-}
-
-.plz-auto-textarea.plz-needs-scroll {
-    overflow-y: auto !important;
 }
 
 /* --- Lane Cards (Localyze style) --- */
