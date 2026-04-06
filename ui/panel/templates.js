@@ -17,9 +17,10 @@
  *     external_io: []
  */
 
-import { 
+import {
     POLLINATIONS_MODELS,
 } from '../../defaults.js';
+import { escapeHtml } from '../../utils/history.js';
 
 /**
  * Generates a styled informational icon with a hover tooltip.
