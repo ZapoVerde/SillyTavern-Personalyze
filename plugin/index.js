@@ -16,7 +16,7 @@ export async function init(router) {
                 return res.status(401).json({ error: 'HuggingFace API key not configured.' });
             }
 
-            const url = `https://router.huggingface.co/models/${model}`;
+            const url = `https://router.huggingface.co/hf-inference/models/${model}`;
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
