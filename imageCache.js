@@ -41,6 +41,7 @@ import {
     DEFAULT_VN_STYLE_SUFFIX,
 } from './defaults.js';
 import { getSettings } from './settings.js';
+import { log, warn, error as logError } from './utils/logger.js';
 
 const SECRET_KEY_NAME = 'api_key_pollinations';
 const FILE_PREFIX     = 'plz_';
@@ -166,20 +167,20 @@ async function fetchPollinationsWithRetry(url, headers, maxRetries = 3) {
         } catch (err) {
             if (attempt < maxRetries) {
                 const delay = 1000 * Math.pow(2, attempt);
-                console.debug(`PersonaLyze: Pollinations network error – retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})…`);
+                warn('ImageCache', `Pollinations network error – retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})…`);
                 await new Promise(r => setTimeout(r, delay));
                 continue;
             }
-            console.error('PersonaLyze: Pollinations network error after all retries:', err);
+            logError('ImageCache', 'Pollinations network error after all retries:', err);
             throw err;
         }
         if (attempt < maxRetries) {
             const delay = 1000 * Math.pow(2, attempt);
-            console.debug(`PersonaLyze: Pollinations ${lastResponse.status} – retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})…`);
+            warn('ImageCache', `Pollinations ${lastResponse.status} – retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})…`);
             await new Promise(r => setTimeout(r, delay));
         }
     }
-    console.error(`PersonaLyze: Pollinations ${lastResponse.status} after all retries – giving up.`);
+    logError('ImageCache', `Pollinations ${lastResponse.status} after all retries – giving up.`);
     return lastResponse;
 }
 
@@ -223,7 +224,7 @@ export async function fetchFileIndex() {
 export async function fetchPreviewBlob(prompt, characterId) {
     const seed    = getCharacter(characterId)?.seed ?? 1;
     const url     = buildPollinationsUrl(prompt, DEV_IMAGE_WIDTH, DEV_IMAGE_HEIGHT, seed);
-    console.log(`PersonaLyze: pollinations prompt → ${prompt}`);
+    log('ImageCache', 'pollinations prompt →', prompt);
     const headers = await getAuthHeaders();
     const res     = await fetchPollinationsWithRetry(url, headers);
     await validateImageResponse(res);
