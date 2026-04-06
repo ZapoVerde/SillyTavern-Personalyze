@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/portfolio.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role UI (Portfolio Manager)
  * @description
  * The Global Character Wardrobe manager. A full-panel UI where the user can
@@ -13,7 +13,7 @@
  *     thumbnails. Missing (ungenerated) combinations shown as empty slots.
  *   - Manual override: clicking a generated portrait writes the pointer to the
  *     last AI message and applies it to the live portrait.
- *   - Edit anchor: update the character's Identity Anchor string.
+ *   - Edit anchor: update the character's Identity Anchor string with auto-resize.
  *   - Edit labels: rename the display label for any outfit or expression
  *     (keys remain immutable).
  *
@@ -25,7 +25,7 @@
  *   assertions:
  *     purity: IO
  *     state_ownership: []
- *     external_io: [DOM, registry.js, pointerWriter.js, portrait.js, imageCache.js]
+ *     external_io: [DOM, registry.js, pointerWriter.js, portrait.js, imageCache.js, smartResize]
  */
 
 import { callPopup } from '../../../../../script.js';
@@ -43,6 +43,7 @@ import { setPortrait } from '../portrait.js';
 import { lockedWritePointer } from '../logic/pointerWriter.js';
 import { escapeHtml } from '../utils/history.js';
 import { error } from '../utils/logger.js';
+import { smartResize } from '../utils/dom.js';
 
 const PANEL_ID = 'plz-portfolio-panel';
 
@@ -130,8 +131,8 @@ function buildPanel(characterIds, activeId) {
                     flex-shrink: 0;
                 ">
                     <label style="font-size:0.82em;opacity:0.7;white-space:nowrap;padding-top:6px;min-width:110px;">Identity Anchor</label>
-                    <textarea id="plz-portfolio-anchor" class="text_pole" rows="2"
-                              style="flex:1;font-size:0.85em;resize:vertical;"></textarea>
+                    <textarea id="plz-portfolio-anchor" class="text_pole plz-auto-textarea" rows="2"
+                              style="flex:1;font-size:0.85em;overflow:hidden;resize:none;"></textarea>
                     <button id="plz-portfolio-anchor-save" class="menu_button" style="white-space:nowrap;padding:4px 10px;">Save</button>
                 </div>
 
@@ -161,8 +162,12 @@ function renderWardrobe($panel, characterId) {
     const character = getCharacter(characterId);
     if (!character) return;
 
-    // Populate anchor field
-    $panel.find('#plz-portfolio-anchor').val(character.identityAnchor ?? '');
+    // Populate anchor field and trigger a resize so it fits the loaded text perfectly
+    const $anchor = $panel.find('#plz-portfolio-anchor');
+    $anchor.val(character.identityAnchor ?? '');
+    requestAnimationFrame(() => {
+        if ($anchor.length) smartResize($anchor[0]);
+    });
 
     const outfitKeys     = Object.keys(character.outfits);
     const expressionKeys = Object.keys(character.expressions);
@@ -321,6 +326,11 @@ function bindPanelHandlers($panel) {
     // Character selector
     $panel.on('change', '#plz-portfolio-char-select', function () {
         renderWardrobe($panel, $(this).val());
+    });
+    
+    // Auto-grow anchor textarea
+    $panel.on('input', '#plz-portfolio-anchor', function () {
+        smartResize(this);
     });
 
     // Save identity anchor

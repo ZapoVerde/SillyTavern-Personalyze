@@ -11,10 +11,16 @@
  * - Binds ST connections (via connection.js).
  * - Binds API key vault (via vault.js).
  * - Manages global settings toggles and numerical inputs.
- * - Handles the multi-line Prompt Editor modal.
+ * - Handles the multi-line Prompt Editor modal with unlimited auto-resize.
  *
  * @api-declaration
  * injectSettingsPanel() — Builds and appends the panel and binds all sub-systems.
+ *
+ * @contract
+ *   assertions:
+ *     purity: Stateful UI Orchestrator
+ *     state_ownership: [extension_settings.personalyze.activeState]
+ *     external_io: [DOM, callPopup, smartResize, settings.js]
  */
 
 import { callPopup } from '../../../../../script.js';
@@ -153,17 +159,17 @@ function bindHandlers() {
     // 5. Vault & Test (Pollinations Logic)
     bindVaultHandlers($panel);
 
-    // 6. Prompt Editor (with Smart Resize)
+    // 6. Prompt Editor
     $panel.on('click', '.plz-open-prompt', async function () {
         const key          = $(this).data('prompt-key');
         const title        = PROMPT_TITLES[key]   ?? key;
         const defaultValue = PROMPT_DEFAULTS[key] ?? '';
         const current      = getSettings()[key]   ?? defaultValue;
 
-        const result = await callPopup(
+        const popupPromise = callPopup(
             `<h3>${title}</h3>
-             <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="12"
-                       style="width:100%;font-family:monospace;font-size:0.85em;"
+             <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="10"
+                       style="width:100%;font-family:monospace;font-size:0.85em;overflow:hidden;"
                        spellcheck="false">${current.replace(/</g, '&lt;')}</textarea>
              <div style="margin-top:8px;display:flex;gap:8px;">
                  <button class="menu_button" id="plz-prompt-reset"
@@ -172,10 +178,14 @@ function bindHandlers() {
             'confirm',
         );
 
-        // Immediate resize trigger for the popup
-        requestAnimationFrame(() => {
+        // Multiple frame catch to ensure smartResize runs after modal is DOM-ready and visible
+        const triggerResize = () => {
             const el = document.getElementById('plz-prompt-editor');
             if (el) smartResize(el);
+        };
+        requestAnimationFrame(() => {
+            triggerResize();
+            setTimeout(triggerResize, 50); // Second pass for layout stability
         });
 
         // Delegate listener for live resize inside callPopup
@@ -189,6 +199,8 @@ function bindHandlers() {
             smartResize($editor[0]);
         });
 
+        const result = await popupPromise;
+        
         if (result) {
             const newValue = $('#plz-prompt-editor').val();
             if (Object.prototype.hasOwnProperty.call(SETTINGS_DEFAULTS, key)) {

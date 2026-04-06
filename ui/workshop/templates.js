@@ -4,12 +4,16 @@
  * @architectural-role Pure UI Templates
  * @description
  * Pure functions for generating the PersonaLyze Character Workshop HTML.
+ * Contains the structural markup for the Roster, Studio, and Register tabs.
+ * Textareas utilize inline style constraints (overflow: hidden; resize: none;)
+ * to support seamless auto-resizing without layout jumps.
  *
  * @api-declaration
  * getBaseWorkshopHTML()                            → string
- * getRosterHTML(characters)                        → string
+ * getRosterHTML(characters, activeId, activeRoster)→ string
  * getStudioHTML(characterId, character, fileIndex) → string
  * getRegisterHTML()                                → string
+ * getStudioEmptyHTML()                             → string
  *
  * @contract
  *   assertions:
@@ -154,7 +158,7 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
         </button>
     </div>
     <textarea id="plz-studio-anchor" class="text_pole plz-auto-textarea" rows="3"
-              style="width:100%;margin-bottom:12px;">${escapeHtml(character.identityAnchor ?? '')}</textarea>
+              style="width:100%;margin-bottom:12px;overflow:hidden;resize:none;">${escapeHtml(character.identityAnchor ?? '')}</textarea>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
         <button id="plz-studio-anchor-save" class="menu_button">Save Anchor</button>
         <label style="font-size:0.85em;opacity:0.7;margin:0;">Seed
@@ -195,9 +199,6 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
  * @param {string[]} expressionLabels   Portrait picker labels (outfit entries only).
  * @param {string|null} defaultExpression  Pre-selected expression for the portrait section.
  */
-/**
- * Renders the list of entries (outfits or expressions) for the Studio.
- */
 export function getEntryListHTML(characterId, entries, dimension, fileIndex, expressionLabels = [], defaultExpression = null) {
     const keys = Object.keys(entries);
 
@@ -224,7 +225,7 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex, exp
             </div>
             <textarea class="text_pole plz-auto-textarea plz-entry-description" 
                       data-key="${escapeHtml(key)}" data-dimension="${dimension}"
-                      style="width:100%;font-family:monospace;font-size:0.85em;"
+                      style="width:100%;font-family:monospace;font-size:0.85em;overflow:hidden;resize:none;"
                       spellcheck="false">${escapeHtml(entry.description ?? '')}</textarea>
             <div style="display:flex;gap:6px;margin-top:4px;">
                 <button class="menu_button plz-entry-save-btn" data-key="${escapeHtml(key)}" data-dimension="${dimension}"
@@ -312,7 +313,7 @@ export function getRegisterHTML() {
         <label class="plz-studio-label">Identity Anchor</label>
         <textarea id="plz-reg-anchor" class="text_pole plz-auto-textarea" rows="4"
                   placeholder="Permanent appearance description..."
-                  style="width:100%;margin-bottom:16px;" spellcheck="false"></textarea>
+                  style="width:100%;margin-bottom:16px;overflow:hidden;resize:none;" spellcheck="false"></textarea>
     </div>
 
     <button id="plz-reg-submit" class="menu_button" style="width:100%;padding:10px;">

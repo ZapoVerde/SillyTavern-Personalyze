@@ -232,16 +232,28 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
                    style="width:100%;opacity:0.6;cursor:not-allowed;" />
 
             <label style="display:block;margin:8px 0 3px;font-size:0.88em;opacity:0.75;">Description (image prompt)</label>
-            <textarea id="plz-add-entry-desc" class="text_pole" rows="3"
-                      style="width:100%;font-family:monospace;font-size:0.9em;"></textarea>`,
+            <textarea id="plz-add-entry-desc" class="text_pole plz-auto-textarea" rows="3"
+                      style="width:100%;font-family:monospace;font-size:0.9em;overflow:hidden;resize:none;"></textarea>`,
             'confirm'
         );
+
+        // Immediate resize trigger for the popup
+        requestAnimationFrame(() => {
+            const el = document.getElementById('plz-add-entry-desc');
+            if (el) smartResize(el);
+        });
 
         $('#plz-add-entry-label').on('input', function () {
             $('#plz-add-entry-key').val(slugify(this.value));
         });
+        
+        $(document).on('input', '#plz-add-entry-desc', function() {
+            smartResize(this);
+        });
 
         const confirmed = await popupPromise;
+        $(document).off('input', '#plz-add-entry-desc');
+        
         if (!confirmed) return;
 
         const label = $('#plz-add-entry-label').val().trim();
@@ -306,10 +318,11 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
 
             if (mode === 'register') {
                 $('#plz-reg-name').val(result.name).trigger('input');
-                $('#plz-reg-anchor').val(result.anchor);
+                // Trigger input to force smartResize update
+                $('#plz-reg-anchor').val(result.anchor).trigger('input');
             } else {
                 // Studio — only update the anchor textarea, leave name alone.
-                $('#plz-studio-anchor').val(result.anchor);
+                $('#plz-studio-anchor').val(result.anchor).trigger('input');
             }
 
             if (window.toastr) window.toastr.success('Character details scanned from chat.', 'PersonaLyze');
@@ -476,7 +489,7 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
 
         upsertCharacter(key, anchor);
         $('#plz-reg-name').val('');
-        $('#plz-reg-anchor').val('');
+        $('#plz-reg-anchor').val('').trigger('input');
         $('#plz-reg-key-preview').text('—');
         $('#plz-reg-status').text('');
 

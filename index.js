@@ -1,13 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/index.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
- * @version 0.1.19
+ * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @version 0.1.20
  * @architectural-role Feature Entry Point / Orchestrator
  * @description
  * SillyTavern Personalyze (PLZ) — extension entry point.
  *
  * Binds SillyTavern lifecycle events to the PLZ pipeline and boot sequence.
- * Handles new AI messages, swipe navigation, and chat session changes.
+ * Orchestrates UI injections and manages global window lifecycle events,
+ * including the responsive auto-resize behavior for all extension textareas.
  *
  * @api-declaration
  * handleMessageReceived(messageId) — routes new AI messages to the pipeline.
@@ -19,7 +20,7 @@
  *   assertions:
  *     purity: Event Orchestration
  *     state_ownership: [none]
- *     external_io: [eventSource (subscribe), UI Injections, Bootstrapper]
+ *     external_io: [eventSource (subscribe), UI Injections, Bootstrapper, smartResize]
  */
 
 import { eventSource, event_types } from '../../../../script.js';
@@ -35,6 +36,7 @@ import { injectMessageBadge, reinjectAllBadges } from './ui/badge.js';
 import { injectPortraitContainer } from './portrait.js';
 import { injectVnPanel } from './ui/vnPanel.js';
 import { handleOpenWorkshop } from './logic/characterWorkshop.js';
+import { smartResize } from './utils/dom.js';
 
 /**
  * Pipeline Dispatcher.
@@ -52,8 +54,6 @@ function handleMessageReceived(messageId) {
 /**
  * Swipe Dispatcher.
  * Triggered when the user navigates to an existing swipe alternative.
- * Skips if the swipe slot is unpopulated — MESSAGE_RECEIVED fires when the
- * new generation completes.
  * @param {number} messageId
  */
 function handleMessageSwiped(messageId) {
@@ -108,7 +108,7 @@ function injectToolbarButton() {
 
 /**
  * Extension Entry Point.
- * Orchestrates the startup sequence.
+ * Orchestrates the startup sequence and global event bindings.
  */
 async function init() {
     log('Core', 'Extension initializing...');
@@ -126,16 +126,22 @@ async function init() {
         injectVnPanel();
         injectToolbarButton();
 
-        // 3. Host Events — Bind core SillyTavern lifecycle events.
+        // 3. Global Responsiveness — Handle browser resizing/mobile rotation
+        // for all auto-expanding textareas across the extension.
+        window.addEventListener('resize', () => {
+            $('.plz-auto-textarea:visible').each(function() {
+                smartResize(this);
+            });
+        });
+
+        // 4. Host Events — Bind core SillyTavern lifecycle events.
         eventSource.on(event_types.MESSAGE_RECEIVED, handleMessageReceived);
         eventSource.on(event_types.MESSAGE_SWIPED, handleMessageSwiped);
         eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, injectMessageBadge);
         log('Core', 'Listeners active.');
 
-        // 4. Conditional Initial Boot
-        // Only run if a chatId is already present (e.g. extension hot-reload).
-        // On fresh ST load, CHAT_CHANGED triggers the boot sequence.
+        // 5. Conditional Initial Boot
         const context = getContext();
         if (context && context.chatId) {
             log('Core', 'Active chat detected on init. Running boot sequence...');

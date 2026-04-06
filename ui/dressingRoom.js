@@ -1,9 +1,34 @@
+/**
+ * @file data/default-user/extensions/personalyze/ui/dressingRoom.js
+ * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @architectural-role UI (Dressing Room)
+ * @description
+ * Implements the Dressing Room modal, a confirmation dialog for newly 
+ * discovered outfits or expressions. Allows the user to refine labels 
+ * and visual descriptions, and generate a preview before committing the 
+ * entry to the Global Portfolio.
+ *
+ * @api-declaration
+ * openDressingRoom(proposed) -> Promise<{key, label, description}|null>
+ *
+ * @contract
+ *   assertions:
+ *     purity: IO
+ *     state_ownership: []
+ *     external_io: [callPopup, fetchPreviewBlob, smartResize, DOM]
+ */
+
 import { callPopup } from '../../../../../script.js';
 import { fetchPreviewBlob } from '../imageCache.js';
 import { slugify, escapeHtml } from '../utils/history.js';
 import { smartResize } from '../utils/dom.js';
 import { error } from '../utils/logger.js';
 
+/**
+ * Opens the Dressing Room modal for an outfit or expression.
+ * @param {object} proposed { dimension, label, key, description }
+ * @returns {Promise<{key: string, label: string, description: string}|null>}
+ */
 export async function openDressingRoom(proposed) {
     const dimensionLabel = proposed.dimension === 'outfit' ? 'Outfit' : 'Expression';
     const aspectStyle    = proposed.dimension === 'outfit'
@@ -24,7 +49,7 @@ export async function openDressingRoom(proposed) {
 
         <label style="display:block;margin:8px 0 3px;font-size:0.88em;opacity:0.75;">Description (Image Prompt)</label>
         <textarea id="plz-dr-description" class="text_pole plz-auto-textarea" rows="3"
-                  style="width:100%; font-family:monospace; font-size:0.9em;" spellcheck="false">${escapeHtml(proposed.description ?? '')}</textarea>
+                  style="width:100%; font-family:monospace; font-size:0.9em; overflow:hidden;" spellcheck="false">${escapeHtml(proposed.description ?? '')}</textarea>
 
         <div style="margin-top:10px;">
             <button class="menu_button" id="plz-dr-preview-btn">Generate Preview</button>
@@ -37,10 +62,15 @@ export async function openDressingRoom(proposed) {
         'confirm',
     );
 
-    // Trigger smart resize as soon as the popup is visible
-    requestAnimationFrame(() => {
+    // Multi-pass resize trigger to ensure stability in the popup lifecycle
+    const triggerResize = () => {
         const el = document.getElementById('plz-dr-description');
         if (el) smartResize(el);
+    };
+
+    requestAnimationFrame(() => {
+        triggerResize();
+        setTimeout(triggerResize, 50);
     });
 
     $('#plz-dr-label').on('input', function () {

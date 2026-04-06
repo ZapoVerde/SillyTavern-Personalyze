@@ -113,8 +113,12 @@ export const DEFAULT_EXPRESSION_LABELS = [
  * otherwise it is appended to the assembled sandwich as before.
  */
 export const DEFAULT_VN_STYLE_SUFFIX =
-    '{{character}}, {{outfit}}, {{expression}}, visual novel character portrait, ' +
-    'centered composition, plain or softly blurred background, high detail, anime-adjacent illustration style'
+    'A highly detailed anime-style character illustration of {{character}}, wearing {{outfit}}, expressing {{expression}} through subtle facial expression and minimal hand gesture, body kept symmetrical and front-facing. ' +
+    'semi-realistic anime character illustration, painterly rendering, soft gradient shading, cinematic low-key lighting, high-detail eyes with natural reflections, smooth stylized skin (not photorealistic), refined facial features, delicate linework, controlled highlights, moody atmosphere, shallow depth of field, soft anime facial structure, rounded features, subtle nose definition' +
+    'medium full shot, framed from knees up, full upper legs visible, character fully in frame from knees to head, centered composition, body fully facing forward, chest, shoulders, and hips square to the camera, perfectly frontal pose, no contrapposto, no torso rotation, no angled stance, head aligned with body and looking straight ahead, upright neutral stance' +
+    'Soft cinematic lighting with gentle volumetric glow, subtle rim light, natural skin shading with soft gradients, detailed hair strands with controlled highlights' +
+    'Simple blurred background with soft bokeh, neutral tones' +
+    'Ultra-detailed, sharp focus, high resolution, polished illustration, studio-quality anime rendering'
 
 // ─── Prompt Templates ────────────────────────────────────────────────────────
 

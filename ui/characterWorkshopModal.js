@@ -1,16 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/characterWorkshopModal.js
  * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
- * @architectural-role UI Orchestrator
+ * @architectural-role UI Orchestrator (Workshop)
  * @description
  * High-level coordinator for the PersonaLyze Character Workshop modal.
- *
- * The workshop is a 3-tab modal for managing the Global Character Portfolio:
- *   - Roster  — all registered characters; jump to Studio or delete.
- *   - Studio  — edit a single character's anchor, outfits, and expressions.
- *   - Register — manually seed a new character.
- *
- * Mirrors the structure of localyze's workshopModal.js exactly.
+ * Manages the 3-tab layout (Roster, Studio, Register) and ensures all 
+ * dynamic content, including auto-expanding textareas, is correctly 
+ * calculated and rendered.
  *
  * @api-declaration
  * openWorkshop(tab)  — primary entry point; injects modal if needed and shows it.
@@ -22,8 +18,8 @@
  * @contract
  *   assertions:
  *     purity: Stateful UI Shell
- *     state_ownership: []
- *     external_io: [jQuery DOM, templates.js, listeners.js, registry.js, state.js]
+ *     state_ownership: [state._workshopCharacterId]
+ *     external_io: [jQuery DOM, templates.js, listeners.js, registry.js, smartResize]
  */
 
 import { state, setWorkshopCharacter } from '../state.js';
@@ -96,10 +92,16 @@ export function renderStudio(characterId) {
         if (saved !== undefined) $(this).val(saved);
     });
 
-    // Initialize auto-grow heights for all textareas after render
-    $panel.find('.plz-auto-textarea').each(function () {
-        this.style.height = 'auto';
-        this.style.height = `${this.scrollHeight}px`;
+    // Multi-pass resize trigger for all textareas in the Studio
+    const triggerAllResizes = () => {
+        $panel.find('.plz-auto-textarea').each(function () {
+            smartResize(this);
+        });
+    };
+
+    requestAnimationFrame(() => {
+        triggerAllResizes();
+        setTimeout(triggerAllResizes, 50);
     });
 }
 
@@ -146,15 +148,4 @@ export function openWorkshop(tab = 'roster') {
     injectWorkshop();
     $('#plz-workshop-overlay').removeClass('plz-hidden');
     switchTab(tab);
-}
-
-export function renderStudio(characterId) {
-    /* ... existing render code ... */
-
-    // Final step: Resize everything once content is injected
-    requestAnimationFrame(() => {
-        $panel.find('.plz-auto-textarea').each(function () {
-            smartResize(this);
-        });
-    });
 }
