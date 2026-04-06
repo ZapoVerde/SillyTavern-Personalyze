@@ -12,7 +12,7 @@
  * updateDirtyIndicator()                — Appends '*' to profile name if unsaved.
  */
 
-import { callPopup, saveSettingsDebounced } from '../../../../script.js';
+import { callPopup, saveSettingsDebounced } from '../../../../../../script.js';
 import { getSettings, getMetaSettings } from '../../settings.js';
 
 /**

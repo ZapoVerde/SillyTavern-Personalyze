@@ -17,7 +17,7 @@
  * injectSettingsPanel() — Builds and appends the panel and binds all sub-systems.
  */
 
-import { callPopup } from '../../../../script.js';
+import { callPopup } from '../../../../../script.js';
 import { getSettings, getMetaSettings, updateSetting, SETTINGS_DEFAULTS } from '../settings.js';
 import { setPortraitPosition } from '../portrait.js';
 import { setVnPanelEnabled } from './vnPanel.js';

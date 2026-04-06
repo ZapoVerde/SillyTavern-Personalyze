@@ -10,7 +10,7 @@
  * refreshConnectionDropdowns(updateDirty) — Re-initializes ST dropdowns from activeState.
  */
 
-import { ConnectionManagerRequestService } from '../../../shared.js';
+import { ConnectionManagerRequestService } from '../../../../../shared.js';
 import { getSettings, updateSetting } from '../../settings.js';
 import { warn } from '../../utils/logger.js';
 

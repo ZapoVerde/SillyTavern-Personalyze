@@ -11,8 +11,8 @@
  * bindVaultHandlers($panel)    — Binds save and test buttons.
  */
 
-import { callPopup } from '../../../../../script.js';
-import { writeSecret, secret_state } from '../../../../secrets.js';
+import { callPopup } from '../../../../../../script.js';
+import { writeSecret, secret_state } from '../../../../../secrets.js';
 import { fetchPreviewBlob } from '../../imageCache.js';
 import { error } from '../../utils/logger.js';
 
