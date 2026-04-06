@@ -39,6 +39,7 @@
 
 import { ConnectionManagerRequestService } from '../../shared.js';
 import { log, warn, error } from './utils/logger.js';
+import { logCall } from './utils/callLog.js';
 
 // ─── Core Dispatch ────────────────────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ async function dispatch(prompt, profileId, label, extraOptions = {}) {
                 { timeOut: 6000, preventDuplicates: true },
             );
         }
+        logCall(label, prompt, null, 'No detection profile configured.');
         return '';
     }
 
@@ -78,9 +80,11 @@ async function dispatch(prompt, profileId, label, extraOptions = {}) {
         const result = await ConnectionManagerRequestService.sendRequest(profileId, prompt, null, extraOptions);
         const text   = result?.content ?? result;
         log(label, `--- RAW AI RESPONSE ---\n${text}`);
+        logCall(label, prompt, String(text ?? ''), null);
         return String(text ?? '');
     } catch (err) {
         error(label, 'ConnectionManager request failed:', err);
+        logCall(label, prompt, null, err.message);
         if (window.toastr) window.toastr.error(`PLZ detection failed: ${err.message}`, 'PersonaLyze');
         throw err;
     }

@@ -198,12 +198,18 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
                         <strong style="font-size:0.95em;">Developer Settings</strong>
                         ${tip("Technical controls for troubleshooting and advanced use.")}
                     </div>
-                    <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
                         <label class="checkbox_label" style="font-size:0.85em; cursor:pointer;">
                             <input type="checkbox" id="plz-verbose-logging" ${s.verboseLogging ? 'checked' : ''} />
                             <span>Verbose logging (browser console)</span>
                         </label>
                         ${tip("Enables detailed debug logs in the browser's developer console.")}
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <button class="menu_button" id="plz-view-logs" style="font-size:0.85em; padding:4px 10px;">
+                            <i class="fa-solid fa-list"></i> View Logs
+                        </button>
+                        ${tip("Inspect the last two turns of AI call logs — prompts sent, responses received, and any errors.")}
                     </div>
                 </div>
 

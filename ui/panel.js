@@ -29,6 +29,7 @@ import { setPortraitPosition } from '../portrait.js';
 import { setVnPanelEnabled } from './vnPanel.js';
 import { handleOpenWorkshop, handleOpenRegister } from '../logic/characterWorkshop.js';
 import { log, setVerbose } from '../utils/logger.js';
+import { getLogs } from '../utils/callLog.js';
 import { smartResize } from '../utils/dom.js';
 
 // Sub-system imports
@@ -215,6 +216,98 @@ function bindHandlers() {
     // 7. Workshop Links
     $panel.on('click', '#plz-open-workshop', () => handleOpenWorkshop());
     $panel.on('click', '#plz-open-register', () => handleOpenRegister());
+
+    // 8. Call Log Viewer
+    $panel.on('click', '#plz-view-logs', async function () {
+        const popupPromise = callPopup(buildLogModalHTML(), 'text');
+
+        $(document).on('click.plz-logs', '.plz-log-toggle', function () {
+            const $body = $(this).next('.plz-log-body');
+            $body.toggleClass('plz-hidden');
+            $(this).find('.plz-log-arrow').text($body.hasClass('plz-hidden') ? '▶' : '▼');
+        });
+
+        $(document).on('click.plz-logs', '.plz-log-copy', function () {
+            const text = $(this).closest('.plz-log-field').find('textarea').val();
+            navigator.clipboard.writeText(text).then(() => {
+                const $btn = $(this);
+                $btn.text('Copied!');
+                setTimeout(() => $btn.text('Copy'), 1500);
+            }).catch(() => {});
+        });
+
+        await popupPromise;
+        $(document).off('.plz-logs');
+    });
+}
+
+// ─── Log Modal Builder ────────────────────────────────────────────────────────
+
+function buildLogModalHTML() {
+    const turns = getLogs();
+
+    function esc(str) {
+        return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function relTime(ts) {
+        const s = Math.floor((Date.now() - ts) / 1000);
+        if (s < 5)    return 'just now';
+        if (s < 60)   return `${s}s ago`;
+        if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+        return `${Math.floor(s / 3600)}h ago`;
+    }
+
+    function fieldBox(label, content) {
+        if (content === null) return '';
+        return `
+        <div class="plz-log-field" style="margin-bottom:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+                <span style="font-size:0.76em;opacity:0.55;text-transform:uppercase;letter-spacing:0.05em;">${label}</span>
+                <button class="menu_button plz-log-copy" style="font-size:0.73em;padding:1px 6px;">Copy</button>
+            </div>
+            <textarea class="text_pole" readonly rows="3"
+                      style="width:100%;font-family:monospace;font-size:0.78em;min-height:48px;max-height:180px;overflow-y:auto;resize:none;"
+                      >${esc(content)}</textarea>
+        </div>`;
+    }
+
+    if (!turns.length) {
+        return `<h3 style="margin:0 0 12px;">AI Call Log</h3>
+        <p style="opacity:0.6;font-size:0.9em;">No AI calls logged yet. Logs appear here as the pipeline runs.</p>`;
+    }
+
+    const turnsHTML = [...turns].reverse().map(turn => {
+        const callsHTML = turn.calls.map(call => `
+        <div style="border-top:1px solid var(--SmartThemeBorderColor,#444);">
+            <button class="plz-log-toggle"
+                    style="width:100%;text-align:left;padding:7px 12px;background:none;border:none;cursor:pointer;font-size:0.86em;color:inherit;display:flex;align-items:center;gap:6px;">
+                <span class="plz-log-arrow" style="font-size:0.8em;opacity:0.7;">▶</span>
+                <span>${esc(call.label)}</span>
+                <span style="opacity:0.45;font-size:0.8em;margin-left:auto;">${relTime(call.timestamp)}</span>
+                ${call.error ? '<span style="color:#e05555;font-size:0.78em;margin-left:6px;">error</span>' : ''}
+            </button>
+            <div class="plz-log-body plz-hidden" style="padding:0 12px 10px;">
+                ${fieldBox('Prompt', call.prompt)}
+                ${call.response !== null ? fieldBox('Response', call.response) : ''}
+                ${call.error    !== null ? fieldBox('Error',    call.error)    : ''}
+            </div>
+        </div>`).join('');
+
+        return `
+        <div style="border:1px solid var(--SmartThemeBorderColor,#555);border-radius:6px;overflow:hidden;margin-bottom:10px;">
+            <div style="background:rgba(255,255,255,0.04);padding:7px 12px;font-size:0.82em;display:flex;align-items:center;gap:8px;">
+                <strong>${esc(turn.label)}</strong>
+                <span style="opacity:0.5;">·</span>
+                <span style="opacity:0.6;">${turn.calls.length} call${turn.calls.length !== 1 ? 's' : ''}</span>
+                <span style="opacity:0.5;margin-left:auto;">${relTime(turn.timestamp)}</span>
+            </div>
+            ${callsHTML}
+        </div>`;
+    }).join('');
+
+    return `<h3 style="margin:0 0 12px;">AI Call Log</h3>
+    <div style="max-height:65vh;overflow-y:auto;">${turnsHTML}</div>`;
 }
 
 // ─── Entry Point ──────────────────────────────────────────────────────────────

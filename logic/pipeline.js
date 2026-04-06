@@ -44,6 +44,7 @@ import { generate, buildFilenamePrefix, findCachedImage } from '../imageCache.js
 import { setPortrait } from '../portrait.js';
 import { lockedWritePointer, lockedPatchPointerImage } from './pointerWriter.js';
 import { openDressingRoom } from '../ui/dressingRoom.js';
+import { startTurn } from '../utils/callLog.js';
 
 // ─── Entry Point ──────────────────────────────────────────────────────────────
 
@@ -62,6 +63,8 @@ export async function runPipeline(messageId) {
 
     // Roster gate — if no characters are enabled for this chat, do nothing.
     if (state.activeRoster.length === 0) return;
+
+    startTurn('Pipeline');
 
     const history = buildHistoryText(context.chat, messageId, s.detectionHistory ?? 2);
 
