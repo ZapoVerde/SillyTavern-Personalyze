@@ -146,15 +146,12 @@ async function fetchPollinationsWithRetry(url, key, maxRetries = 3) {
 }
 
 /**
- * Fetch from Hugging Face with "Cold Start" (503) awareness.
+ * Fetch from Hugging Face via SillyTavern's CORS proxy to avoid browser CORS restrictions.
+ * Requires enableCorsProxy to be enabled on the ST server.
  */
 async function fetchHuggingFaceWithRetry(prompt, key, maxRetries = 5) {
     const s = getSettings();
-    const url = `${HUGGINGFACE_BASE_URL}/${s.hfImageModel}`;
-    const headers = {
-        'Authorization': `Bearer ${key}`,
-        'Content-Type': 'application/json',
-    };
+    const targetUrl = `${HUGGINGFACE_BASE_URL}/${s.hfImageModel}`;
 
     const body = JSON.stringify({
         inputs: prompt,
@@ -162,11 +159,19 @@ async function fetchHuggingFaceWithRetry(prompt, key, maxRetries = 5) {
             width: DEFAULT_IMAGE_WIDTH,
             height: DEFAULT_IMAGE_HEIGHT,
         },
-        options: { wait_for_model: true }
+        options: { wait_for_model: true },
     });
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        const response = await fetch(url, { method: 'POST', headers, body });
+        const response = await fetch(`/proxy/${targetUrl}`, {
+            method: 'POST',
+            headers: {
+                ...getRequestHeaders(),
+                'Authorization': `Bearer ${key}`,
+                'Content-Type': 'application/json',
+            },
+            body,
+        });
 
         if (response.ok) return response;
 
