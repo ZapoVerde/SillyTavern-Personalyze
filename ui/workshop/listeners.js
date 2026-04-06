@@ -31,6 +31,7 @@ import { slugify, buildDescriberContext } from '../../utils/history.js';
 import { detectAnchorScan } from '../../detector.js';
 import { buildPortraitPrompt, fetchPreviewBlob, generate } from '../../imageCache.js';
 import { error } from '../../utils/logger.js';
+import { smartResize } from '../../utils/dom.js';
 
 /**
  * Binds all event listeners for the Character Workshop modal.
@@ -39,11 +40,17 @@ import { error } from '../../utils/logger.js';
 export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
     const $overlay = $('#plz-workshop-overlay');
 
-    // ─── Auto-grow Textareas ──────────────────────────────────────────────────
 
+    // ─── Auto-grow Textareas ──────────────────────────────────────────────────
     $overlay.on('input', '.plz-auto-textarea', function () {
-        this.style.height = 'auto';
-        this.style.height = `${this.scrollHeight}px`;
+        smartResize(this);
+    });
+
+    // Add this to handle phone rotation/window resizing
+    window.addEventListener('resize', () => {
+        $('.plz-modal .plz-auto-textarea').each(function() {
+            smartResize(this);
+        });
     });
 
     // ─── Structural ───────────────────────────────────────────────────────────

@@ -144,13 +144,29 @@
 /* Replaces broken resize handle (overridden by .text_pole) and avoids the   */
 /* resize grip landing on ST's mobile send-slider.                            */
 
+/* --- Auto-growing Textareas --- */
 .plz-auto-textarea {
     resize: none !important;
-    overflow: hidden !important;
-    min-height: 4.5em;
-    box-sizing: border-box;
-    word-wrap: break-word;
-    white-space: pre-wrap;
+    overflow-y: hidden;
+    transition: height 0.1s ease;
+    min-height: 100px;
+    max-height: 50vh;
+    line-height: 1.5; /* More breathing room for text */
+    padding: 12px !important;
+    font-size: 0.95em;
+}
+
+.plz-auto-textarea.plz-needs-scroll {
+    overflow-y: auto !important;
+}
+
+/* --- Lane Cards (Localyze style) --- */
+.plz-studio-entry {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 20px;
 }
 
 /* ─── Workshop Modal Overlay ──────────────────────────────────────────────── */

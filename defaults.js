@@ -3,7 +3,7 @@
  * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
  * @architectural-role Default Configuration
  * @description
- * Default prompt strings, API constants, and tunable values for PersonaLyze.
+ * Default prompt strings, API constants, and tunable values for Personalyze.
  *
  * All prompt templates use {{double_brace}} interpolation tokens that are
  * replaced by the pipeline at call time.
@@ -32,7 +32,7 @@
 /** Primary API gateway for Pollinations. */
 export const POLLINATIONS_BASE_URL = 'https://gen.pollinations.ai'
 
-/** Publishable app key — identifies PersonaLyze to Pollinations for attribution. */
+/** Publishable app key — identifies Personalyze to Pollinations for attribution. */
 export const POLLINATIONS_APP_KEY = ''
 
 /** Available Pollinations image models. */

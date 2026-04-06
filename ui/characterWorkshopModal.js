@@ -36,6 +36,7 @@ import {
     getStudioEmptyHTML,
 } from './workshop/templates.js';
 import { bindWorkshopEvents } from './workshop/listeners.js';
+import { smartResize } from '../utils/dom.js';
 
 // ─── Tab Renders ──────────────────────────────────────────────────────────────
 
@@ -145,4 +146,15 @@ export function openWorkshop(tab = 'roster') {
     injectWorkshop();
     $('#plz-workshop-overlay').removeClass('plz-hidden');
     switchTab(tab);
+}
+
+export function renderStudio(characterId) {
+    /* ... existing render code ... */
+
+    // Final step: Resize everything once content is injected
+    requestAnimationFrame(() => {
+        $panel.find('.plz-auto-textarea').each(function () {
+            smartResize(this);
+        });
+    });
 }

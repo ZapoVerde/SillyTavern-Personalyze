@@ -195,6 +195,9 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
  * @param {string[]} expressionLabels   Portrait picker labels (outfit entries only).
  * @param {string|null} defaultExpression  Pre-selected expression for the portrait section.
  */
+/**
+ * Renders the list of entries (outfits or expressions) for the Studio.
+ */
 export function getEntryListHTML(characterId, entries, dimension, fileIndex, expressionLabels = [], defaultExpression = null) {
     const keys = Object.keys(entries);
 
@@ -204,7 +207,6 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex, exp
 
     return keys.map(key => {
         const entry    = entries[key];
-        // Count generated images that use this entry
         const imgCount = dimension === 'outfit'
             ? [...fileIndex].filter(f => f.startsWith(buildFilenamePrefix(characterId, key, ''))).length
             : [...fileIndex].filter(f => f.includes(`_${key}_`)).length;
@@ -220,9 +222,10 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex, exp
                 <span style="font-size:0.75em;opacity:0.45;">[${escapeHtml(key)}]</span>
                 <span style="font-size:0.72em;opacity:0.4;margin-left:auto;">${imgCount} image${imgCount !== 1 ? 's' : ''}</span>
             </div>
-            <textarea class="text_pole plz-auto-textarea plz-entry-description" rows="2"
+            <textarea class="text_pole plz-auto-textarea plz-entry-description" 
                       data-key="${escapeHtml(key)}" data-dimension="${dimension}"
-                      style="width:100%;font-family:monospace;font-size:0.85em;">${escapeHtml(entry.description ?? '')}</textarea>
+                      style="width:100%;font-family:monospace;font-size:0.85em;"
+                      spellcheck="false">${escapeHtml(entry.description ?? '')}</textarea>
             <div style="display:flex;gap:6px;margin-top:4px;">
                 <button class="menu_button plz-entry-save-btn" data-key="${escapeHtml(key)}" data-dimension="${dimension}"
                         style="font-size:0.78em;padding:2px 8px;">Save</button>
@@ -233,6 +236,7 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex, exp
         </div>`;
     }).join('');
 }
+
 
 /**
  * Portrait generation sub-section for an outfit entry.
@@ -290,18 +294,13 @@ export function getRegisterHTML() {
     <div style="margin-bottom:20px;flex-shrink:0;">
         <h4 style="margin:0 0 6px;">Register a Character</h4>
         <p style="opacity:0.7;font-size:0.9em;margin:0 0 16px;">
-            Manually add a character to the Global Portfolio. PLZ will also register characters
-            automatically the first time the pipeline encounters them, but you can pre-seed them
-            here to define their Identity Anchor before that happens.
+            Manually add a character to the Global Portfolio.
         </p>
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
-            <label class="plz-studio-label" style="margin-bottom:0;">Character Name
-                <span style="font-size:0.78em;opacity:0.55;margin-left:6px;">must match the name used in chat</span>
-            </label>
+            <label class="plz-studio-label" style="margin-bottom:0;">Character Name</label>
             <button class="menu_button plz-anchor-scan" data-mode="register"
-                    title="Scan recent chat to identify character name and appearance"
-                    style="font-size:0.78em;padding:2px 8px;flex-shrink:0;margin-left:8px;">
+                    style="font-size:0.78em;padding:2px 8px;">
                 <i class="fa-solid fa-wand-magic-sparkles"></i> Scan Chat
             </button>
         </div>
@@ -310,12 +309,10 @@ export function getRegisterHTML() {
             Key preview: <code id="plz-reg-key-preview">—</code>
         </div>
 
-        <label class="plz-studio-label">Identity Anchor
-            <span style="font-size:0.78em;opacity:0.55;margin-left:6px;">permanent appearance used in every portrait prompt</span>
-        </label>
+        <label class="plz-studio-label">Identity Anchor</label>
         <textarea id="plz-reg-anchor" class="text_pole plz-auto-textarea" rows="4"
-                  placeholder="e.g. A 25-year-old athletic woman with silver hair in a ponytail and blue eyes."
-                  style="width:100%;margin-bottom:16px;"></textarea>
+                  placeholder="Permanent appearance description..."
+                  style="width:100%;margin-bottom:16px;" spellcheck="false"></textarea>
     </div>
 
     <button id="plz-reg-submit" class="menu_button" style="width:100%;padding:10px;">

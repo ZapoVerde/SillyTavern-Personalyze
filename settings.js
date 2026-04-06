@@ -1,41 +1,27 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
- * Manages the PersonaLyze user-configurable settings lifecycle.
+ * Manages the PersonaLyze profile-based settings lifecycle.
  *
- * Stores global toggles (enabled, portrait position, LLM profile assignments,
- * prompt overrides) separately from character data. Character data lives in
- * registry.js. Settings here control how the pipeline behaves, not what
- * characters look like.
+ * Implements the CNZ-style "Active State" architecture:
+ * - 'activeState' is the current working copy (the "Working Table").
+ * - 'profiles' is a dictionary of saved snapshots (the "Bookshelf").
+ * - Character data remains global in registry.js and is NOT part of profiles.
  *
- * Pipeline profile split:
- *   detectionProfileId — used for all cheap boolean/classifier calls
- *                        (subject match, subject list, change check, combined classifier)
- *   describerProfileId — used for outfit describer (more tokens, higher temp)
- *
- * STRICT CONTRACT:
- * 1. This module is the ONLY module permitted to mutate extension_settings.personalyze
- *    settings keys (non-character keys).
- * 2. External modules MUST use updateSetting() for all writes.
- * 3. External modules may READ via getSettings() directly.
+ * Migration: On first run, existing flat settings are harvested into a 'Default' profile.
  *
  * @api-declaration
- * getSettings()             — Returns the active settings object (Read-Only intent).
- * updateSetting(key, value) — Updates a single settings key and persists.
- * initSettings()            — Merges defaults into existing settings structure.
- *
- * @contract
- *   assertions:
- *     purity: Stateful
- *     state_ownership: [extension_settings.personalyze (settings keys)]
- *     external_io: [saveSettingsDebounced]
+ * getSettings()             — Returns the activeState (working copy).
+ * getMetaSettings()         — Returns the root object (profiles, currentProfileName).
+ * updateSetting(key, value) — Updates the working copy and debounces save.
+ * initSettings()            — Handles migration and default population.
  */
 
 import { saveSettingsDebounced } from '../../../../script.js';
 import { extension_settings } from '../../../extensions.js';
-import { warn } from './utils/logger.js';
+import { warn, log } from './utils/logger.js';
 import {
     DEFAULT_IMAGE_MODEL,
     DEFAULT_VN_STYLE_SUFFIX,
@@ -56,29 +42,22 @@ import {
 
 const EXT_NAME = 'personalyze';
 
+/** Global defaults for every new profile. */
 export const SETTINGS_DEFAULTS = Object.freeze({
     enabled:                true,
-    portraitPosition:       'bottom-right',       // 'bottom-right' | 'center-left'
-    plzVnMode:              false,                // PLZ split-screen character view
-    plzVnSplitPercent:      DEFAULT_PLZ_VN_SPLIT, // portrait area height as % of screen (15–75)
+    portraitPosition:       'bottom-right',
+    plzVnMode:              false,
+    plzVnSplitPercent:      DEFAULT_PLZ_VN_SPLIT,
     imageModel:             DEFAULT_IMAGE_MODEL,
     vnStyleSuffix:          DEFAULT_VN_STYLE_SUFFIX,
     devMode:                DEFAULT_DEV_MODE,
     verboseLogging:         DEFAULT_VERBOSE_LOGGING,
-
-    // LLM profile IDs — null means disabled (do not fall back to main connection)
-    booleanProfileId:       null,   // Step 1 + 2.9 — Subject Match (YES/NO) + Change Check (YES/NO)
-    classifierProfileId:    null,   // Step 2 + 3   — Subject From List + Combined Outfit/Expression
-    describerProfileId:     null,   // Step 3a      — Outfit Describer + Anchor Scan
-
-    // History window sizes (turn pairs)
+    booleanProfileId:       null,
+    classifierProfileId:    null,
+    describerProfileId:     null,
     detectionHistory:       DEFAULT_DETECTION_HISTORY,
     describerHistory:       DEFAULT_DESCRIBER_HISTORY,
-
-    // Expression label palette — editable so unusual characters can have custom entries added.
-    expressionLabels:           DEFAULT_EXPRESSION_LABELS,
-
-    // Prompt overrides
+    expressionLabels:       DEFAULT_EXPRESSION_LABELS,
     anchorScanPrompt:           DEFAULT_ANCHOR_SCAN_PROMPT,
     subjectMatchPrompt:         DEFAULT_SUBJECT_MATCH_PROMPT,
     subjectListPrompt:          DEFAULT_SUBJECT_LIST_PROMPT,
@@ -89,37 +68,58 @@ export const SETTINGS_DEFAULTS = Object.freeze({
 });
 
 /**
- * Returns the settings sub-object from the shared registry.
+ * Returns the "Working Table" settings.
  * @returns {object}
  */
 export function getSettings() {
-    return extension_settings[EXT_NAME].settings;
+    return extension_settings[EXT_NAME].activeState;
 }
 
 /**
- * Updates a single settings key and debounces a persistence write.
- * @param {string} key
- * @param {any} value
+ * Returns the root metadata (profiles list and current name).
+ * @returns {object}
+ */
+export function getMetaSettings() {
+    return extension_settings[EXT_NAME];
+}
+
+/**
+ * Updates a single key in the activeState.
  */
 export function updateSetting(key, value) {
     if (!Object.prototype.hasOwnProperty.call(SETTINGS_DEFAULTS, key)) {
-        warn('Settings', `Attempted to update unknown settings key: "${key}"`);
+        warn('Settings', `Attempted to update unknown key: "${key}"`);
         return;
     }
-    extension_settings[EXT_NAME].settings[key] = value;
+    extension_settings[EXT_NAME].activeState[key] = value;
     saveSettingsDebounced();
 }
 
 /**
- * Ensures the settings sub-object exists and is populated with defaults.
- * Called by registry.js during initRegistry().
+ * Initializes the settings structure. 
+ * If old flat settings exist, it moves them into a 'Default' profile.
  */
 export function initSettings() {
+    if (!extension_settings[EXT_NAME]) extension_settings[EXT_NAME] = {};
     const root = extension_settings[EXT_NAME];
-    if (!root.settings) {
-        root.settings = {};
+
+    // Migration logic: move old root.settings into profiles.Default
+    if (!root.profiles) {
+        log('Settings', 'Migrating to profile-based architecture...');
+        
+        const legacyConfig = root.settings || {};
+        const defaultProfile = Object.assign({}, SETTINGS_DEFAULTS, legacyConfig);
+        
+        root.profiles = { 'Default': defaultProfile };
+        root.currentProfileName = 'Default';
+        root.activeState = structuredClone(defaultProfile);
+        
+        // Clean up the old key
+        delete root.settings;
+    } else {
+        // Ensure activeState has all keys from current defaults (safety for updates)
+        root.activeState = Object.assign({}, SETTINGS_DEFAULTS, root.activeState);
     }
-    // Merge defaults without overwriting existing user values
-    root.settings = Object.assign({}, SETTINGS_DEFAULTS, root.settings);
+
     saveSettingsDebounced();
 }
