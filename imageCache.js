@@ -29,7 +29,7 @@ import { findSecret } from '../../../secrets.js';
 import { getCharacter } from './registry.js';
 import {
     POLLINATIONS_BASE_URL,
-    HUGGINGFACE_BASE_URL,
+
     DEFAULT_IMAGE_MODEL,
     DEFAULT_IMAGE_WIDTH,
     DEFAULT_IMAGE_HEIGHT,
@@ -146,30 +146,23 @@ async function fetchPollinationsWithRetry(url, key, maxRetries = 3) {
 }
 
 /**
- * Fetch from Hugging Face via SillyTavern's CORS proxy to avoid browser CORS restrictions.
- * Requires enableCorsProxy to be enabled on the ST server.
+ * Fetch from Hugging Face via the personalyze server plugin to avoid CORS restrictions.
+ * Requires the plugin/index.js to be deployed to the ST plugins directory.
  */
-async function fetchHuggingFaceWithRetry(prompt, key, maxRetries = 5) {
+async function fetchHuggingFaceWithRetry(prompt, maxRetries = 5) {
     const s = getSettings();
-    const targetUrl = `${HUGGINGFACE_BASE_URL}/${s.hfImageModel}`;
 
     const body = JSON.stringify({
-        inputs: prompt,
-        parameters: {
-            width: DEFAULT_IMAGE_WIDTH,
-            height: DEFAULT_IMAGE_HEIGHT,
-        },
-        options: { wait_for_model: true },
+        model: s.hfImageModel,
+        prompt,
+        width: DEFAULT_IMAGE_WIDTH,
+        height: DEFAULT_IMAGE_HEIGHT,
     });
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        const response = await fetch(`/proxy/${targetUrl}`, {
+        const response = await fetch('/api/plugins/personalyze/hf-generate', {
             method: 'POST',
-            headers: {
-                ...getRequestHeaders(),
-                'Authorization': `Bearer ${key}`,
-                'Content-Type': 'application/json',
-            },
+            headers: getRequestHeaders(),
             body,
         });
 
@@ -222,11 +215,11 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
     log('ImageCache', `${logTag} Preview Prompt:`, prompt);
     logCall('ImagePreview', `${logTag} ${prompt}`, null, null);
 
-    const key = await getAuthKey(provider);
+    const key = provider === 'huggingface' ? null : await getAuthKey(provider);
     let res;
 
     if (provider === 'huggingface') {
-        res = await fetchHuggingFaceWithRetry(prompt, key);
+        res = await fetchHuggingFaceWithRetry(prompt);
     } else {
         const s = getSettings();
         const seed = getCharacter(characterId)?.seed ?? 1;
@@ -264,11 +257,11 @@ export async function generate(
     const prompt = buildPortraitPrompt(anchor, outfitDescription, expressionLabel, provider);
     logCall('PortraitGenerate', `${logTag} ${prompt}`, null, null);
     
-    const key = await getAuthKey(provider);
+    const key = provider === 'huggingface' ? null : await getAuthKey(provider);
     let imgRes;
 
     if (provider === 'huggingface') {
-        imgRes = await fetchHuggingFaceWithRetry(prompt, key);
+        imgRes = await fetchHuggingFaceWithRetry(prompt);
     } else {
         const s = getSettings();
         const devMode = s.devMode ?? false;
