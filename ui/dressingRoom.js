@@ -1,15 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/dressingRoom.js
- * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role UI (Dressing Room)
  * @description
  * Implements the Dressing Room modal, a confirmation dialog for newly 
- * discovered outfits or expressions. Allows the user to refine labels 
- * and visual descriptions, and generate a preview before committing the 
- * entry to the Global Portfolio.
+ * discovered outfits. Updated to support engine selection (Pollinations/HF) 
+ * so users can route tag-heavy descriptions to Hugging Face immediately.
  *
  * @api-declaration
- * openDressingRoom(proposed) -> Promise<{key, label, description}|null>
+ * openDressingRoom(proposed) -> Promise<{key, label, description, provider}|null>
  *
  * @contract
  *   assertions:
@@ -19,7 +18,7 @@
  */
 
 import { callPopup } from '../../../../../script.js';
-import { fetchPreviewBlob, buildPortraitPrompt } from '../imageCache.js';
+import { fetchPreviewBlob } from '../imageCache.js';
 import { slugify, escapeHtml } from '../utils/history.js';
 import { smartResize } from '../utils/dom.js';
 import { error } from '../utils/logger.js';
@@ -27,14 +26,24 @@ import { startWorkshopTurn } from '../utils/callLog.js';
 
 /**
  * Opens the Dressing Room modal for an outfit or expression.
- * @param {object} proposed { dimension, label, key, description }
- * @returns {Promise<{key: string, label: string, description: string}|null>}
+ * @param {object} proposed { dimension, label, key, description, characterId, anchor }
+ * @returns {Promise<{key: string, label: string, description: string, provider: string}|null>}
  */
 export async function openDressingRoom(proposed) {
     const dimensionLabel = proposed.dimension === 'outfit' ? 'Outfit' : 'Expression';
     const aspectStyle    = proposed.dimension === 'outfit'
         ? 'aspect-ratio: 2/3; object-fit: cover;'
         : 'aspect-ratio: 4/3; object-fit: cover;';
+
+    // Provider selector only shown for outfits
+    const providerHtml = proposed.dimension === 'outfit' ? `
+        <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+            <label style="font-size:0.88em; opacity:0.75; white-space:nowrap;">Engine:</label>
+            <select id="plz-dr-provider" class="text_pole" style="flex:1;">
+                <option value="pollinations">Pollinations (Fast/Default)</option>
+                <option value="huggingface">Hugging Face (High Precision/LoRA)</option>
+            </select>
+        </div>` : '';
 
     const popupPromise = callPopup(
         `<h3>New ${escapeHtml(dimensionLabel)} Discovered</h3>
@@ -52,6 +61,8 @@ export async function openDressingRoom(proposed) {
         <textarea id="plz-dr-description" class="text_pole plz-auto-textarea" rows="3"
                   style="width:100%; font-family:monospace; font-size:0.9em; overflow:hidden;" spellcheck="false">${escapeHtml(proposed.description ?? '')}</textarea>
 
+        ${providerHtml}
+
         <div style="margin-top:10px;">
             <button class="menu_button" id="plz-dr-preview-btn">Generate Preview</button>
             <span id="plz-dr-preview-status" style="font-size:0.82em;opacity:0.65;margin-left:8px;"></span>
@@ -63,7 +74,6 @@ export async function openDressingRoom(proposed) {
         'confirm',
     );
 
-    // Multi-pass resize trigger to ensure stability in the popup lifecycle
     const triggerResize = () => {
         const el = document.getElementById('plz-dr-description');
         if (el) smartResize(el);
@@ -84,17 +94,21 @@ export async function openDressingRoom(proposed) {
 
     $('#plz-dr-preview-btn').on('click', async function () {
         const description = $('#plz-dr-description').val().trim();
+        const provider    = $('#plz-dr-provider').val() || 'pollinations';
         if (!description) return;
+        
         const $btn = $(this);
-        $btn.prop('disabled', true).text('Fetching...');
+        $btn.prop('disabled', true).text(provider === 'huggingface' ? 'Waiting for HF...' : 'Fetching...');
+        
         startWorkshopTurn('Dressing Room Preview');
         try {
-            const prompt    = buildPortraitPrompt(proposed.anchor ?? '', description, '');
-            const objectUrl = await fetchPreviewBlob(prompt, proposed.characterId);
+            // Note: expression is empty for discovery preview
+            const objectUrl = await fetchPreviewBlob(description, proposed.characterId, provider);
             $('#plz-dr-preview-container').show();
             $('#plz-dr-preview-img').attr('src', objectUrl);
         } catch (err) {
             error('DressingRoom', 'Preview failed:', err);
+            if (window.toastr) window.toastr.error(`Preview failed: ${err.message}`, 'PersonaLyze');
         } finally {
             $btn.prop('disabled', false).text('Generate Preview');
         }
@@ -110,5 +124,6 @@ export async function openDressingRoom(proposed) {
         key: slugify(label),
         label,
         description: $('#plz-dr-description').val().trim(),
+        provider: $('#plz-dr-provider').val() || 'pollinations',
     };
 }

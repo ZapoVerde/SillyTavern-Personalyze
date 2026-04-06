@@ -1,21 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline.js
- * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role Orchestrator / Narrative Logic
  * @description
  * Implements the PersonaLyze "Falling Water" detection pipeline.
- *
- * Triggered on every incoming AI message. Halts as early as possible
- * to minimise LLM spend. The cascade is:
- *
- *   Step 1   — Subject Match:     Is the active character the main subject? (YES/NO)
- *   Step 2   — Subject From List: If not, who is? (key or NONE)
- *   Step 2.9 — Change Check:      Still same outfit + expression? (YES/NO)
- *   Step 3   — Combined:          What outfit + expression? (two lines)
- *   Step 3a  — Outfit Describer:  Describe the new outfit (only if NEW)
- *
- * Expressions use the global DEFAULT_EXPRESSION_LABELS set — no per-character
- * expression registry. Images are built on demand.
+ * 
+ * Updated to support the Dual-Engine (Pollinations/HF) architecture. 
+ * Correctly passes provider flags from the Dressing Room to the Registry.
  *
  * @api-declaration
  * runPipeline(messageId) → Promise<void>
@@ -61,7 +52,6 @@ export async function runPipeline(messageId) {
     const s       = getSettings();
     if (!s.enabled) return;
 
-    // Roster gate — if no characters are enabled for this chat, do nothing.
     if (state.activeRoster.length === 0) return;
 
     startTurn('Pipeline');
@@ -69,10 +59,6 @@ export async function runPipeline(messageId) {
     const history = buildHistoryText(context.chat, messageId, s.detectionHistory ?? 2);
 
     // ── Step 1: Subject Match ────────────────────────────────────────────────
-    // Check whether the currently tracked character is the main subject.
-    // Fast path: if we already know who's active AND they're in the roster,
-    // a cheap YES/NO confirms it.
-
     let characterId = null;
 
     if (state.activeCharacterId && state.activeRoster.includes(state.activeCharacterId)) {
@@ -90,12 +76,9 @@ export async function runPipeline(messageId) {
     }
 
     // ── Step 2: Subject From List ────────────────────────────────────────────
-    // Current character wasn't the subject — identify from the active roster.
-    // Only characters explicitly enabled for this chat are candidates.
-
     if (!characterId) {
         const allIds = state.activeRoster.filter(id => getCharacter(id));
-        if (allIds.length === 0) return;   // Roster enabled but no registered chars — nothing to do.
+        if (allIds.length === 0) return;
 
         const userName = context.name1 ?? 'User';
         characterId = await detectSubjectFromList(
@@ -107,7 +90,7 @@ export async function runPipeline(messageId) {
             s.classifierProfileId,
         );
 
-        if (!characterId) return;   // NONE — no known character is the main subject.
+        if (!characterId) return;
     }
 
     const character = getCharacter(characterId);
@@ -116,14 +99,6 @@ export async function runPipeline(messageId) {
     updateActiveCharacter(characterId);
 
     // ── Step 2.9: Change Check ───────────────────────────────────────────────
-    // Cheap boolean: is everything still the same? Skip the classifier if so.
-    // Read from the DNA chain — this character's own last-known state, not the
-    // global active pointers (which may belong to a different character).
-    //
-    // If there is no chain entry for this character (first time we've seen them
-    // this session), skip the check entirely — we have nothing to compare against
-    // and must run the classifier unconditionally.
-
     const chainEntry = getChainEntry(characterId);
 
     if (chainEntry?.outfit && chainEntry?.expression) {
@@ -141,15 +116,12 @@ export async function runPipeline(messageId) {
         );
 
         if (unchanged) {
-            // Portrait is already correct — just ensure it's visible.
             if (chainEntry.image) setPortrait(chainEntry.image);
             return;
         }
     }
 
     // ── Step 3: Combined Classifier ──────────────────────────────────────────
-    // One call, two answers: current outfit key + current expression label.
-
     const outfitKeys = Object.keys(character.outfits);
     const { outfitKey, expressionKey } = await detectCombined(
         message.mes,
@@ -162,11 +134,9 @@ export async function runPipeline(messageId) {
         s.classifierProfileId,
     );
 
-    // Both NULL — classifier found nothing actionable.
     if (!outfitKey && !expressionKey) return;
 
     // ── Step 3a: Outfit Describer (only if NEW) ──────────────────────────────
-
     let finalOutfitKey = outfitKey !== 'NEW' ? outfitKey : null;
 
     if (outfitKey === 'NEW') {
@@ -180,49 +150,45 @@ export async function runPipeline(messageId) {
         );
 
         if (described) {
-            // Don't prompt if the user is in the character editor (not viewing chat)
             const charEditorOpen = document.getElementById('rm_ch_create_block')?.offsetParent !== null;
             if (charEditorOpen) return;
 
             const newKey  = slugify(described.label);
-            const approved = await openDressingRoom({ dimension: 'outfit', ...described, key: newKey, characterId, anchor: character.identityAnchor });
+            const approved = await openDressingRoom({ 
+                dimension: 'outfit', 
+                ...described, 
+                key: newKey, 
+                characterId, 
+                anchor: character.identityAnchor 
+            });
+
             if (approved) {
-                upsertOutfit(characterId, approved.key, approved.label, approved.description);
+                // Pass the provider flag (pollinations/huggingface) to the registry
+                upsertOutfit(characterId, approved.key, approved.label, approved.description, approved.provider);
                 finalOutfitKey = approved.key;
             }
         }
     }
 
-    // Fall back to this character's chain entry if the classifier returned NULL.
     const resolvedOutfitKey     = finalOutfitKey  ?? chainEntry?.outfit     ?? null;
     const resolvedExpressionKey = expressionKey   ?? chainEntry?.expression ?? null;
 
     if (!resolvedOutfitKey || !resolvedExpressionKey) return;
 
     updateActivePointers(resolvedOutfitKey, resolvedExpressionKey);
-    updateChainEntry(characterId, resolvedOutfitKey, resolvedExpressionKey, null);  // image patched later
+    updateChainEntry(characterId, resolvedOutfitKey, resolvedExpressionKey, null);
     await applyVisual(messageId, characterId, resolvedOutfitKey, resolvedExpressionKey, character);
 }
 
 // ─── Visual Commit ────────────────────────────────────────────────────────────
 
 /**
- * Resolves the portrait image for the given outfit × expression combination,
- * writes the pointer to the chat message, and applies the portrait to the UI.
- * Generates a new image if the combination has not been rendered before.
- *
- * @param {number} messageId
- * @param {string} characterId
- * @param {string} outfitKey
- * @param {string} expressionKey   One of DEFAULT_EXPRESSION_LABELS (e.g. "joy").
- * @param {object} character       Full character record from the registry.
+ * Resolves the portrait image for the given outfit × expression combination.
  */
 async function applyVisual(messageId, characterId, outfitKey, expressionKey, character) {
     const prefix     = buildFilenamePrefix(characterId, outfitKey, expressionKey);
     const cachedFile = findCachedImage(prefix, state.fileIndex);
 
-    // Write pointer immediately so the chat record is consistent even before
-    // the image is available.
     await lockedWritePointer(messageId, {
         characterId,
         outfit:     outfitKey,
@@ -231,17 +197,14 @@ async function applyVisual(messageId, characterId, outfitKey, expressionKey, cha
     });
 
     if (cachedFile) {
-        // Cache hit — instant display.
         updateActiveImage(cachedFile);
         setPortrait(cachedFile);
         return;
     }
 
-    // Cache miss — generate in background, patch the pointer when done.
     const outfitDef = character.outfits[outfitKey];
     if (!outfitDef) return;
 
-    // expressionKey IS the label (e.g. "joy") — used directly in the prompt.
     const capturedMsgId = messageId;
     generate(characterId, outfitKey, expressionKey, outfitDef.description, expressionKey, character.identityAnchor)
         .then(async newFile => {

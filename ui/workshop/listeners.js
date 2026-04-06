@@ -1,11 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/listeners.js
- * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role UI Controller (Workshop)
  * @description
  * Event orchestrator for the Character Workshop modal. Binds user interactions
- * for roster management, character registration, and the Studio's image 
+ * for roster management, character registration, and the Studio's image
  * generation and anchor scanning features.
+ *
+ * Updated to support per-outfit engine selection and bracket-aware previews.
  *
  * @api-declaration
  * bindWorkshopEvents(handlers) -> void
@@ -79,8 +81,6 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         const id      = $(this).closest('.plz-roster-item').data('id');
         const context = getContext();
 
-        // Roster changes must be anchored to an AI message so reconstruction
-        // can restore them. Require at least one AI turn before allowing changes.
         let lastAiIdx = -1;
         for (let i = context.chat.length - 1; i >= 0; i--) {
             if (!context.chat[i].is_user) { lastAiIdx = i; break; }
@@ -130,14 +130,11 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         const id   = $(this).closest('.plz-roster-item').data('id');
         const name = id.replace(/_/g, ' ');
 
-        if (!confirm(`Remove "${name}" from the Global Portfolio?\n\nGenerated portrait files will remain on disk but all registry data will be lost.`)) return;
+        if (!confirm(`Remove "${name}" from the Global Portfolio?`)) return;
 
-        // Delete from registry
         const root = window.extension_settings?.personalyze;
         if (root?.characters) {
             delete root.characters[id];
-            const { saveSettingsDebounced } = window.SillyTavern?.getContext?.() ?? {};
-            // Fallback: let ST's debounced save pick it up naturally on next action
         }
 
         if (state._workshopCharacterId === id) setWorkshopCharacter(null);
@@ -177,7 +174,8 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
             : character.expressions[key]?.label;
 
         if (dimension === 'outfit') {
-            upsertOutfit(id, key, existingLabel ?? key, desc);
+            const provider = $entry.find('.plz-entry-provider').val() || 'pollinations';
+            upsertOutfit(id, key, existingLabel ?? key, desc, provider);
         } else {
             upsertExpression(id, key, existingLabel ?? key, desc);
         }
@@ -197,7 +195,7 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
             ? character.outfits[key]?.label
             : character.expressions[key]?.label;
 
-        if (!confirm(`Remove ${dimension} "${label ?? key}"?\n\nExisting portrait images for this entry will remain on disk.`)) return;
+        if (!confirm(`Remove ${dimension} "${label ?? key}"?`)) return;
 
         if (dimension === 'outfit') {
             delete character.outfits[key];
@@ -205,7 +203,6 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
             delete character.expressions[key];
         }
 
-        // Trigger debounced save via upsertCharacter (re-saves the whole record)
         upsertCharacter(id, character.identityAnchor ?? '');
 
         renderStudio(id);
@@ -245,8 +242,6 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         if (!id) return;
 
         const { callPopup } = await import('../../../../../../script.js');
-        const { slugify }   = await import('../../utils/history.js');
-        const { escapeHtml } = await import('../../utils/history.js');
 
         const popupPromise = callPopup(
             `<h3>Add ${dimension === 'outfit' ? 'Outfit' : 'Expression'}</h3>
@@ -293,7 +288,7 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         }
 
         if (dimension === 'outfit') {
-            upsertOutfit(id, key, label, desc);
+            upsertOutfit(id, key, label, desc, 'pollinations');
         } else {
             upsertExpression(id, key, label, desc);
         }
@@ -305,11 +300,10 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
     // ─── Anchor Scan (Register + Studio) ─────────────────────────────────────
 
     $overlay.on('click', '.plz-anchor-scan', async function () {
-        const mode   = $(this).data('mode');   // 'register' or 'studio'
+        const mode   = $(this).data('mode');
         const $btn   = $(this);
         const $icon  = $btn.find('i');
 
-        // Spinner feedback
         $icon.removeClass('fa-wand-magic-sparkles').addClass('fa-spinner fa-spin');
         $btn.prop('disabled', true);
 
@@ -325,8 +319,6 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
             const lastIdx     = chat.length - 1;
             const transcript  = buildDescriberContext(chat, lastIdx, s.describerHistory ?? 3);
 
-            // For studio, focus on the character already in the slot.
-            // For register, use whatever name is already typed (may be empty).
             const focusName = mode === 'studio'
                 ? (state._workshopCharacterId?.replace(/_/g, ' ') ?? null)
                 : ($('#plz-reg-name').val().trim() || null);
@@ -346,10 +338,8 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
 
             if (mode === 'register') {
                 $('#plz-reg-name').val(result.name).trigger('input');
-                // Trigger input to force smartResize update
                 $('#plz-reg-anchor').val(result.anchor).trigger('input');
             } else {
-                // Studio — only update the anchor textarea, leave name alone.
                 $('#plz-studio-anchor').val(result.anchor).trigger('input');
             }
 
@@ -364,11 +354,8 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         }
     });
 
-    // ─── Register Tab ─────────────────────────────────────────────────────────
+    // ─── Portrait Generation (Studio) ────────────────────────────────────────
 
-    // ─── Portrait Generation (Studio — outfit entries) ────────────────────────
-
-    // Select an expression pill → enable buttons
     $overlay.on('click', '.plz-expr-pill', function () {
         const $pill    = $(this);
         const $section = $pill.closest('.plz-portrait-section');
@@ -380,13 +367,12 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         $section.find('.plz-portrait-preview-btn, .plz-portrait-generate-btn').prop('disabled', false);
     });
 
-    // Add a custom expression label to the global palette
     $overlay.on('click', '.plz-expr-add-btn', async function () {
         const { callPopup } = await import('../../../../../../script.js');
 
         const confirmed = await callPopup(
             `<h3>Add Expression</h3>
-            <label style="display:block;margin:8px 0 3px;font-size:0.88em;opacity:0.75;">Label (e.g. embarrassed)</label>
+            <label style="display:block;margin:8px 0 3px;font-size:0.88em;opacity:0.75;">Label</label>
             <input type="text" id="plz-custom-expr-input" class="text_pole" style="width:100%;" />`,
             'confirm'
         );
@@ -396,21 +382,19 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         if (!label) return;
 
         const s = getSettings();
-        if (s.expressionLabels.includes(label)) {
-            if (window.toastr) window.toastr.info(`"${label}" is already in the list.`, 'PersonaLyze');
-            return;
-        }
+        if (s.expressionLabels.includes(label)) return;
 
         updateSetting('expressionLabels', [...s.expressionLabels, label]);
         renderStudio(state._workshopCharacterId);
-        if (window.toastr) window.toastr.success(`Expression "${label}" added to global list.`, 'PersonaLyze');
     });
 
-    // Thumbnail preview — small fast image to check the look
+    // Thumbnail preview
     $overlay.on('click', '.plz-portrait-preview-btn', async function () {
         const $btn      = $(this);
         const outfitKey = $btn.data('key');
         const $section  = $btn.closest('.plz-portrait-section');
+        const $entry    = $section.closest('.plz-studio-entry');
+        const provider  = $entry.find('.plz-entry-provider').val() || 'pollinations';
         const exprLabel = $section.attr('data-selected-expr');
         const id        = state._workshopCharacterId;
         if (!id || !exprLabel) return;
@@ -425,8 +409,8 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
 
         startWorkshopTurn('Image Preview');
         try {
-            const prompt  = buildPortraitPrompt(character.identityAnchor, outfitDef.description, exprLabel);
-            const blobUrl = await fetchPreviewBlob(prompt, id);
+            const prompt  = buildPortraitPrompt(character.identityAnchor, outfitDef.description, exprLabel, provider);
+            const blobUrl = await fetchPreviewBlob(prompt, id, provider);
 
             const $area = $section.find('.plz-portrait-preview-area');
             $area.find('.plz-portrait-preview-img').attr('src', blobUrl);
@@ -441,7 +425,7 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         }
     });
 
-    // Generate full-resolution portrait and save to server
+    // Generate full-resolution portrait
     $overlay.on('click', '.plz-portrait-generate-btn', async function () {
         const $btn      = $(this);
         const outfitKey = $btn.data('key');
@@ -457,7 +441,6 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         const $icon = $btn.find('i');
         $icon.removeClass('fa-image').addClass('fa-spinner fa-spin');
         $btn.prop('disabled', true);
-        $section.find('.plz-portrait-preview-btn').prop('disabled', true);
 
         startWorkshopTurn('Portrait Generate');
         try {
@@ -470,7 +453,6 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
             updateChainEntry(id, outfitKey, exprLabel, newFile);
 
             if (window.toastr) window.toastr.success(`Saved: ${newFile}`, 'PersonaLyze');
-            // Add checkmark to the pill without a full re-render (which would wipe unsaved edits)
             $section.find('.plz-expr-pill').each(function () {
                 if ($(this).data('label') === exprLabel) {
                     $(this).addClass('plz-expr-has-image');
@@ -482,48 +464,48 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         } catch (err) {
             error('Studio', 'Portrait generation failed:', err);
             if (window.toastr) window.toastr.error(`Generate failed: ${err.message}`, 'PersonaLyze');
+        } finally {
             $icon.removeClass('fa-spinner fa-spin').addClass('fa-image');
             $btn.prop('disabled', false);
-            $section.find('.plz-portrait-preview-btn').prop('disabled', false);
+        }
+    });
+
+    // UI Feedback for engine toggle
+    $overlay.on('change', '.plz-entry-provider', function() {
+        const isHf = $(this).val() === 'huggingface';
+        const $parent = $(this).parent();
+        const $icon = $parent.find('.fa-cloud');
+        if (isHf) {
+            if (!$icon.length) {
+                $(this).after(' <i class="fa-solid fa-cloud" title="Using Hugging Face" style="font-size:0.8em; color:var(--SmartThemeQuoteColor); margin-left:5px;"></i>');
+            }
+        } else {
+            $icon.remove();
         }
     });
 
     // ─── Register Tab ─────────────────────────────────────────────────────────
 
-    // Live key preview
     $overlay.on('input', '#plz-reg-name', function () {
         const key = slugify(this.value);
         $('#plz-reg-key-preview').text(key || '—');
     });
 
-    // Submit new character
     $overlay.on('click', '#plz-reg-submit', function () {
         const name   = $('#plz-reg-name').val().trim();
         const anchor = $('#plz-reg-anchor').val().trim();
         const key    = slugify(name);
 
-        if (!name || !key) {
-            $('#plz-reg-status').text('A character name is required.');
-            return;
-        }
-        if (!anchor) {
-            $('#plz-reg-status').text('An Identity Anchor is required.');
-            return;
-        }
+        if (!name || !key || !anchor) return;
 
         const existing = getCharacter(key);
-        if (existing) {
-            $('#plz-reg-status').text(`"${name}" is already registered (key: ${key}). Use the Studio to edit them.`);
-            return;
-        }
+        if (existing) return;
 
         upsertCharacter(key, anchor);
         $('#plz-reg-name').val('');
         $('#plz-reg-anchor').val('').trigger('input');
         $('#plz-reg-key-preview').text('—');
-        $('#plz-reg-status').text('');
 
-        // Auto-add to the current chat's roster if there's an AI message to anchor to.
         const context = getContext();
         let lastAiIdx = -1;
         for (let i = context.chat.length - 1; i >= 0; i--) {
@@ -532,15 +514,11 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         if (lastAiIdx !== -1 && !state.activeRoster.includes(key)) {
             const newRoster = [...state.activeRoster, key];
             setActiveRoster(newRoster);
-            lockedWriteRoster(lastAiIdx, newRoster).catch(err =>
-                error('Workshop', 'Auto-roster write failed:', err)
-            );
+            lockedWriteRoster(lastAiIdx, newRoster).catch(() => {});
         }
 
         setWorkshopCharacter(key);
         renderRoster();
         switchTab('studio');
-
-        if (window.toastr) window.toastr.success(`"${name}" added to the Global Portfolio.`, 'PersonaLyze');
     });
 }

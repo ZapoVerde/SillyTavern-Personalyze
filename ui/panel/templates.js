@@ -1,11 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/panel/templates.js
- * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Generates the HTML strings for the PersonaLyze settings panel.
- * Uses a modular approach to build the profile bar, pipeline step rows, 
- * and developer configuration sections.
+ * 
+ * Updated to include Hugging Face (HF) API and Model configuration.
  *
  * @api-declaration
  * buildPanelHTML(settings, meta, profileNames) -> string (HTML)
@@ -154,33 +154,50 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
                 <!-- Image Generation -->
                 <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--SmartThemeBorderColor,#444);">
                     <div style="display:flex; align-items:center; margin-bottom:10px;">
-                        <strong style="font-size:0.95em;">Image Generation</strong>
-                        ${tip("Configure how portraits are rendered via the Pollinations API.")}
+                        <strong style="font-size:0.95em;">Image Generation — Engines</strong>
+                        ${tip("Configure your rendering engines. Use Pollinations for speed and Hugging Face for high-precision LoRA outfits.")}
                     </div>
                     
-                    <!-- API Key row -->
-                    <div style="display:flex; align-items:center; gap:6px;">
-                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:60px;">API Key:</label>
-                        <input type="password" id="plz-pollinations-key" class="text_pole"
-                               placeholder="sk_..." style="flex:1; min-width:0;" />
-                        <button class="menu_button" id="plz-pollinations-save" style="white-space:nowrap;">Save to Vault</button>
-                        <button class="menu_button" id="plz-pollinations-test" style="white-space:nowrap;">Test Connection</button>
+                    <!-- Secrets Bar -->
+                    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px; padding:10px; background:rgba(0,0,0,0.2); border-radius:6px;">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:95px;">Pollinations Key:</label>
+                            <input type="password" id="plz-pollinations-key" class="text_pole" placeholder="sk_..." style="flex:1; min-width:0;" />
+                            <button class="menu_button plz-vault-save" data-secret="api_key_pollinations" style="white-space:nowrap; padding:2px 10px;">Save</button>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:95px;">HuggingFace Key:</label>
+                            <input type="password" id="plz-huggingface-key" class="text_pole" placeholder="hf_..." style="flex:1; min-width:0;" />
+                            <button class="menu_button plz-vault-save" data-secret="api_key_huggingface" style="white-space:nowrap; padding:2px 10px;">Save</button>
+                        </div>
+                        <div id="plz-key-status" style="font-size:0.8em; margin-top:2px;"></div>
+                        <div style="display:flex; gap:6px; margin-top:4px;">
+                            <button class="menu_button" id="plz-test-pollinations" style="flex:1; font-size:0.8em; padding:2px 6px;">Test Pollinations</button>
+                            <button class="menu_button" id="plz-test-huggingface" style="flex:1; font-size:0.8em; padding:2px 6px;">Test Hugging Face</button>
+                        </div>
+                        <div id="plz-test-status" style="font-size:0.8em; opacity:0.6; text-align:center;"></div>
                     </div>
-                    <div id="plz-key-status" style="font-size:0.82em; margin-left:68px; margin-bottom:5px;"></div>
-                    <div id="plz-pollinations-status" style="font-size:0.82em; opacity:0.65; margin-left:68px; margin-bottom:10px;"></div>
 
+                    <!-- Pollinations Model -->
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:60px;">Model:</label>
+                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Pollinations:</label>
                         <select id="plz-image-model" class="text_pole" style="flex:1;">
                             ${modelOptions}
                         </select>
-                        ${tip("The specific image generation model provided by Pollinations.")}
+                        ${tip("The base model used for Pollinations generations.")}
+                    </div>
+
+                    <!-- Hugging Face Model -->
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">HF Model:</label>
+                        <input type="text" id="plz-hf-image-model" class="text_pole" style="flex:1;" placeholder="e.g. black-forest-labs/FLUX.1-dev" value="${escapeHtml(s.hfImageModel ?? '')}" />
+                        ${tip("The Hugging Face model repository ID. Used when an outfit is toggled to Hugging Face.")}
                     </div>
 
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:60px;">Prompt:</label>
+                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Prompt:</label>
                         <button class="menu_button plz-open-prompt" data-prompt-key="vnStyleSuffix" style="flex:1;">Edit Portrait Prompt Template</button>
-                        ${tip("The foundation of your image prompt. Supports {{character}}, {{outfit}}, and {{expression}} variables.")}
+                        ${tip("The foundation of your image prompt. Supports {{character}}, {{outfit}}, and {{expression}} variables. <lora:name> tags are stripped for Pollinations and cleaned for HF.")}
                     </div>
 
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
@@ -209,7 +226,7 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
                         <button class="menu_button" id="plz-view-logs" style="font-size:0.85em; padding:4px 10px;">
                             <i class="fa-solid fa-list"></i> View Logs
                         </button>
-                        ${tip("Inspect the last two turns of AI call logs — prompts sent, responses received, and any errors.")}
+                        ${tip("Inspect the last few turns of AI call logs — prompts sent, responses received, and any errors.")}
                     </div>
                 </div>
 

@@ -1,31 +1,27 @@
 /**
  * @file data/default-user/extensions/personalyze/imageCache.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role IO Executor (Image)
  * @description
  * Owns all image-related IO for PersonaLyze.
- *
- * Builds the "Prompt Sandwich" from character data and delegates to Pollinations
- * for generation. Uploads resulting images to ST's backgrounds store under the
- * deterministic PLZ naming convention:
- *   plz_{characterId}_{outfitKey}_{expressionKey}.png
- *
- * Provides a file-index fetch scoped to PLZ-prefixed files, and a preview blob
- * fetcher used by the Dressing Room modal before committing a new entry.
+ * 
+ * Implements the Dual-Engine (Pollinations/HuggingFace) architecture. 
+ * Handles prompt processing (stripping <lora> tags for Pollinations) and 
+ * manages API communication with both providers.
  *
  * @api-declaration
- * buildFilenamePrefix(characterId, outfitKey, expressionKey) → string  (no extension, used as search prefix)
+ * buildFilenamePrefix(characterId, outfitKey, expressionKey) → string
  * findCachedImage(prefix, fileIndex) → string|null
- * buildPortraitPrompt(anchor, outfitDescription, expressionDescription) → string
+ * buildPortraitPrompt(anchor, outfitDesc, exprDesc, provider) → string
  * fetchFileIndex() → Promise<{ fileIndex: Set<string>, allImages: string[] }>
- * fetchPreviewBlob(prompt, characterId) → Promise<string> (Object URL)
- * generate(characterId, outfitKey, expressionKey, outfitDef, expressionDef, anchor) → Promise<string> (filename)
+ * fetchPreviewBlob(prompt, characterId, provider) → Promise<string>
+ * generate(characterId, outfitKey, expressionKey, outfitDef, expressionDef, anchor) → Promise<string>
  *
  * @contract
  *   assertions:
  *     purity: IO
  *     state_ownership: []
- *     external_io: [findSecret, fetch(/api/backgrounds/all), fetch(/api/backgrounds/upload), Pollinations API]
+ *     external_io: [findSecret, Pollinations API, Hugging Face API]
  */
 
 import { getRequestHeaders } from '../../../../script.js';
@@ -33,6 +29,7 @@ import { findSecret } from '../../../secrets.js';
 import { getCharacter } from './registry.js';
 import {
     POLLINATIONS_BASE_URL,
+    HUGGINGFACE_BASE_URL,
     DEFAULT_IMAGE_MODEL,
     DEFAULT_IMAGE_WIDTH,
     DEFAULT_IMAGE_HEIGHT,
@@ -44,33 +41,16 @@ import { getSettings } from './settings.js';
 import { log, warn, error as logError } from './utils/logger.js';
 import { logCall } from './utils/callLog.js';
 
-const SECRET_KEY_NAME = 'api_key_pollinations';
-const FILE_PREFIX     = 'plz_';
+const SECRET_POLLINATIONS = 'api_key_pollinations';
+const SECRET_HUGGINGFACE  = 'api_key_huggingface';
+const FILE_PREFIX         = 'plz_';
 
 // ─── Naming ───────────────────────────────────────────────────────────────────
 
-/**
- * Returns the filename prefix for an outfit × expression combination.
- * Actual saved files append a Unix-ms timestamp before the extension:
- *   plz_{characterId}_{outfitKey}_{expressionKey}_{timestamp}.png
- * Use this prefix with findCachedImage() to locate existing files.
- * @param {string} characterId
- * @param {string} outfitKey
- * @param {string} expressionKey
- * @returns {string}  e.g. "plz_claire_armor_joy_"
- */
 export function buildFilenamePrefix(characterId, outfitKey, expressionKey) {
     return `${FILE_PREFIX}${characterId}_${outfitKey}_${expressionKey}_`;
 }
 
-/**
- * Finds the most recent cached image file for a given prefix.
- * Returns the matching filename, or null if none exists.
- * When multiple timestamped versions exist the last one (highest timestamp) wins.
- * @param {string}      prefix     From buildFilenamePrefix().
- * @param {Set<string>} fileIndex
- * @returns {string|null}
- */
 export function findCachedImage(prefix, fileIndex) {
     let best = null;
     for (const f of fileIndex) {
@@ -81,128 +61,142 @@ export function findCachedImage(prefix, fileIndex) {
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-async function getAuthHeaders() {
-    const userKey = await findSecret(SECRET_KEY_NAME);
-
-    if (!userKey) {
+async function getAuthKey(provider) {
+    const secretName = provider === 'huggingface' ? SECRET_HUGGINGFACE : SECRET_POLLINATIONS;
+    const key = await findSecret(secretName);
+    if (!key) {
         throw new Error(
-            'Pollinations API key not found or blocked.\n\n' +
-            '1. Ensure the key is set in ST API settings (Pollinations).\n' +
-            '2. In SillyTavern/config.yaml, set "allowKeysExposure: true" then restart the server.'
+            `${provider === 'huggingface' ? 'Hugging Face' : 'Pollinations'} API key not found.\n` +
+            `Ensure it is set in PLZ settings / ST secrets.`
         );
     }
-
-    return { 'Authorization': `Bearer ${userKey}` };
+    return key;
 }
 
 // ─── Prompt Builder ───────────────────────────────────────────────────────────
 
 /**
- * Assembles the portrait prompt.
- *
- * When the suffix template contains any of {{character}}, {{outfit}}, or
- * {{expression}}, those variables are substituted and the result is used as
- * the entire prompt.  Unresolved variables (empty value) are replaced with an
- * empty string and the surrounding comma+space is collapsed.
- *
- * When the suffix contains no variables the legacy "sandwich" behaviour is
- * preserved: [anchor, outfit, expression, suffix] joined by ", ".
- *
- * @param {string} anchor           The character's permanent appearance description.
+ * Assembles the portrait prompt and applies provider-specific transformations.
+ * 
+ * BRACKET LOGIC:
+ * - Pollinations: Strip brackets and their contents: <tag> -> ""
+ * - HuggingFace: Strip just the brackets: <tag> -> "tag"
+ * 
+ * @param {string} anchor
  * @param {string} outfitDescription
  * @param {string} expressionDescription
+ * @param {'pollinations'|'huggingface'} provider
  * @returns {string}
  */
-export function buildPortraitPrompt(anchor, outfitDescription, expressionDescription) {
+export function buildPortraitPrompt(anchor, outfitDescription, expressionDescription, provider = 'pollinations') {
     const s = getSettings();
     const suffix = s.vnStyleSuffix ?? DEFAULT_VN_STYLE_SUFFIX;
 
+    let processedOutfit = outfitDescription ?? '';
+
+    if (provider === 'huggingface') {
+        // Leave the triggers, just remove the brackets
+        processedOutfit = processedOutfit.replace(/[<>]/g, '');
+    } else {
+        // Completely remove the bracketed tags
+        processedOutfit = processedOutfit.replace(/<[^>]+>/g, '');
+    }
+
     const hasVars = /\{\{(character|outfit|expression)\}\}/.test(suffix);
+    let fullPrompt;
+
     if (hasVars) {
-        return suffix
+        fullPrompt = suffix
             .replace(/\{\{character\}\}/g,  anchor              ?? '')
-            .replace(/\{\{outfit\}\}/g,      outfitDescription   ?? '')
+            .replace(/\{\{outfit\}\}/g,      processedOutfit    ?? '')
             .replace(/\{\{expression\}\}/g,  expressionDescription ?? '')
-            // collapse ", , " or leading/trailing ", " left by empty vars
             .replace(/(,\s*)+,/g, ',')
             .replace(/^[,\s]+|[,\s]+$/g, '')
             .trim();
+    } else {
+        fullPrompt = [anchor, processedOutfit, expressionDescription, suffix]
+            .filter(Boolean)
+            .join(', ');
     }
 
-    return [anchor, outfitDescription, expressionDescription, suffix]
-        .filter(Boolean)
-        .join(', ');
+    return fullPrompt;
 }
 
-// ─── Pollinations Helpers ─────────────────────────────────────────────────────
-
-function buildPollinationsUrl(prompt, width, height, seed) {
-    const s = getSettings();
-    const params = new URLSearchParams({
-        width:  String(width),
-        height: String(height),
-        model:  s.imageModel ?? DEFAULT_IMAGE_MODEL,
-        nologo: 'true',
-        seed:   String(seed),
-        safe:   'false',
-    });
-    return `${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(prompt)}?${params.toString()}`;
-}
+// ─── Network IO ───────────────────────────────────────────────────────────────
 
 /**
- * Fetches a Pollinations URL with up to 3 automatic retries on 5xx errors,
- * using exponential backoff (1 s, 2 s, 4 s).
- * 4xx and network errors on the final attempt are re-thrown as-is.
- * @param {string} url
- * @param {Record<string, string>} headers
- * @param {number} [maxRetries=3]
- * @returns {Promise<Response>}
+ * Fetch from Pollinations with standard retries.
  */
-async function fetchPollinationsWithRetry(url, headers, maxRetries = 3) {
+async function fetchPollinationsWithRetry(url, key, maxRetries = 3) {
+    const headers = { 'Authorization': `Bearer ${key}` };
     let lastResponse;
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             const response = await fetch(url, { headers });
             if (response.status < 500) return response;
             lastResponse = response;
         } catch (err) {
-            if (attempt < maxRetries) {
-                const delay = 1000 * Math.pow(2, attempt);
-                warn('ImageCache', `Pollinations network error – retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})…`);
-                await new Promise(r => setTimeout(r, delay));
-                continue;
-            }
-            logError('ImageCache', 'Pollinations network error after all retries:', err);
-            throw err;
+            if (attempt === maxRetries) throw err;
         }
-        if (attempt < maxRetries) {
-            const delay = 1000 * Math.pow(2, attempt);
-            warn('ImageCache', `Pollinations ${lastResponse.status} – retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})…`);
-            await new Promise(r => setTimeout(r, delay));
-        }
+        const delay = 1000 * Math.pow(2, attempt);
+        await new Promise(r => setTimeout(r, delay));
     }
-    logError('ImageCache', `Pollinations ${lastResponse.status} after all retries – giving up.`);
     return lastResponse;
+}
+
+/**
+ * Fetch from Hugging Face with "Cold Start" (503) awareness.
+ */
+async function fetchHuggingFaceWithRetry(prompt, key, maxRetries = 5) {
+    const s = getSettings();
+    const url = `${HUGGINGFACE_BASE_URL}/${s.hfImageModel}`;
+    const headers = {
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': 'application/json',
+    };
+
+    const body = JSON.stringify({
+        inputs: prompt,
+        parameters: {
+            width: DEFAULT_IMAGE_WIDTH,
+            height: DEFAULT_IMAGE_HEIGHT,
+        },
+        options: { wait_for_model: true }
+    });
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const response = await fetch(url, { method: 'POST', headers, body });
+
+        if (response.ok) return response;
+
+        if (response.status === 503) {
+            const data = await response.json();
+            const waitTime = (data.estimated_time || 10) * 1000;
+            warn('ImageCache', `HF Model loading. Waiting ${waitTime}ms (Attempt ${attempt + 1}/${maxRetries})`);
+            await new Promise(r => setTimeout(r, Math.min(waitTime, 20000))); // Cap at 20s per retry
+            continue;
+        }
+
+        const errText = await response.text();
+        throw new Error(`Hugging Face API Error (${response.status}): ${errText}`);
+    }
+    throw new Error('Hugging Face model failed to load after multiple retries.');
 }
 
 async function validateImageResponse(response) {
     if (!response.ok) {
         const text = await response.text();
-        throw new Error(`Pollinations API Error (${response.status}): ${text}`);
+        throw new Error(`Image API Error (${response.status}): ${text}`);
     }
     const contentType = response.headers.get('Content-Type');
     if (!contentType || !contentType.startsWith('image/')) {
-        const text = await response.text();
-        throw new Error(`Expected image, but received ${contentType}: ${text}`);
+        throw new Error(`Expected image, but received ${contentType}`);
     }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Fetches all background filenames from the server and returns those that belong to PLZ.
- * @returns {Promise<{ fileIndex: Set<string>, allImages: string[] }>}
- */
 export async function fetchFileIndex() {
     const res = await fetch('/api/backgrounds/all', {
         method: 'POST',
@@ -216,33 +210,38 @@ export async function fetchFileIndex() {
 }
 
 /**
- * Fetches a small preview image from Pollinations and returns a local blob URL.
- * Used by the Dressing Room modal before the user approves a new definition.
- * @param {string} prompt        The fully assembled image prompt.
- * @param {string} characterId   Used to look up the character's seed (1–98).
- * @returns {Promise<string>}  An object URL valid for this session.
+ * Fetches a preview image. Respects the provided provider.
  */
-export async function fetchPreviewBlob(prompt, characterId) {
-    const seed    = getCharacter(characterId)?.seed ?? 1;
-    const url     = buildPollinationsUrl(prompt, DEV_IMAGE_WIDTH, DEV_IMAGE_HEIGHT, seed);
-    log('ImageCache', 'pollinations prompt →', prompt);
-    logCall('ImagePreview', prompt, null, null);
-    const headers = await getAuthHeaders();
-    const res     = await fetchPollinationsWithRetry(url, headers);
+export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinations') {
+    const logTag = `[${provider.toUpperCase()}]`;
+    log('ImageCache', `${logTag} Preview Prompt:`, prompt);
+    logCall('ImagePreview', `${logTag} ${prompt}`, null, null);
+
+    const key = await getAuthKey(provider);
+    let res;
+
+    if (provider === 'huggingface') {
+        res = await fetchHuggingFaceWithRetry(prompt, key);
+    } else {
+        const s = getSettings();
+        const seed = getCharacter(characterId)?.seed ?? 1;
+        const params = new URLSearchParams({
+            width: String(DEV_IMAGE_WIDTH),
+            height: String(DEV_IMAGE_HEIGHT),
+            model: s.imageModel ?? DEFAULT_IMAGE_MODEL,
+            nologo: 'true',
+            seed: String(seed),
+        });
+        const url = `${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(prompt)}?${params.toString()}`;
+        res = await fetchPollinationsWithRetry(url, key);
+    }
+
     await validateImageResponse(res);
     return URL.createObjectURL(await res.blob());
 }
 
 /**
- * Generates a full-resolution portrait for an outfit × expression combination,
- * uploads it to the server, and returns the deterministic filename.
- * @param {string} characterId
- * @param {string} outfitKey
- * @param {string} expressionKey
- * @param {string} outfitDescription
- * @param {string} expressionLabel     The ST expression label (e.g. "joy") — used directly in prompt.
- * @param {string} anchor              The character's identity anchor string.
- * @returns {Promise<string>}          The saved filename (e.g. plz_claire_armor_joy.png).
+ * Generates and uploads a full-res portrait.
  */
 export async function generate(
     characterId,
@@ -252,18 +251,38 @@ export async function generate(
     expressionLabel,
     anchor
 ) {
-    const s        = getSettings();
-    const devMode  = s.devMode ?? false;
-    const width    = devMode ? DEV_IMAGE_WIDTH  : DEFAULT_IMAGE_WIDTH;
-    const height   = devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
+    const character = getCharacter(characterId);
+    const outfit    = character?.outfits[outfitKey];
+    const provider  = outfit?.provider ?? 'pollinations';
+    const logTag    = `[${provider.toUpperCase()}]`;
 
-    const prompt   = buildPortraitPrompt(anchor, outfitDescription, expressionLabel);
-    logCall('PortraitGenerate', prompt, null, null);
-    const seed     = getCharacter(characterId)?.seed ?? 1;
-    const url      = buildPollinationsUrl(prompt, width, height, seed);
-    const headers  = await getAuthHeaders();
+    const prompt = buildPortraitPrompt(anchor, outfitDescription, expressionLabel, provider);
+    logCall('PortraitGenerate', `${logTag} ${prompt}`, null, null);
+    
+    const key = await getAuthKey(provider);
+    let imgRes;
 
-    const imgRes = await fetchPollinationsWithRetry(url, headers);
+    if (provider === 'huggingface') {
+        imgRes = await fetchHuggingFaceWithRetry(prompt, key);
+    } else {
+        const s = getSettings();
+        const devMode = s.devMode ?? false;
+        const width  = devMode ? DEV_IMAGE_WIDTH  : DEFAULT_IMAGE_WIDTH;
+        const height = devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
+        const seed   = character?.seed ?? 1;
+        
+        const params = new URLSearchParams({
+            width: String(width),
+            height: String(height),
+            model: s.imageModel ?? DEFAULT_IMAGE_MODEL,
+            nologo: 'true',
+            seed: String(seed),
+            safe: 'false',
+        });
+        const url = `${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(prompt)}?${params.toString()}`;
+        imgRes = await fetchPollinationsWithRetry(url, key);
+    }
+
     await validateImageResponse(imgRes);
 
     const filename = `${buildFilenamePrefix(characterId, outfitKey, expressionKey)}${Date.now()}.png`;
@@ -280,17 +299,12 @@ export async function generate(
     });
 
     if (!uploadRes.ok) {
-        throw new Error(`Portrait upload failed: ${uploadRes.status} ${uploadRes.statusText}`);
+        throw new Error(`Portrait upload failed: ${uploadRes.status}`);
     }
 
     return filename;
 }
 
-/**
- * Deletes all PLZ portrait images for a character from the server.
- * @param {string} characterId
- * @returns {Promise<string[]>}  List of filenames that were deleted.
- */
 export async function flushCharacterImages(characterId) {
     const { fileIndex } = await fetchFileIndex();
     const prefix = `${FILE_PREFIX}${characterId}_`;

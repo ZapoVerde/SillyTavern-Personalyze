@@ -1,20 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/registry.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role Stateful Owner (Global Registry)
  * @description
  * Single gatekeeper for all reads and writes to extension_settings.personalyze.
- *
- * Stores the Global Character Portfolio: the identity anchors, outfit definitions,
- * and expression definitions that persist across all chats. Character data is keyed
- * by the character's slugified avatar filename.
- *
- * STRICT CONTRACT:
- * 1. This module is the ONLY module permitted to mutate 'extension_settings.personalyze'.
- * 2. External modules MUST use the provided Setter API for all updates.
- * 3. External modules may READ via the getter functions.
- * 4. Dictionary keys (outfit keys, expression keys) are immutable once created.
- *    Only the 'label' field on an entry may be updated post-creation.
+ * 
+ * Stores the Global Character Portfolio. Character data is keyed by the 
+ * character's slugified avatar filename.
+ * 
+ * Updated to support per-outfit image generation providers (Pollinations/HF).
  *
  * @api-declaration
  * initRegistry()                                    — Initializes or migrates the settings structure.
@@ -22,16 +16,10 @@
  * getAllCharacterIds()                               — Returns all registered character IDs.
  * upsertCharacter(characterId, anchor)              — Creates or updates an identity anchor.
  * setCharacterSeed(characterId, seed)               — Sets the image generation seed (1–98) for a character.
- * upsertOutfit(characterId, key, label, description) — Adds or updates an outfit definition.
+ * upsertOutfit(characterId, key, label, description, provider) — Adds/updates outfit with provider flag.
  * upsertExpression(characterId, key, label, description) — Adds or updates an expression definition.
  * getOutfit(characterId, outfitKey)                 — Returns a single outfit entry or null.
  * getExpression(characterId, expressionKey)         — Returns a single expression entry or null.
- *
- * @contract
- *   assertions:
- *     purity: Stateful
- *     state_ownership: [extension_settings.personalyze]
- *     external_io: [saveSettingsDebounced]
  */
 
 import { saveSettingsDebounced } from '../../../../script.js';
@@ -53,7 +41,6 @@ function getRoot() {
 
 /**
  * Ensures the extension_settings.personalyze structure exists and is valid.
- * Safe to call on every load; performs no destructive migrations.
  */
 export function initRegistry() {
     if (!extension_settings[EXT_NAME]) {
@@ -153,29 +140,34 @@ export function setCharacterSeed(characterId, seed) {
 
 /**
  * Adds or updates an outfit definition in a character's portfolio.
- * The key is immutable — if it already exists only the label and description are updated.
+ * The key is immutable — if it already exists only the label, description, and provider are updated.
+ * 
  * @param {string} characterId
  * @param {string} key          Immutable slug key (e.g. "red_dress").
- * @param {string} label        Display name shown in the UI (e.g. "Red Evening Dress").
- * @param {string} description  Visual description used in image generation prompts.
+ * @param {string} label        Display name shown in the UI.
+ * @param {string} description  Visual description (supports <lora:name> tags).
+ * @param {'pollinations'|'huggingface'} [provider='pollinations'] The image generation provider.
  */
-export function upsertOutfit(characterId, key, label, description) {
+export function upsertOutfit(characterId, key, label, description, provider = 'pollinations') {
     const character = getRoot().characters[characterId];
     if (!character) {
         warn('Registry', `upsertOutfit called for unknown character: "${characterId}"`);
         return;
     }
-    character.outfits[key] = { label, description };
+    character.outfits[key] = { 
+        label, 
+        description, 
+        provider: provider || 'pollinations' 
+    };
     saveSettingsDebounced();
 }
 
 /**
  * Adds or updates an expression definition in a character's portfolio.
- * The key is immutable — if it already exists only the label and description are updated.
  * @param {string} characterId
- * @param {string} key          Immutable slug key (e.g. "tearful_smile").
- * @param {string} label        Display name shown in the UI (e.g. "Tearful Smile").
- * @param {string} description  Visual description used in image generation prompts.
+ * @param {string} key
+ * @param {string} label
+ * @param {string} description
  */
 export function upsertExpression(characterId, key, label, description) {
     const character = getRoot().characters[characterId];

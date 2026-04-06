@@ -1,18 +1,19 @@
 /**
  * @file data/default-user/extensions/personalyze/defaults.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role Default Configuration
  * @description
  * Default prompt strings, API constants, and tunable values for Personalyze.
- *
- * All prompt templates use {{double_brace}} interpolation tokens that are
- * replaced by the pipeline at call time.
+ * 
+ * Updated to support the Dual-Engine (Pollinations/HuggingFace) architecture.
  *
  * @api-declaration
  * POLLINATIONS_BASE_URL
  * POLLINATIONS_APP_KEY
  * POLLINATIONS_MODELS
  * DEFAULT_IMAGE_MODEL
+ * HUGGINGFACE_BASE_URL
+ * DEFAULT_HF_IMAGE_MODEL
  * DEFAULT_IMAGE_WIDTH
  * DEFAULT_IMAGE_HEIGHT
  * DEFAULT_DEV_MODE
@@ -30,10 +31,13 @@
  */
 
 /** Primary API gateway for Pollinations. */
-export const POLLINATIONS_BASE_URL = 'https://gen.pollinations.ai'
+export const POLLINATIONS_BASE_URL = 'https://gen.pollinations.ai';
+
+/** Primary API gateway for Hugging Face Inference. */
+export const HUGGINGFACE_BASE_URL = 'https://api-inference.huggingface.co/models';
 
 /** Publishable app key — identifies Personalyze to Pollinations for attribution. */
-export const POLLINATIONS_APP_KEY = ''
+export const POLLINATIONS_APP_KEY = '';
 
 /** Available Pollinations image models. */
 export const POLLINATIONS_MODELS = [
@@ -44,31 +48,34 @@ export const POLLINATIONS_MODELS = [
     'grok-imagine',
     'seedream',
     'qwen-image',
-]
+];
 
 /** Default Pollinations model. */
-export const DEFAULT_IMAGE_MODEL = 'flux'
+export const DEFAULT_IMAGE_MODEL = 'flux';
+
+/** Default Hugging Face model (typically a Flux variant for consistency). */
+export const DEFAULT_HF_IMAGE_MODEL = 'black-forest-labs/FLUX.1-dev';
 
 /** Portrait dimensions — tall aspect ratio for VN-style character cards. */
-export const DEFAULT_IMAGE_WIDTH  = 512
-export const DEFAULT_IMAGE_HEIGHT = 768
+export const DEFAULT_IMAGE_WIDTH  = 512;
+export const DEFAULT_IMAGE_HEIGHT = 768;
 
 /** Default split percentage for PLZ split-screen character view (portrait area height as % of screen). */
-export const DEFAULT_PLZ_VN_SPLIT = 40
+export const DEFAULT_PLZ_VN_SPLIT = 40;
 
 /** Dev mode — generates recognizable but low-cost images. */
-export const DEFAULT_DEV_MODE = false
-export const DEV_IMAGE_WIDTH  = 256
-export const DEV_IMAGE_HEIGHT = 384
+export const DEFAULT_DEV_MODE = false;
+export const DEV_IMAGE_WIDTH  = 256;
+export const DEV_IMAGE_HEIGHT = 384;
 
 /** Verbose logging — off by default. Enable in the settings panel to see log/warn output. Errors always surface. */
-export const DEFAULT_VERBOSE_LOGGING = false
+export const DEFAULT_VERBOSE_LOGGING = false;
 
 /** History window for detection calls (subject match, change check, combined classifier). */
-export const DEFAULT_DETECTION_HISTORY = 2
+export const DEFAULT_DETECTION_HISTORY = 2;
 
 /** History window for describer calls. */
-export const DEFAULT_DESCRIBER_HISTORY = 3
+export const DEFAULT_DESCRIBER_HISTORY = 3;
 
 /**
  * Standard expression labels — mirrors the SillyTavern Expressions extension default set.
@@ -104,7 +111,7 @@ export const DEFAULT_EXPRESSION_LABELS = [
     'sadness',
     'surprise',
     'neutral',
-]
+];
 
 /**
  * Image prompt template for Pollinations portrait generation.
@@ -118,7 +125,7 @@ export const DEFAULT_VN_STYLE_SUFFIX =
     'medium full shot, framed from knees up, full upper legs visible, character fully in frame from knees to head, centered composition, body fully facing forward, chest, shoulders, and hips square to the camera, perfectly frontal pose, no contrapposto, no torso rotation, no angled stance, head aligned with body and looking straight ahead, upright neutral stance' +
     'Soft cinematic lighting with gentle volumetric glow, subtle rim light, natural skin shading with soft gradients, detailed hair strands with controlled highlights' +
     'Simple blurred background with soft bokeh, neutral tones' +
-    'Ultra-detailed, sharp focus, high resolution, polished illustration, studio-quality anime rendering'
+    'Ultra-detailed, sharp focus, high resolution, polished illustration, studio-quality anime rendering';
 
 // ─── Prompt Templates ────────────────────────────────────────────────────────
 
@@ -135,7 +142,7 @@ LATEST MESSAGE:
 Is {{character_name}} the main subject being actively described or acting in this message?
 Ignore the narrator voice. Focus on who is physically present and doing things.
 
-Reply with exactly one word: YES or NO`
+Reply with exactly one word: YES or NO`;
 
 export const DEFAULT_SUBJECT_LIST_PROMPT =
 `[SYSTEM: TASK — SUBJECT IDENTIFICATION]
@@ -153,7 +160,7 @@ LATEST MESSAGE:
 Who is the main character being actively described or acting in this message?
 Ignore the narrator voice. Do not pick {{user_name}}.
 
-Reply with one of the keys shown in brackets above (e.g. [claire] → claire), or NONE if no known character is the main subject.`
+Reply with one of the keys shown in brackets above (e.g. [claire] → claire), or NONE if no known character is the main subject.`;
 
 export const DEFAULT_CHANGE_CHECK_PROMPT =
 `[SYSTEM: TASK — VISUAL CHANGE CHECK]
@@ -169,7 +176,7 @@ LATEST MESSAGE:
 
 Is {{character_name}} still wearing the same outfit and showing the same expression as described above?
 
-Reply with exactly one word: YES or NO`
+Reply with exactly one word: YES or NO`;
 
 export const DEFAULT_COMBINED_CLASSIFIER_PROMPT =
 `[SYSTEM: TASK — VISUAL STATE CLASSIFIER]
@@ -193,7 +200,7 @@ INSTRUCTIONS:
 
 Reply with exactly two lines:
 Outfit: [key] or NEW or NULL
-Expression: [label] or NULL`
+Expression: [label] or NULL`;
 
 export const DEFAULT_ANCHOR_SCAN_PROMPT =
 `[SYSTEM: TASK — CHARACTER ARCHIVIST]
@@ -211,7 +218,7 @@ INSTRUCTIONS:
 
 ### OUTPUT FORMAT:
 Name: [Exact character name as used in the transcript]
-Identity Anchor: [2-3 sentences of permanent physical appearance for an image generator]`
+Identity Anchor: [2-3 sentences of permanent physical appearance for an image generator]`;
 
 export const DEFAULT_OUTFIT_DESCRIBER_PROMPT =
 `[SYSTEM: TASK — OUTFIT ARCHIVIST]
@@ -230,7 +237,7 @@ INSTRUCTIONS:
 
 ### OUTPUT FORMAT:
 Label: [Short display name, e.g. "Red Evening Dress"]
-Description: [2-3 sentences of visual detail for an image generator]`
+Description: [2-3 sentences of visual detail for an image generator]`;
 
 export const DEFAULT_EXPRESSION_DESCRIBER_PROMPT =
 `[SYSTEM: TASK — EXPRESSION ARCHIVIST]
@@ -249,4 +256,4 @@ INSTRUCTIONS:
 
 ### OUTPUT FORMAT:
 Label: [Short display name, e.g. "Tearful Smile"]
-Description: [1-2 sentences of visual detail for an image generator]`
+Description: [1-2 sentences of visual detail for an image generator]`;

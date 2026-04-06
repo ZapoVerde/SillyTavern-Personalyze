@@ -1,12 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/templates.js
- * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Pure functions for generating the PersonaLyze Character Workshop HTML.
- * Contains the structural markup for the Roster, Studio, and Register tabs.
- * Textareas utilize inline style constraints (overflow: hidden; resize: none;)
- * to support seamless auto-resizing without layout jumps.
+ * 
+ * Updated to support per-outfit Provider selection (Pollinations/HF).
  *
  * @api-declaration
  * getBaseWorkshopHTML()                            → string
@@ -14,12 +13,6 @@
  * getStudioHTML(characterId, character, fileIndex) → string
  * getRegisterHTML()                                → string
  * getStudioEmptyHTML()                             → string
- *
- * @contract
- *   assertions:
- *     purity: pure
- *     state_ownership: []
- *     external_io: []
  */
 
 import { escapeHtml } from '../../utils/history.js';
@@ -59,11 +52,6 @@ export function getBaseWorkshopHTML() {
 
 /**
  * Roster tab — list of all registered characters with per-chat enable/disable toggles.
- * Enabled characters (in activeRoster) sort to the top; disabled sink to the bottom.
- *
- * @param {object}      characters   { characterId: { identityAnchor, outfits, expressions } }
- * @param {string|null} activeId     Currently active character from runtime state.
- * @param {string[]}    activeRoster IDs of characters enabled for this chat.
  */
 export function getRosterHTML(characters, activeId, activeRoster = []) {
     const entries = Object.entries(characters);
@@ -78,7 +66,6 @@ export function getRosterHTML(characters, activeId, activeRoster = []) {
         </div>`;
     }
 
-    // Enabled characters first, then disabled — stable within each group.
     const sorted = [...entries].sort(([aId], [bId]) => {
         const aOn = activeRoster.includes(aId);
         const bOn = activeRoster.includes(bId);
@@ -131,11 +118,6 @@ export function getRosterHTML(characters, activeId, activeRoster = []) {
 
 /**
  * Studio tab — edit a specific character's anchor, outfits, and expressions.
- * @param {string}   characterId
- * @param {object}   character       { identityAnchor, outfits, expressions }
- * @param {Set<string>} fileIndex    Known image filenames on disk.
- * @param {string[]} expressionLabels  Global expression palette for the portrait picker.
- * @param {string|null} defaultExpression  Pre-selected expression (last-known from chain).
  */
 export function getStudioHTML(characterId, character, fileIndex, expressionLabels = [], defaultExpression = null) {
     const label = characterId.replace(/_/g, ' ');
@@ -197,12 +179,6 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
 
 /**
  * Renders the list of entries (outfits or expressions) for the Studio.
- * @param {string}   characterId
- * @param {object}   entries          { key: { label, description } }
- * @param {'outfit'|'expression'} dimension
- * @param {Set<string>} fileIndex
- * @param {string[]} expressionLabels   Portrait picker labels (outfit entries only).
- * @param {string|null} defaultExpression  Pre-selected expression for the portrait section.
  */
 export function getEntryListHTML(characterId, entries, dimension, fileIndex, expressionLabels = [], defaultExpression = null) {
     const keys = Object.keys(entries);
@@ -213,6 +189,7 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex, exp
 
     return keys.map(key => {
         const entry    = entries[key];
+        const provider = entry.provider ?? 'pollinations';
         const imgCount = dimension === 'outfit'
             ? [...fileIndex].filter(f => f.startsWith(buildFilenamePrefix(characterId, key, ''))).length
             : [...fileIndex].filter(f => f.includes(`_${key}_`)).length;
@@ -221,12 +198,24 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex, exp
             ? getOutfitPortraitSectionHTML(characterId, key, fileIndex, expressionLabels, defaultExpression)
             : '';
 
+        // Engine selector for outfits
+        const engineSelector = dimension === 'outfit' ? `
+            <div style="display:flex; align-items:center; gap:5px; margin-left:auto;">
+                <span style="font-size:0.7em; opacity:0.5; text-transform:uppercase;">Engine</span>
+                <select class="plz-entry-provider text_pole" style="font-size:0.75em; padding:1px 4px; height:auto; width:auto;">
+                    <option value="pollinations" ${provider === 'pollinations' ? 'selected' : ''}>Pol</option>
+                    <option value="huggingface" ${provider === 'huggingface' ? 'selected' : ''}>HF</option>
+                </select>
+                ${provider === 'huggingface' ? '<i class="fa-solid fa-cloud" title="Using Hugging Face" style="font-size:0.8em; color:var(--SmartThemeQuoteColor);"></i>' : ''}
+            </div>` : '';
+
         return `
         <div class="plz-studio-entry" data-key="${escapeHtml(key)}" data-dimension="${dimension}">
-            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
                 <strong style="font-size:0.9em;">${escapeHtml(entry.label)}</strong>
                 <span style="font-size:0.75em;opacity:0.45;">[${escapeHtml(key)}]</span>
-                <span style="font-size:0.72em;opacity:0.4;margin-left:auto;">${imgCount} image${imgCount !== 1 ? 's' : ''}</span>
+                ${engineSelector}
+                <span style="font-size:0.72em;opacity:0.4;margin-left:${dimension === 'outfit' ? '8px' : 'auto'};">${imgCount} image${imgCount !== 1 ? 's' : ''}</span>
             </div>
             <textarea class="text_pole plz-auto-textarea plz-entry-description" 
                       data-key="${escapeHtml(key)}" data-dimension="${dimension}"
@@ -246,16 +235,10 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex, exp
 
 /**
  * Portrait generation sub-section for an outfit entry.
- * Renders expression picker pills and thumbnail/generate buttons.
- * @param {string}   characterId
- * @param {string}   outfitKey
- * @param {Set<string>} fileIndex
- * @param {string[]} expressionLabels
  */
 function getOutfitPortraitSectionHTML(characterId, outfitKey, fileIndex, expressionLabels, defaultExpression = null) {
     if (expressionLabels.length === 0) return '';
 
-    // Use defaultExpression only if it's actually in the label list
     const preSelected = expressionLabels.includes(defaultExpression) ? defaultExpression : null;
     const buttonsDisabled = preSelected ? '' : 'disabled';
 

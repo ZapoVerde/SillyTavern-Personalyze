@@ -1,21 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/portfolio.js
- * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role UI (Portfolio Manager)
  * @description
  * The Global Character Wardrobe manager. A full-panel UI where the user can
  * inspect, edit, and manually override any character's registered outfits and
  * expressions.
- *
- * Features:
- *   - Character selector (all characters in the Global Registry)
- *   - Outfit grid: all known outfit × expression combinations shown as portrait
- *     thumbnails. Missing (ungenerated) combinations shown as empty slots.
- *   - Manual override: clicking a generated portrait writes the pointer to the
- *     last AI message and applies it to the live portrait.
- *   - Edit anchor: update the character's Identity Anchor string with auto-resize.
- *   - Edit labels: rename the display label for any outfit or expression
- *     (keys remain immutable).
+ * 
+ * Updated to display the Dual-Engine (Pollinations/HF) indicator.
  *
  * @api-declaration
  * openPortfolio()  — Opens the Portfolio Manager panel.
@@ -38,7 +30,7 @@ import {
     upsertExpression,
 } from '../registry.js';
 import { state, updateActivePointers, updateActiveImage, addToFileIndex } from '../state.js';
-import { buildFilename, generate } from '../imageCache.js';
+import { buildFilenamePrefix, generate } from '../imageCache.js';
 import { setPortrait } from '../portrait.js';
 import { lockedWritePointer } from '../logic/pointerWriter.js';
 import { escapeHtml } from '../utils/history.js';
@@ -46,6 +38,16 @@ import { error } from '../utils/logger.js';
 import { smartResize } from '../utils/dom.js';
 
 const PANEL_ID = 'plz-portfolio-panel';
+
+// Helper for finding exact filename match by prefix since we append timestamps
+function buildFilename(characterId, outfitKey, expressionKey) {
+    const prefix = buildFilenamePrefix(characterId, outfitKey, expressionKey);
+    let best = null;
+    for (const f of state.fileIndex) {
+        if (f.startsWith(prefix) && (!best || f > best)) best = f;
+    }
+    return best || `${prefix}MISSING.png`;
+}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -153,16 +155,11 @@ function buildPanel(characterIds, activeId) {
 
 /**
  * Builds and injects the outfit × expression grid for a character.
- * Each cell shows a thumbnail if the image file exists in the file index,
- * or a placeholder if not yet generated.
- * @param {jQuery} $panel
- * @param {string} characterId
  */
 function renderWardrobe($panel, characterId) {
     const character = getCharacter(characterId);
     if (!character) return;
 
-    // Populate anchor field and trigger a resize so it fits the loaded text perfectly
     const $anchor = $panel.find('#plz-portfolio-anchor');
     $anchor.val(character.identityAnchor ?? '');
     requestAnimationFrame(() => {
@@ -197,12 +194,17 @@ function renderWardrobe($panel, characterId) {
         $grid.append('<p style="font-size:0.8em;opacity:0.6;margin:0 0 8px;">Wardrobe</p>');
 
         for (const outfitKey of outfitKeys) {
-            const outfit    = character.outfits[outfitKey];
+            const outfit       = character.outfits[outfitKey];
+            const providerIcon = outfit.provider === 'huggingface' 
+                ? '<i class="fa-solid fa-cloud" title="Using Hugging Face" style="font-size:0.8em; color:var(--SmartThemeQuoteColor);"></i>'
+                : '';
+
             const $section  = $(`
                 <div style="margin-bottom:18px;">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                         <span style="font-size:0.88em;font-weight:600;">${escapeHtml(outfit.label)}</span>
                         <span style="font-size:0.75em;opacity:0.5;">[${escapeHtml(outfitKey)}]</span>
+                        ${providerIcon}
                     </div>
                     <div class="plz-outfit-row" data-outfit="${escapeHtml(outfitKey)}"
                          style="display:flex;flex-wrap:wrap;gap:8px;"></div>
@@ -218,7 +220,6 @@ function renderWardrobe($panel, characterId) {
                 $row.append($cell);
             }
 
-            // If no expressions registered, show a bare outfit slot
             if (expressionKeys.length === 0) {
                 $row.append('<span style="font-size:0.8em;opacity:0.5;">No expressions registered.</span>');
             }
@@ -230,12 +231,6 @@ function renderWardrobe($panel, characterId) {
 
 /**
  * Builds a portrait thumbnail cell for an outfit × expression combination.
- * @param {string} characterId
- * @param {string} outfitKey
- * @param {string} exprKey
- * @param {string} filename
- * @param {boolean} hasImage
- * @returns {jQuery}
  */
 function buildPortraitCell(characterId, outfitKey, exprKey, filename, hasImage) {
     const character  = getCharacter(characterId);
@@ -292,11 +287,7 @@ function buildPortraitCell(characterId, outfitKey, exprKey, filename, hasImage) 
 }
 
 /**
- * Builds a compact expression reference chip (not a portrait — just label + description).
- * @param {string} characterId
- * @param {string} exprKey
- * @param {object} expr  { label, description }
- * @returns {jQuery}
+ * Builds a compact expression reference chip.
  */
 function buildExpressionCell(characterId, exprKey, expr) {
     return $(`
@@ -351,7 +342,6 @@ function bindPanelHandlers($panel) {
         const hasImage     = state.fileIndex.has(filename);
 
         if (!hasImage) {
-            // Offer to generate
             const confirmed = await callPopup(
                 `<p>This combination hasn't been generated yet.</p>
                  <p style="opacity:0.7;font-size:0.9em;">Generate it now?</p>`,
@@ -363,7 +353,6 @@ function bindPanelHandlers($panel) {
         }
 
         await applyManualOverride(characterId, outfitKey, expressionKey, filename);
-        // Refresh active border
         renderWardrobe($panel, characterId);
     });
 }

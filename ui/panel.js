@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/panel.js
- * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role UI Orchestrator (Settings)
  * @description
  * Main orchestrator for the PersonaLyze extensions settings panel.
@@ -12,6 +12,8 @@
  * - Binds API key vault (via vault.js).
  * - Manages global settings toggles and numerical inputs.
  * - Handles the multi-line Prompt Editor modal with unlimited auto-resize.
+ * 
+ * Updated to support Dual-Engine (Pollinations/HF) configuration.
  *
  * @api-declaration
  * injectSettingsPanel() — Builds and appends the panel and binds all sub-systems.
@@ -86,6 +88,7 @@ function refreshUI() {
     $(`#plz-verbose-logging`).prop('checked', s.verboseLogging);
     $(`#plz-portrait-position`).val(s.portraitPosition);
     $(`#plz-image-model`).val(s.imageModel);
+    $(`#plz-hf-image-model`).val(s.hfImageModel ?? '');
 
     // 2. Numerical Inputs
     $(`.plz-history-input`).each(function () {
@@ -137,6 +140,11 @@ function bindHandlers() {
         updateDirtyIndicator();
     });
 
+    $panel.on('input', '#plz-hf-image-model', function () {
+        updateSetting('hfImageModel', $(this).val().trim());
+        updateDirtyIndicator();
+    });
+
     $panel.on('change', '#plz-dev-mode', function () {
         updateSetting('devMode', $(this).prop('checked'));
         updateDirtyIndicator();
@@ -157,7 +165,7 @@ function bindHandlers() {
         updateDirtyIndicator();
     });
 
-    // 5. Vault & Test (Pollinations Logic)
+    // 5. Vault & Test (Dual-Engine Logic)
     bindVaultHandlers($panel);
 
     // 6. Prompt Editor

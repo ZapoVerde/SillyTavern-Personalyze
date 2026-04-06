@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the PersonaLyze profile-based settings lifecycle.
@@ -10,7 +10,7 @@
  * - 'profiles' is a dictionary of saved snapshots (the "Bookshelf").
  * - Character data remains global in registry.js and is NOT part of profiles.
  *
- * Migration: On first run, existing flat settings are harvested into a 'Default' profile.
+ * Updated to include Hugging Face model configuration.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -24,6 +24,7 @@ import { extension_settings } from '../../../extensions.js';
 import { warn, log } from './utils/logger.js';
 import {
     DEFAULT_IMAGE_MODEL,
+    DEFAULT_HF_IMAGE_MODEL,
     DEFAULT_VN_STYLE_SUFFIX,
     DEFAULT_SUBJECT_MATCH_PROMPT,
     DEFAULT_SUBJECT_LIST_PROMPT,
@@ -49,6 +50,7 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     plzVnMode:              false,
     plzVnSplitPercent:      DEFAULT_PLZ_VN_SPLIT,
     imageModel:             DEFAULT_IMAGE_MODEL,
+    hfImageModel:           DEFAULT_HF_IMAGE_MODEL,
     vnStyleSuffix:          DEFAULT_VN_STYLE_SUFFIX,
     devMode:                DEFAULT_DEV_MODE,
     verboseLogging:         DEFAULT_VERBOSE_LOGGING,
