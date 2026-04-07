@@ -167,15 +167,17 @@ export function getEnginesModalHTML(settings) {
     return `
 <div id="plz-engines-overlay" class="plz-overlay plz-hidden">
     <div id="plz-engines-modal" class="plz-modal">
-        <div class="plz-workshop-header" style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
-            <strong style="font-size:1.05em;">⚙ Image Engines</strong>
-            <button id="plz-engines-close" class="menu_button" style="padding:2px 10px; font-size:0.9em;">✕</button>
-        </div>
 
-        <div class="plz-tab-bar" style="display:flex; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
-            <button class="plz-tab-btn plz-eng-tab" data-tab="pollinations" style="flex:1; padding:8px; font-size:0.88em;">Pollinations</button>
-            <button class="plz-tab-btn plz-eng-tab" data-tab="hf-router" style="flex:1; padding:8px; font-size:0.88em;">HF Router</button>
-            <button class="plz-tab-btn plz-eng-tab" data-tab="hf-space" style="flex:1; padding:8px; font-size:0.88em;">HF Spaces</button>
+        <div class="plz-workshop-header">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;"><i class="fa-solid fa-gear"></i> Image Engines</h3>
+                <button id="plz-engines-close" class="menu_button" style="padding:2px 10px;">✕</button>
+            </div>
+            <div class="plz-tab-bar">
+                <button class="plz-tab-btn menu_button" data-tab="pollinations">Pollinations</button>
+                <button class="plz-tab-btn menu_button" data-tab="hf-router">HF Router</button>
+                <button class="plz-tab-btn menu_button" data-tab="hf-space">HF Spaces</button>
+            </div>
         </div>
 
         <div class="plz-workshop-body">
@@ -192,7 +194,6 @@ export function getEnginesModalHTML(settings) {
     </div>
 </div>`;
 }
-
 /**
  * Returns the inner HTML for #plz-eng-space-dropdown (called when list changes).
  * @param {string[]} savedSpaces
