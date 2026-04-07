@@ -21,7 +21,7 @@
  *     external_io: [fetch, getRequestHeaders]
  */
 
-import { getRequestHeaders } from '../../../../script.js';
+import { getRequestHeaders } from '../../../../../script.js';
 
 /**
  * Pings the Pollinations gateway directly from the browser.
