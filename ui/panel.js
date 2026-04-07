@@ -4,14 +4,15 @@
  * @architectural-role UI Orchestrator (Settings)
  * @description
  * Main orchestrator for the PersonaLyze extensions settings panel.
- *
+ * 
  * Responsibilities:
  * - Injects the panel HTML (via templates.js).
  * - Binds profile management (via profiles.js).
  * - Binds ST connections (via connection.js).
+ * - Binds API key vault (via vault.js).
  * - Manages global settings toggles and numerical inputs.
  * - Handles the multi-line Prompt Editor modal with unlimited auto-resize.
- * - Delegates engine/key/model configuration to the Engines Modal (enginesModal.js).
+ * - Triggers dynamic model discovery for Pollinations (via models.js).
  *
  * @api-declaration
  * injectSettingsPanel() — Builds and appends the panel and binds all sub-systems.
@@ -20,7 +21,7 @@
  *   assertions:
  *     purity: Stateful UI Orchestrator
  *     state_ownership: [extension_settings.personalyze.activeState]
- *     external_io: [DOM, callPopup, smartResize, settings.js, enginesModal.js]
+ *     external_io: [DOM, callPopup, smartResize, settings.js]
  */
 
 import { callPopup } from '../../../../../script.js';
@@ -36,7 +37,8 @@ import { smartResize } from '../utils/dom.js';
 import { buildPanelHTML } from './panel/templates.js';
 import { bindProfileHandlers, refreshProfileDropdown, updateDirtyIndicator } from './panel/profiles.js';
 import { refreshConnectionDropdowns } from './panel/connection.js';
-import { openEnginesModal, injectEnginesModal } from './enginesModal.js';
+import { bindVaultHandlers, updateKeyStatusIndicator } from './panel/vault.js';
+import { refreshModelDropdown } from './panel/models.js';
 
 import {
     DEFAULT_SUBJECT_MATCH_PROMPT,
@@ -85,6 +87,14 @@ function refreshUI() {
     $(`#plz-dev-mode`).prop('checked', s.devMode);
     $(`#plz-verbose-logging`).prop('checked', s.verboseLogging);
     $(`#plz-portrait-position`).val(s.portraitPosition);
+
+    // Image Model Dropdown: ensure the model from the profile is an option
+    const $modelSelect = $(`#plz-image-model`);
+    if ($modelSelect.find(`option[value="${s.imageModel}"]`).length === 0 && s.imageModel) {
+        $modelSelect.append(`<option value="${s.imageModel}">${s.imageModel}</option>`);
+    }
+    $modelSelect.val(s.imageModel);
+
     // 2. Numerical Inputs
     $(`.plz-history-input`).each(function () {
         const key = $(this).data('history-key');
@@ -92,6 +102,7 @@ function refreshUI() {
     });
 
     // 3. Sub-modules
+    updateKeyStatusIndicator();
     refreshConnectionDropdowns(() => updateDirtyIndicator());
     updateDirtyIndicator();
 
@@ -129,6 +140,11 @@ function bindHandlers() {
     });
 
     // 3. Image & Logging
+    $panel.on('change', '#plz-image-model', function () {
+        updateSetting('imageModel', $(this).val());
+        updateDirtyIndicator();
+    });
+
     $panel.on('change', '#plz-dev-mode', function () {
         updateSetting('devMode', $(this).prop('checked'));
         updateDirtyIndicator();
@@ -149,8 +165,8 @@ function bindHandlers() {
         updateDirtyIndicator();
     });
 
-    // 5. Engines Modal
-    $panel.on('click', '#plz-open-engines', () => openEnginesModal());
+    // 5. Vault & Test (Pollinations Logic)
+    bindVaultHandlers($panel);
 
     // 6. Prompt Editor
     $panel.on('click', '.plz-open-prompt', async function () {
@@ -159,7 +175,6 @@ function bindHandlers() {
         const defaultValue = PROMPT_DEFAULTS[key] ?? '';
         const current      = getSettings()[key]   ?? defaultValue;
 
-        $('body').addClass('plz-modal-open');
         const popupPromise = callPopup(
             `<h3>${title}</h3>
              <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="10"
@@ -205,7 +220,6 @@ function bindHandlers() {
 
         $(document).off('input', '#plz-prompt-editor');
         $(document).off('click', '#plz-prompt-reset');
-        $('body').removeClass('plz-modal-open');
     });
 
     // 7. Workshop Links
@@ -214,7 +228,6 @@ function bindHandlers() {
 
     // 8. Call Log Viewer
     $panel.on('click', '#plz-view-logs', async function () {
-        $('body').addClass('plz-modal-open');
         const popupPromise = callPopup(buildLogModalHTML(), 'text');
 
         $(document).on('click.plz-logs', '.plz-log-toggle', function () {
@@ -238,7 +251,6 @@ function bindHandlers() {
 
         await popupPromise;
         $(document).off('.plz-logs');
-        $('body').removeClass('plz-modal-open');
     });
 }
 
@@ -337,11 +349,13 @@ export function injectSettingsPanel() {
     const profiles = Object.keys(meta.profiles);
 
     $parent.append(buildPanelHTML(settings, meta, profiles));
-    injectEnginesModal();
 
     bindHandlers();
     refreshUI();
     refreshProfileDropdown();
+
+    // Fetch dynamic models in the background
+    refreshModelDropdown(settings.imageModel);
 
     log('Panel', 'Settings panel refactored and injected.');
 }

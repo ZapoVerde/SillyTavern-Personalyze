@@ -4,10 +4,11 @@
  * @architectural-role Pure UI Templates
  * @description
  * Generates the HTML strings for the PersonaLyze settings panel.
+ * Uses a modular approach to build the profile bar, pipeline step rows, 
+ * and developer configuration sections.
  *
- * Engine configuration (API keys, models, HF Spaces) has been moved to the
- * dedicated Engines Modal (ui/enginesModal.js). The panel now shows a single
- * "Configure Engines" button that opens that modal.
+ * Modified to ensure the initial model list includes the current selection
+ * to prevent UI flickering during the dynamic discovery phase.
  *
  * @api-declaration
  * buildPanelHTML(settings, meta, profileNames) -> string (HTML)
@@ -19,6 +20,9 @@
  *     external_io: []
  */
 
+import { 
+    POLLINATIONS_MODELS,
+} from '../../defaults.js';
 
 /**
  * Generates a styled informational icon with a hover tooltip.
@@ -76,6 +80,13 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
     
     const profileOptions = profileNames
         .map(n => `<option value="${n}"${n === meta.currentProfileName ? ' selected' : ''}>${n}</option>`)
+        .join('');
+
+    // Ensure the current model is in the initial dropdown list even if not in hardcoded defaults.
+    // This prevents the dropdown from showing an incorrect value before the async fetch completes.
+    const initialModels = [...new Set([...POLLINATIONS_MODELS, s.imageModel])].filter(Boolean);
+    const modelOptions = initialModels
+        .map(m => `<option value="${m}"${m === s.imageModel ? ' selected' : ''}>${m}</option>`)
         .join('');
 
     return `
@@ -148,20 +159,36 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
 
                 <!-- Image Generation -->
                 <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--SmartThemeBorderColor,#444);">
-                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                    <div style="display:flex; align-items:center; margin-bottom:10px;">
                         <strong style="font-size:0.95em;">Image Generation</strong>
-                        ${tip("Configure image generation engines, API keys, models, and HuggingFace Spaces.")}
+                        ${tip("Configure how portraits are rendered via the Pollinations API.")}
                     </div>
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                        <button class="menu_button" id="plz-open-engines" style="flex:1;">
-                            <i class="fa-solid fa-gear"></i> Configure Engines
-                        </button>
+                    
+                    <!-- API Key row -->
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:60px;">API Key:</label>
+                        <input type="password" id="plz-pollinations-key" class="text_pole"
+                               placeholder="sk_..." style="flex:1; min-width:0;" />
+                        <button class="menu_button" id="plz-pollinations-save" style="white-space:nowrap;">Save to Vault</button>
+                        <button class="menu_button" id="plz-pollinations-test" style="white-space:nowrap;">Test Connection</button>
                     </div>
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Prompt:</label>
+                    <div id="plz-key-status" style="font-size:0.82em; margin-left:68px; margin-bottom:5px;"></div>
+                    <div id="plz-pollinations-status" style="font-size:0.82em; opacity:0.65; margin-left:68px; margin-bottom:10px;"></div>
+
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:60px;">Model:</label>
+                        <select id="plz-image-model" class="text_pole" style="flex:1;">
+                            ${modelOptions}
+                        </select>
+                        ${tip("The specific image generation model provided by Pollinations.")}
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:60px;">Prompt:</label>
                         <button class="menu_button plz-open-prompt" data-prompt-key="vnStyleSuffix" style="flex:1;">Edit Portrait Prompt Template</button>
                         ${tip("The foundation of your image prompt. Supports {{character}}, {{outfit}}, and {{expression}} variables.")}
                     </div>
+
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                         <label class="checkbox_label" style="font-size:0.85em; cursor:pointer;">
                             <input type="checkbox" id="plz-dev-mode" ${s.devMode ? 'checked' : ''} />
@@ -188,7 +215,7 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
                         <button class="menu_button" id="plz-view-logs" style="font-size:0.85em; padding:4px 10px;">
                             <i class="fa-solid fa-list"></i> View Logs
                         </button>
-                        ${tip("Inspect the last few turns of AI call logs — prompts sent, responses received, and any errors.")}
+                        ${tip("Inspect the last two turns of AI call logs — prompts sent, responses received, and any errors.")}
                     </div>
                 </div>
 
