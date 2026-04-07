@@ -4,8 +4,10 @@
  * @architectural-role Pure UI Templates
  * @description
  * Generates the HTML strings for the PersonaLyze settings panel.
- * 
- * Updated to include Hugging Face (HF) API and Model configuration.
+ *
+ * Engine configuration (API keys, models, HF Spaces) has been moved to the
+ * dedicated Engines Modal (ui/enginesModal.js). The panel now shows a single
+ * "Configure Engines" button that opens that modal.
  *
  * @api-declaration
  * buildPanelHTML(settings, meta, profileNames) -> string (HTML)
@@ -17,10 +19,6 @@
  *     external_io: []
  */
 
-import {
-    POLLINATIONS_MODELS,
-    HF_PROVIDER_MODELS,
-} from '../../defaults.js';
 
 /**
  * Generates a styled informational icon with a hover tooltip.
@@ -78,10 +76,6 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
     
     const profileOptions = profileNames
         .map(n => `<option value="${n}"${n === meta.currentProfileName ? ' selected' : ''}>${n}</option>`)
-        .join('');
-
-    const modelOptions = POLLINATIONS_MODELS
-        .map(m => `<option value="${m}"${m === s.imageModel ? ' selected' : ''}>${m}</option>`)
         .join('');
 
     return `
@@ -154,66 +148,20 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
 
                 <!-- Image Generation -->
                 <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--SmartThemeBorderColor,#444);">
-                    <div style="display:flex; align-items:center; margin-bottom:10px;">
-                        <strong style="font-size:0.95em;">Image Generation — Engines</strong>
-                        ${tip("Configure your rendering engines. Use Pollinations for speed and Hugging Face for high-precision LoRA outfits.")}
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                        <strong style="font-size:0.95em;">Image Generation</strong>
+                        ${tip("Configure image generation engines, API keys, models, and HuggingFace Spaces.")}
                     </div>
-                    
-                    <!-- Secrets Bar -->
-                    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px; padding:10px; background:rgba(0,0,0,0.2); border-radius:6px;">
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:95px;">Pollinations Key:</label>
-                            <input type="password" id="plz-pollinations-key" class="text_pole" placeholder="sk_..." style="flex:1; min-width:0;" />
-                            <button class="menu_button plz-vault-save" data-secret="api_key_pollinations" style="white-space:nowrap; padding:2px 10px;">Save</button>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:95px;">HuggingFace Key:</label>
-                            <input type="password" id="plz-huggingface-key" class="text_pole" placeholder="hf_..." style="flex:1; min-width:0;" />
-                            <button class="menu_button plz-vault-save" data-secret="api_key_huggingface" style="white-space:nowrap; padding:2px 10px;">Save</button>
-                        </div>
-                        <div id="plz-key-status" style="font-size:0.8em; margin-top:2px;"></div>
-                        <div style="display:flex; gap:6px; margin-top:4px;">
-                            <button class="menu_button" id="plz-test-pollinations" style="flex:1; font-size:0.8em; padding:2px 6px;">Test Pollinations</button>
-                            <button class="menu_button" id="plz-test-huggingface" style="flex:1; font-size:0.8em; padding:2px 6px;">Test Hugging Face</button>
-                        </div>
-                        <div id="plz-test-status" style="font-size:0.8em; opacity:0.6; text-align:center;"></div>
-                    </div>
-
-                    <!-- Pollinations Model -->
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Pollinations:</label>
-                        <select id="plz-image-model" class="text_pole" style="flex:1;">
-                            ${modelOptions}
-                        </select>
-                        ${tip("The base model used for Pollinations generations.")}
-                    </div>
-
-                    <!-- Hugging Face Provider + Model -->
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">HF Provider:</label>
-                        <select id="plz-hf-provider" class="text_pole" style="flex:1;">
-                            ${Object.entries(HF_PROVIDER_MODELS).map(([id, p]) =>
-                                `<option value="${id}"${id === s.hfProvider ? ' selected' : ''}>${p.label}</option>`
-                            ).join('')}
-                        </select>
-                        ${tip("The inference provider that runs the model. Different providers support different models and have different pricing.")}
+                        <button class="menu_button" id="plz-open-engines" style="flex:1;">
+                            <i class="fa-solid fa-gear"></i> Configure Engines
+                        </button>
                     </div>
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">HF Model:</label>
-                        <select id="plz-hf-image-model" class="text_pole" style="flex:1;">
-                            ${(HF_PROVIDER_MODELS[s.hfProvider]?.models ?? []).map(m =>
-                                `<option value="${m}"${m === s.hfImageModel ? ' selected' : ''}>${m}</option>`
-                            ).join('')}
-                        </select>
-                        ${tip("The model to generate with. Options update based on the selected provider.")}
-                    </div>
-
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                         <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Prompt:</label>
                         <button class="menu_button plz-open-prompt" data-prompt-key="vnStyleSuffix" style="flex:1;">Edit Portrait Prompt Template</button>
-                        ${tip("The foundation of your image prompt. Supports {{character}}, {{outfit}}, and {{expression}} variables. <lora:name> tags are stripped for Pollinations and cleaned for HF.")}
+                        ${tip("The foundation of your image prompt. Supports {{character}}, {{outfit}}, and {{expression}} variables.")}
                     </div>
-
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                         <label class="checkbox_label" style="font-size:0.85em; cursor:pointer;">
                             <input type="checkbox" id="plz-dev-mode" ${s.devMode ? 'checked' : ''} />

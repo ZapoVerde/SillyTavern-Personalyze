@@ -14,6 +14,9 @@
  * DEFAULT_IMAGE_MODEL
  * HUGGINGFACE_BASE_URL
  * DEFAULT_HF_IMAGE_MODEL
+ * DEFAULT_HF_ENGINE
+ * DEFAULT_HF_SPACE_ID
+ * DEFAULT_HF_SAVED_SPACES
  * DEFAULT_IMAGE_WIDTH
  * DEFAULT_IMAGE_HEIGHT
  * DEFAULT_DEV_MODE
@@ -100,6 +103,15 @@ export const HF_PROVIDER_MODELS = {
 
 /** Default HuggingFace provider. */
 export const DEFAULT_HF_PROVIDER = 'fal-ai';
+
+/** Default HuggingFace engine mode. */
+export const DEFAULT_HF_ENGINE = 'router';
+
+/** Default active Space ID. */
+export const DEFAULT_HF_SPACE_ID = '';
+
+/** Default saved Spaces list. */
+export const DEFAULT_HF_SAVED_SPACES = [];
 
 /** Publishable app key — identifies Personalyze to Pollinations for attribution. */
 export const POLLINATIONS_APP_KEY = '';

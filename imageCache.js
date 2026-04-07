@@ -94,7 +94,7 @@ export function buildPortraitPrompt(anchor, outfitDescription, expressionDescrip
 
     let processedOutfit = outfitDescription ?? '';
 
-    if (provider === 'huggingface') {
+    if (provider === 'huggingface' || provider === 'hf-space') {
         // Leave the triggers, just remove the brackets
         processedOutfit = processedOutfit.replace(/[<>]/g, '');
     } else {
@@ -143,6 +143,48 @@ async function fetchPollinationsWithRetry(url, key, maxRetries = 3) {
         await new Promise(r => setTimeout(r, delay));
     }
     return lastResponse;
+}
+
+/**
+ * Fetch from a HuggingFace Gradio Space via the personalyze server plugin.
+ * Handles cold-start waits (503 with estimated_time).
+ */
+async function fetchSpaceWithRetry(prompt, maxRetries = 3) {
+    const s = getSettings();
+    const spaceId = s.hfSpaceId;
+
+    if (!spaceId) {
+        throw new Error('No HuggingFace Space ID configured. Set one in the Engines modal (HF Spaces tab).');
+    }
+
+    const body = JSON.stringify({
+        spaceId,
+        prompt,
+        width: DEFAULT_IMAGE_WIDTH,
+        height: DEFAULT_IMAGE_HEIGHT,
+    });
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const response = await fetch('/api/plugins/personalyze/space-generate', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body,
+        });
+
+        if (response.ok) return response;
+
+        if (response.status === 503) {
+            const data = await response.json().catch(() => ({}));
+            const waitTime = (data.estimated_time || 15) * 1000;
+            warn('ImageCache', `Space loading. Waiting ${waitTime}ms (Attempt ${attempt + 1}/${maxRetries})`);
+            await new Promise(r => setTimeout(r, Math.min(waitTime, 30000)));
+            continue;
+        }
+
+        const errText = await response.text();
+        throw new Error(`Space API Error (${response.status}): ${errText}`);
+    }
+    throw new Error('HuggingFace Space failed to respond after multiple retries.');
 }
 
 /**
@@ -216,10 +258,12 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
     log('ImageCache', `${logTag} Preview Prompt:`, prompt);
     logCall('ImagePreview', `${logTag} ${prompt}`, null, null);
 
-    const key = provider === 'huggingface' ? null : await getAuthKey(provider);
+    const key = (provider === 'huggingface' || provider === 'hf-space') ? null : await getAuthKey(provider);
     let res;
 
-    if (provider === 'huggingface') {
+    if (provider === 'hf-space') {
+        res = await fetchSpaceWithRetry(prompt);
+    } else if (provider === 'huggingface') {
         res = await fetchHuggingFaceWithRetry(prompt);
     } else {
         const s = getSettings();
@@ -258,10 +302,12 @@ export async function generate(
     const prompt = buildPortraitPrompt(anchor, outfitDescription, expressionLabel, provider);
     logCall('PortraitGenerate', `${logTag} ${prompt}`, null, null);
     
-    const key = provider === 'huggingface' ? null : await getAuthKey(provider);
+    const key = (provider === 'huggingface' || provider === 'hf-space') ? null : await getAuthKey(provider);
     let imgRes;
 
-    if (provider === 'huggingface') {
+    if (provider === 'hf-space') {
+        imgRes = await fetchSpaceWithRetry(prompt);
+    } else if (provider === 'huggingface') {
         imgRes = await fetchHuggingFaceWithRetry(prompt);
     } else {
         const s = getSettings();

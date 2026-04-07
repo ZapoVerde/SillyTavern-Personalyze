@@ -10,7 +10,7 @@
  * - 'profiles' is a dictionary of saved snapshots (the "Bookshelf").
  * - Character data remains global in registry.js and is NOT part of profiles.
  *
- * Updated to include Hugging Face model configuration.
+ * Updated to include Hugging Face model configuration and HF Space settings.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -26,6 +26,9 @@ import {
     DEFAULT_IMAGE_MODEL,
     DEFAULT_HF_IMAGE_MODEL,
     DEFAULT_HF_PROVIDER,
+    DEFAULT_HF_ENGINE,
+    DEFAULT_HF_SPACE_ID,
+    DEFAULT_HF_SAVED_SPACES,
     DEFAULT_VN_STYLE_SUFFIX,
     DEFAULT_SUBJECT_MATCH_PROMPT,
     DEFAULT_SUBJECT_LIST_PROMPT,
@@ -53,6 +56,9 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     imageModel:             DEFAULT_IMAGE_MODEL,
     hfProvider:             DEFAULT_HF_PROVIDER,
     hfImageModel:           DEFAULT_HF_IMAGE_MODEL,
+    hfEngine:               DEFAULT_HF_ENGINE,
+    hfSpaceId:              DEFAULT_HF_SPACE_ID,
+    hfSavedSpaces:          DEFAULT_HF_SAVED_SPACES,
     vnStyleSuffix:          DEFAULT_VN_STYLE_SUFFIX,
     devMode:                DEFAULT_DEV_MODE,
     verboseLogging:         DEFAULT_VERBOSE_LOGGING,
