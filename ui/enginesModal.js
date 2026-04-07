@@ -25,38 +25,51 @@ import { bindEnginesHandlers, refreshEnginesUI, updateEngineKeyStatuses } from '
 
 /**
  * Idempotently injects the engines modal into the DOM and wires all handlers.
+ * Optimized to prevent event-bubbling conflicts that cause "greyed out" states.
  */
 export function injectEnginesModal() {
+    // 1. Exit if already in DOM
     if ($('#plz-engines-overlay').length) return;
 
     const settings = getSettings();
-    $('body').append(getEnginesModalHTML(settings));
+    
+    // 2. Create the overlay as a jQuery object and append to body
+    const $overlay = $(getEnginesModalHTML(settings));
+    $('body').append($overlay);
 
-    // Tab switching
-    $(document).on('click', '.plz-eng-tab', function () {
+    // 3. Tab switching (Local listener)
+    // Moving this here ensures that even if propagation is stopped elsewhere,
+    // this specific container still processes the tab change.
+    $overlay.on('click', '.plz-eng-tab', function (e) {
+        // e.stopPropagation(); // Optional: keeps the click from hitting ST's UI
         const tab = $(this).data('tab');
-        $('#plz-engines-modal .plz-tab-panel').addClass('plz-hidden');
-        $('#plz-engines-modal .plz-eng-tab').removeClass('plz-active');
-        $(`#plz-eng-tab-${tab}`).removeClass('plz-hidden');
+        
+        // Hide all panels, deactivate all tab buttons
+        $overlay.find('.plz-tab-panel').addClass('plz-hidden');
+        $overlay.find('.plz-eng-tab').removeClass('plz-active');
+        
+        // Show target panel, activate clicked button
+        $overlay.find(`#plz-eng-tab-${tab}`).removeClass('plz-hidden');
         $(this).addClass('plz-active');
     });
 
-    // Close button
-    $('#plz-engines-overlay').on('click', '#plz-engines-close', function () {
-        $('#plz-engines-overlay').addClass('plz-hidden');
+    // 4. Close button handler
+    $overlay.on('click', '#plz-engines-close', function (e) {
+        e.stopPropagation();
+        $overlay.addClass('plz-hidden');
     });
 
-    // Capture all clicks — prevent leaking to underlying ST UI
-    $('#plz-engines-overlay').on('click', function (e) {
-        e.stopPropagation();
-        if ($(e.target).is('#plz-engines-overlay')) {
-            $('#plz-engines-overlay').addClass('plz-hidden');
+    // 5. Backdrop click handler
+    // Only closes if the user clicks the dark background, not the modal content.
+    $overlay.on('click', function (e) {
+        if (e.target === this) {
+            $overlay.addClass('plz-hidden');
         }
     });
 
-    bindEnginesHandlers($('#plz-engines-overlay'));
+    // 6. Bind the internal engine logic (key saves, pings, etc.)
+    bindEnginesHandlers($overlay);
 }
-
 // ─── Open ─────────────────────────────────────────────────────────────────────
 
 /**
