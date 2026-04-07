@@ -1,9 +1,18 @@
+/**
+ * @file data/default-user/extensions/personalyze/plugin/index.js
+ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
+ * @architectural-role Server-Side Plugin
+ * @description
+ * Proxies Hugging Face API and Gradio Space calls to avoid CORS restrictions.
+ * Pollinations calls are handled directly by the frontend.
+ */
+
 import { readSecret } from '../../src/endpoints/secrets.js';
 
 export const info = {
     id: 'personalyze',
     name: 'PersonaLyze',
-    description: 'Proxies image generation API calls for PersonaLyze extension to avoid CORS restrictions',
+    description: 'Proxies Hugging Face API calls for PersonaLyze extension to avoid CORS restrictions',
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -90,19 +99,6 @@ export async function init(router) {
             res.send(Buffer.from(buffer));
         } catch (err) {
             res.status(500).json({ error: err.message });
-        }
-    });
-
-    // ── Pollinations ping ─────────────────────────────────────────────────────
-    router.post('/poll-ping', async (req, res) => {
-        try {
-            const response = await fetch('https://gen.pollinations.ai', { method: 'HEAD' });
-            if (response.ok || response.status < 500) {
-                return res.json({ ok: true, status: response.status });
-            }
-            return res.status(503).json({ error: `Pollinations returned ${response.status}` });
-        } catch (err) {
-            res.status(503).json({ error: err.message });
         }
     });
 
