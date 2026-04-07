@@ -5,9 +5,9 @@
  * @description
  * Event bindings for the Engines configuration modal. 
  * 
- * This version uses the dynamic model discovery cache for Pollinations, 
- * ensuring the dropdown always shows the latest models without cluttering 
- * the main settings panel.
+ * Updated to support user-configurable test prompts. All "Test" buttons 
+ * now pull the prompt string from the dedicated #plz-eng-test-prompt 
+ * textarea. Includes reset-to-default logic.
  *
  * @api-declaration
  * bindEnginesHandlers($modal) → void
@@ -18,18 +18,19 @@
  *   assertions:
  *     purity: IO
  *     state_ownership: [settings]
- *     external_io: [DOM, writeSecret, ping utility, toastr, models.js]
+ *     external_io: [DOM, writeSecret, fetchPreviewBlob, toastr, models.js]
  */
 
 import { getSettings, updateSetting } from '../../settings.js';
 import { fetchPreviewBlob } from '../../imageCache.js';
-import { HF_PROVIDER_MODELS } from '../../defaults.js';
+import { HF_PROVIDER_MODELS, DEFAULT_TEST_PROMPT } from '../../defaults.js';
 import { log, error } from '../../utils/logger.js';
 import { pingPollinations, pingHFRouter, pingHFSpace } from '../../utils/ping.js';
 import { writeSecret, secret_state } from '../../../../../secrets.js';
 import { callPopup } from '../../../../../../script.js';
 import { rebuildSpaceDropdown } from './templates.js';
 import { getCachedModels } from '../panel/models.js';
+import { smartResize } from '../../utils/dom.js';
 
 // ─── Key Status ───────────────────────────────────────────────────────────────
 
@@ -58,8 +59,6 @@ export function updateEngineKeyStatuses() {
 
 /**
  * Rebuilds the HF model dropdown for the given provider.
- * @param {string} provider
- * @param {string} selectedModel
  */
 function refreshHFModelDropdown(provider, selectedModel) {
     const models = HF_PROVIDER_MODELS[provider]?.models ?? [];
@@ -73,7 +72,6 @@ function refreshHFModelDropdown(provider, selectedModel) {
 
 /**
  * Syncs all modal inputs to current settings.
- * Uses the dynamic model discovery cache for Pollinations.
  */
 export function refreshEnginesUI() {
     const s = getSettings();
@@ -97,7 +95,12 @@ export function refreshEnginesUI() {
     // 3. Populate HF Space
     $('#plz-eng-space-id').val(s.hfSpaceId ?? '');
 
-    // 4. Update Vault Indicators
+    // 4. Test Prompt Area
+    const $testArea = $('#plz-eng-test-prompt');
+    $testArea.val(s.testPrompt ?? DEFAULT_TEST_PROMPT);
+    smartResize($testArea[0]);
+
+    // 5. Update Vault Indicators
     updateEngineKeyStatuses();
 }
 
@@ -154,18 +157,17 @@ export function bindEnginesHandlers($modal) {
     $modal.on('click', '#plz-eng-pol-test', async function () {
         const $btn = $(this);
         const $status = $('#plz-eng-pol-status');
+        const prompt = $('#plz-eng-test-prompt').val().trim();
+        if (!prompt) return;
+
         $btn.prop('disabled', true);
         $status.text('Generating test image...');
         try {
-            const objectUrl = await fetchPreviewBlob(
-                'a simple illustration of a blue bird, white background',
-                'test',
-                'pollinations',
-            );
+            const objectUrl = await fetchPreviewBlob(prompt, 'test', 'pollinations');
             $status.text('✓ Image generated');
             await callPopup(
                 `<h3>Pollinations — Test OK</h3>
-                 <p style="opacity:0.65;font-size:0.88em;">The engine responded successfully. Test image below:</p>
+                 <p style="opacity:0.65;font-size:0.88em;">Engine responded successfully using custom test prompt.</p>
                  <img src="${objectUrl}" style="width:100%;border-radius:6px;margin-top:8px;" />`,
                 'text',
             );
@@ -197,18 +199,17 @@ export function bindEnginesHandlers($modal) {
     $modal.on('click', '#plz-eng-hf-test', async function () {
         const $btn = $(this);
         const $status = $('#plz-eng-hf-status');
+        const prompt = $('#plz-eng-test-prompt').val().trim();
+        if (!prompt) return;
+
         $btn.prop('disabled', true);
         $status.text('Generating test image...');
         try {
-            const objectUrl = await fetchPreviewBlob(
-                'a simple illustration of a blue bird, white background',
-                'test',
-                'huggingface',
-            );
+            const objectUrl = await fetchPreviewBlob(prompt, 'test', 'huggingface');
             $status.text('✓ Image generated');
             await callPopup(
                 `<h3>HF Router — Test OK</h3>
-                 <p style="opacity:0.65;font-size:0.88em;">The router responded successfully. Test image below:</p>
+                 <p style="opacity:0.65;font-size:0.88em;">Router responded successfully using custom test prompt.</p>
                  <img src="${objectUrl}" style="width:100%;border-radius:6px;margin-top:8px;" />`,
                 'text',
             );
@@ -244,18 +245,17 @@ export function bindEnginesHandlers($modal) {
     $modal.on('click', '#plz-eng-space-test', async function () {
         const $btn = $(this);
         const $status = $('#plz-eng-space-status');
+        const prompt = $('#plz-eng-test-prompt').val().trim();
+        if (!prompt) return;
+
         $btn.prop('disabled', true);
         $status.text('Generating from space (may take 30s+)...');
         try {
-            const objectUrl = await fetchPreviewBlob(
-                'a simple illustration of a blue bird, white background',
-                'test',
-                'hf-space',
-            );
+            const objectUrl = await fetchPreviewBlob(prompt, 'test', 'hf-space');
             $status.text('✓ Image generated');
             await callPopup(
                 `<h3>HF Space — Test OK</h3>
-                 <p style="opacity:0.65;font-size:0.88em;">The Gradio space responded successfully. Test image below:</p>
+                 <p style="opacity:0.65;font-size:0.88em;">Space responded successfully using custom test prompt.</p>
                  <img src="${objectUrl}" style="width:100%;border-radius:6px;margin-top:8px;" />`,
                 'text',
             );
@@ -287,6 +287,20 @@ export function bindEnginesHandlers($modal) {
 
     $modal.on('input', '#plz-eng-space-id', function () {
         updateSetting('hfSpaceId', $(this).val().trim());
+    });
+
+    // ─── Test Prompt Actions ───
+
+    $modal.on('input', '#plz-eng-test-prompt', function () {
+        smartResize(this);
+        updateSetting('testPrompt', $(this).val());
+    });
+
+    $modal.on('click', '#plz-eng-test-prompt-reset', function () {
+        const $area = $('#plz-eng-test-prompt');
+        $area.val(DEFAULT_TEST_PROMPT);
+        smartResize($area[0]);
+        updateSetting('testPrompt', DEFAULT_TEST_PROMPT);
     });
 
     // ─── Space Dropdown ───

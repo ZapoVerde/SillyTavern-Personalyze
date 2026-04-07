@@ -5,7 +5,10 @@
  * @description
  * Generates the HTML for the Image Engines configuration modal. 
  * Consolidates Hugging Face configurations into a single tab with an exclusive
- * mode toggle between Router and Spaces, styled to match the Character Workshop.
+ * mode toggle between Router and Spaces.
+ * 
+ * Updated to include a shared "Test Prompt" editor at the bottom of the modal,
+ * allowing users to run one-off generation tests with custom prompts.
  *
  * @api-declaration
  * getEnginesModalHTML(settings) → string
@@ -74,7 +77,7 @@ function getHuggingFaceTabHTML(settings) {
         </div>
         <div id="plz-eng-hf-key-status" style="font-size:0.8em; margin-top:-8px;"></div>
 
-        <!-- Mode Switcher (The Exclusivity Toggle) -->
+        <!-- Mode Switcher -->
         <div style="display:flex; background:rgba(0,0,0,0.25); border-radius:8px; padding:4px; gap:4px;">
             <button class="menu_button plz-eng-mode-btn" data-mode="router" style="flex:1; font-size:0.85em; border:none !important;">
                 <i class="fa-solid fa-route"></i> HF Router
@@ -155,6 +158,7 @@ function buildSavedSpacesList(savedSpaces) {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function getEnginesModalHTML(settings) {
+    const s = settings;
     return `
 <div id="plz-engines-overlay" class="plz-overlay plz-hidden">
     <div id="plz-engines-modal" class="plz-modal">
@@ -175,6 +179,20 @@ export function getEnginesModalHTML(settings) {
             </div>
             <div id="plz-eng-tab-huggingface" class="plz-tab-panel plz-hidden">
                 ${getHuggingFaceTabHTML(settings)}
+            </div>
+
+            <!-- Shared Test Prompt Area -->
+            <div style="margin-top:20px; padding-top:15px; border-top:1px solid var(--SmartThemeBorderColor,#444);">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                    <label style="font-size:0.85em; opacity:0.75;">Engine Test Prompt:</label>
+                    <button id="plz-eng-test-prompt-reset" class="menu_button" style="font-size:0.75em; padding:1px 8px;">Reset to Default</button>
+                </div>
+                <textarea id="plz-eng-test-prompt" class="text_pole plz-auto-textarea" rows="2" 
+                          style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden; resize:none;"
+                          spellcheck="false">${escapeHtml(s.testPrompt ?? '')}</textarea>
+                <p style="font-size:0.75em; opacity:0.5; margin:5px 0 0;">
+                    Changes to this prompt are saved across sessions. Used by the "Test" buttons above.
+                </p>
             </div>
         </div>
     </div>

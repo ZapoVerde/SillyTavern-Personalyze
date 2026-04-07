@@ -10,7 +10,8 @@
  * - 'profiles' is a dictionary of saved snapshots (the "Bookshelf").
  * - Character data remains global in registry.js and is NOT part of profiles.
  *
- * Updated to include Hugging Face model configuration and HF Space settings.
+ * Updated to include Hugging Face model configuration, HF Space settings,
+ * and the user-configurable test prompt for engine validation.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -43,6 +44,7 @@ import {
     DEFAULT_VERBOSE_LOGGING,
     DEFAULT_EXPRESSION_LABELS,
     DEFAULT_PLZ_VN_SPLIT,
+    DEFAULT_TEST_PROMPT,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
@@ -75,6 +77,7 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     combinedClassifierPrompt:   DEFAULT_COMBINED_CLASSIFIER_PROMPT,
     outfitDescriberPrompt:      DEFAULT_OUTFIT_DESCRIBER_PROMPT,
     expressionDescriberPrompt:  DEFAULT_EXPRESSION_DESCRIBER_PROMPT,
+    testPrompt:                 DEFAULT_TEST_PROMPT,
 });
 
 /**

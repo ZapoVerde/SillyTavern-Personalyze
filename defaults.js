@@ -6,6 +6,7 @@
  * Default prompt strings, API constants, and tunable values for Personalyze.
  * 
  * Updated to support the Dual-Engine (Pollinations/HuggingFace) architecture.
+ * Includes the default test prompt for engine validation.
  *
  * @api-declaration
  * POLLINATIONS_BASE_URL
@@ -31,6 +32,7 @@
  * DEFAULT_COMBINED_CLASSIFIER_PROMPT
  * DEFAULT_OUTFIT_DESCRIBER_PROMPT
  * DEFAULT_EXPRESSION_DESCRIBER_PROMPT
+ * DEFAULT_TEST_PROMPT
  */
 
 /** Primary API gateway for Pollinations. */
@@ -156,8 +158,6 @@ export const DEFAULT_DESCRIBER_HISTORY = 3;
 
 /**
  * Standard expression labels — mirrors the SillyTavern Expressions extension default set.
- * These are the only values the combined classifier will return for expressions.
- * Images are generated per-character on demand (build-on-demand, never pre-generated).
  */
 export const DEFAULT_EXPRESSION_LABELS = [
     'admiration',
@@ -191,10 +191,13 @@ export const DEFAULT_EXPRESSION_LABELS = [
 ];
 
 /**
+ * Default test prompt for engine connectivity checks.
+ */
+export const DEFAULT_TEST_PROMPT = 'a simple illustration of a blue bird, white background';
+
+/**
  * Image prompt template for Pollinations portrait generation.
  * Supports {{character}}, {{outfit}}, and {{expression}} variables.
- * When any variable is present the template is used as the full prompt;
- * otherwise it is appended to the assembled sandwich as before.
  */
 export const DEFAULT_VN_STYLE_SUFFIX =
     'A highly detailed anime-style character illustration of {{character}}, wearing {{outfit}}, expressing {{expression}} through subtle facial expression and minimal hand gesture, body kept symmetrical and front-facing. ' +
