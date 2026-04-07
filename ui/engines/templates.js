@@ -3,8 +3,9 @@
  * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role Pure UI Templates (Engines Modal)
  * @description
- * Generates HTML for the 3-tab Engines configuration modal.
- * Tabs: Pollinations | HF Router | HF Spaces
+ * Generates the HTML for the Image Engines configuration modal. 
+ * Consolidates Hugging Face configurations into a single tab with an exclusive
+ * mode toggle between Router and Spaces, styled to match the Character Workshop.
  *
  * @api-declaration
  * getEnginesModalHTML(settings) → string
@@ -29,14 +30,17 @@ function getPollinationsTabHTML(settings) {
         .join('');
 
     return `
-    <div style="padding:16px; display:flex; flex-direction:column; gap:12px;">
+    <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
+        <p style="font-size:0.85em; opacity:0.6; margin:0;">
+            High-speed image generation. Requires a Pollinations API key for full performance.
+        </p>
 
         <div style="display:flex; align-items:center; gap:8px;">
             <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">API Key:</label>
-            <input type="password" id="plz-eng-pol-key" class="text_pole" placeholder="sk_..." style="flex:1; min-width:0;" />
-            <button class="menu_button plz-eng-vault-save" data-secret="api_key_pollinations" style="white-space:nowrap; padding:2px 10px;">Save</button>
+            <input type="password" id="plz-eng-pol-key" class="text_pole" placeholder="sk_..." style="flex:1;" />
+            <button class="menu_button plz-eng-vault-save" data-secret="api_key_pollinations">Save</button>
         </div>
-        <div id="plz-eng-pol-key-status" style="font-size:0.8em; margin-top:-6px;"></div>
+        <div id="plz-eng-pol-key-status" style="font-size:0.8em; margin-top:-8px;"></div>
 
         <div style="display:flex; align-items:center; gap:8px;">
             <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Model:</label>
@@ -45,68 +49,101 @@ function getPollinationsTabHTML(settings) {
             </select>
         </div>
 
-        <div style="display:flex; align-items:center; gap:8px;">
-            <button class="menu_button" id="plz-eng-pol-ping" style="flex:1;">Ping</button>
-            <button class="menu_button" id="plz-eng-pol-test" style="flex:1;">Test — generates image</button>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+            <button class="menu_button" id="plz-eng-pol-ping" style="flex:1;"><i class="fa-solid fa-signal"></i> Ping</button>
+            <button class="menu_button" id="plz-eng-pol-test" style="flex:1;"><i class="fa-solid fa-flask"></i> Test Generation</button>
         </div>
         <div id="plz-eng-pol-status" style="font-size:0.8em; opacity:0.8;"></div>
-
-        <p style="font-size:0.78em; opacity:0.55; margin:0;">Enter key in field to ping. Test burns Pollinations credit.</p>
     </div>`;
 }
 
-// ─── Tab: HF Router ───────────────────────────────────────────────────────────
+// ─── Tab: Hugging Face (Unified) ─────────────────────────────────────────────
 
-function getHFRouterTabHTML(settings) {
-    const s = settings;
+function getHuggingFaceTabHTML(settings) {
+    return `
+    <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
+        <p style="font-size:0.85em; opacity:0.6; margin:0;">
+            Advanced generation using Hugging Face. Select between the Router (API) or Spaces (Gradio).
+        </p>
+
+        <!-- Shared Key -->
+        <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">API Key:</label>
+            <input type="password" id="plz-eng-hf-key" class="text_pole" placeholder="hf_..." style="flex:1;" />
+            <button class="menu_button plz-eng-vault-save" data-secret="api_key_huggingface">Save</button>
+        </div>
+        <div id="plz-eng-hf-key-status" style="font-size:0.8em; margin-top:-8px;"></div>
+
+        <!-- Mode Switcher (The Exclusivity Toggle) -->
+        <div style="display:flex; background:rgba(0,0,0,0.25); border-radius:8px; padding:4px; gap:4px;">
+            <button class="menu_button plz-eng-mode-btn" data-mode="router" style="flex:1; font-size:0.85em; border:none !important;">
+                <i class="fa-solid fa-route"></i> HF Router
+            </button>
+            <button class="menu_button plz-eng-mode-btn" data-mode="space" style="flex:1; font-size:0.85em; border:none !important;">
+                <i class="fa-solid fa-rocket"></i> HF Spaces
+            </button>
+        </div>
+
+        <!-- Mode-Specific Content -->
+        <div id="plz-eng-mode-router-content" class="plz-hidden" style="display:flex; flex-direction:column; gap:12px;">
+            ${getRouterConfigHTML(settings)}
+        </div>
+
+        <div id="plz-eng-mode-space-content" class="plz-hidden" style="display:flex; flex-direction:column; gap:12px;">
+            ${getSpaceConfigHTML(settings)}
+        </div>
+    </div>`;
+}
+
+function getRouterConfigHTML(s) {
     const providerOptions = Object.entries(HF_PROVIDER_MODELS)
         .map(([id, p]) => `<option value="${escapeHtml(id)}"${id === s.hfProvider ? ' selected' : ''}>${escapeHtml(p.label)}</option>`)
         .join('');
 
-    const currentModels = HF_PROVIDER_MODELS[s.hfProvider]?.models ?? [];
-    const modelOptions = currentModels
-        .map(m => `<option value="${escapeHtml(m)}"${m === s.hfImageModel ? ' selected' : ''}>${escapeHtml(m)}</option>`)
-        .join('');
-
     return `
-    <div style="padding:16px; display:flex; flex-direction:column; gap:12px;">
-
-        <div style="display:flex; align-items:center; gap:8px;">
-            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">API Key:</label>
-            <input type="password" id="plz-eng-hf-key" class="text_pole" placeholder="hf_..." style="flex:1; min-width:0;" />
-            <button class="menu_button plz-eng-vault-save" data-secret="api_key_huggingface" style="white-space:nowrap; padding:2px 10px;">Save</button>
-        </div>
-        <div id="plz-eng-hf-key-status" style="font-size:0.8em; margin-top:-6px;"></div>
-
         <div style="display:flex; align-items:center; gap:8px;">
             <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Provider:</label>
             <select id="plz-eng-hf-provider" class="text_pole" style="flex:1;">
                 ${providerOptions}
             </select>
         </div>
-
         <div style="display:flex; align-items:center; gap:8px;">
             <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Model:</label>
-            <select id="plz-eng-hf-model" class="text_pole" style="flex:1;">
-                ${modelOptions}
-            </select>
+            <select id="plz-eng-hf-model" class="text_pole" style="flex:1;"></select>
         </div>
-
-        <div style="display:flex; align-items:center; gap:8px;">
-            <button class="menu_button" id="plz-eng-hf-ping" style="flex:1;">Ping</button>
-            <button class="menu_button" id="plz-eng-hf-test" style="flex:1;">Test — generates image</button>
+        <div style="display:flex; gap:8px; margin-top:4px;">
+            <button class="menu_button" id="plz-eng-hf-ping" style="flex:1;"><i class="fa-solid fa-signal"></i> Ping</button>
+            <button class="menu_button" id="plz-eng-hf-test" style="flex:1;"><i class="fa-solid fa-flask"></i> Test Router</button>
         </div>
         <div id="plz-eng-hf-status" style="font-size:0.8em; opacity:0.8;"></div>
-
-        <p style="font-size:0.78em; opacity:0.55; margin:0;">Ping validates your HF key. Test bills your HF account via the selected provider.</p>
-    </div>`;
+    `;
 }
 
-// ─── Tab: HF Spaces ───────────────────────────────────────────────────────────
+function getSpaceConfigHTML(s) {
+    const savedSpaces = s.hfSavedSpaces ?? [];
+    return `
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <label style="font-size:0.85em; opacity:0.75;">Space ID (owner/space-name):</label>
+            <div style="position:relative; display:flex; gap:4px;">
+                <input type="text" id="plz-eng-space-id" class="text_pole" value="${escapeHtml(s.hfSpaceId ?? '')}" placeholder="black-forest-labs/FLUX.1-schnell" style="flex:1;" />
+                <button class="menu_button" id="plz-eng-space-toggle" style="padding:2px 10px;">▾</button>
+                <div id="plz-eng-space-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:100; background:var(--SmartThemeBlurTintColor,#222); border:1px solid var(--SmartThemeBorderColor,#444); border-radius:4px; max-height:160px; overflow-y:auto; margin-top:2px;">
+                    ${buildSavedSpacesList(savedSpaces)}
+                </div>
+            </div>
+        </div>
+        <div style="display:flex; gap:6px;">
+            <button class="menu_button" id="plz-eng-space-add" style="font-size:0.85em;">+ Save to List</button>
+            <button class="menu_button" id="plz-eng-space-ping" style="flex:1; font-size:0.85em;"><i class="fa-solid fa-signal"></i> Ping Space</button>
+        </div>
+        <button class="menu_button" id="plz-eng-space-test"><i class="fa-solid fa-flask"></i> Test Space Generation</button>
+        <div id="plz-eng-space-status" style="font-size:0.8em; opacity:0.8;"></div>
+    `;
+}
 
 function buildSavedSpacesList(savedSpaces) {
     if (!savedSpaces || savedSpaces.length === 0) {
-        return `<div style="padding:8px 10px; opacity:0.5; font-size:0.85em;">No saved spaces yet.</div>`;
+        return `<div style="padding:8px 10px; opacity:0.5; font-size:0.85em;">No saved spaces.</div>`;
     }
     return savedSpaces.map(id => `
     <div class="plz-eng-space-entry" style="cursor:pointer; display:flex; align-items:center; padding:6px 10px; border-bottom:1px solid var(--SmartThemeBorderColor,#333);">
@@ -115,59 +152,12 @@ function buildSavedSpacesList(savedSpaces) {
     </div>`).join('');
 }
 
-function getHFSpaceTabHTML(settings) {
-    const s = settings;
-    const savedSpaces = s.hfSavedSpaces ?? [];
-
-    return `
-    <div style="padding:16px; display:flex; flex-direction:column; gap:12px;">
-
-        <p style="font-size:0.78em; opacity:0.55; margin:0;">Uses your HuggingFace key. ZeroGPU spaces are free up to your daily quota.</p>
-        <div id="plz-eng-space-hf-status" style="font-size:0.8em;"></div>
-
-        <div>
-            <label style="font-size:0.85em; opacity:0.75; display:block; margin-bottom:6px;">Space ID:</label>
-            <div style="position:relative;">
-                <div style="display:flex; gap:6px;">
-                    <input type="text" id="plz-eng-space-id" class="text_pole"
-                           value="${escapeHtml(s.hfSpaceId ?? '')}"
-                           placeholder="owner/space-name"
-                           style="flex:1;" />
-                    <button class="menu_button" id="plz-eng-space-toggle" style="padding:2px 10px;">▾</button>
-                </div>
-                <div id="plz-eng-space-dropdown"
-                     style="display:none; position:absolute; top:100%; left:0; right:0; z-index:100;
-                            background:var(--SmartThemeBlurTintColor,#222); border:1px solid var(--SmartThemeBorderColor,#444);
-                            border-radius:4px; max-height:200px; overflow-y:auto; margin-top:2px;">
-                    ${buildSavedSpacesList(savedSpaces)}
-                </div>
-            </div>
-        </div>
-
-        <button class="menu_button" id="plz-eng-space-add" style="align-self:flex-start; font-size:0.85em;">＋ Add to List</button>
-
-        <div style="display:flex; align-items:center; gap:8px;">
-            <button class="menu_button" id="plz-eng-space-ping" style="flex:1;">Ping</button>
-            <button class="menu_button" id="plz-eng-space-test" style="flex:1;">Test — generates image</button>
-        </div>
-        <div id="plz-eng-space-status" style="font-size:0.8em; opacity:0.8;"></div>
-
-        <p style="font-size:0.78em; opacity:0.55; margin:0;">Enter space ID to ping. Test runs a full Gradio generation.</p>
-    </div>`;
-}
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Returns full engines modal HTML.
- * @param {object} settings - The current settings activeState.
- * @returns {string}
- */
 export function getEnginesModalHTML(settings) {
     return `
 <div id="plz-engines-overlay" class="plz-overlay plz-hidden">
     <div id="plz-engines-modal" class="plz-modal">
-
         <div class="plz-workshop-header">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                 <h3 style="margin:0;"><i class="fa-solid fa-gear"></i> Image Engines</h3>
@@ -175,8 +165,7 @@ export function getEnginesModalHTML(settings) {
             </div>
             <div class="plz-tab-bar">
                 <button class="plz-tab-btn menu_button" data-tab="pollinations">Pollinations</button>
-                <button class="plz-tab-btn menu_button" data-tab="hf-router">HF Router</button>
-                <button class="plz-tab-btn menu_button" data-tab="hf-space">HF Spaces</button>
+                <button class="plz-tab-btn menu_button" data-tab="huggingface">Hugging Face</button>
             </div>
         </div>
 
@@ -184,21 +173,14 @@ export function getEnginesModalHTML(settings) {
             <div id="plz-eng-tab-pollinations" class="plz-tab-panel plz-hidden">
                 ${getPollinationsTabHTML(settings)}
             </div>
-            <div id="plz-eng-tab-hf-router" class="plz-tab-panel plz-hidden">
-                ${getHFRouterTabHTML(settings)}
-            </div>
-            <div id="plz-eng-tab-hf-space" class="plz-tab-panel plz-hidden">
-                ${getHFSpaceTabHTML(settings)}
+            <div id="plz-eng-tab-huggingface" class="plz-tab-panel plz-hidden">
+                ${getHuggingFaceTabHTML(settings)}
             </div>
         </div>
     </div>
 </div>`;
 }
-/**
- * Returns the inner HTML for #plz-eng-space-dropdown (called when list changes).
- * @param {string[]} savedSpaces
- * @returns {string}
- */
+
 export function rebuildSpaceDropdown(savedSpaces) {
     return buildSavedSpacesList(savedSpaces);
 }

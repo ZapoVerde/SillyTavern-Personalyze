@@ -85,7 +85,7 @@ async function getAuthKey(provider) {
  * @param {string} anchor
  * @param {string} outfitDescription
  * @param {string} expressionDescription
- * @param {'pollinations'|'huggingface'} provider
+ * @param {'pollinations'|'huggingface'|'hf-space'} provider
  * @returns {string}
  */
 export function buildPortraitPrompt(anchor, outfitDescription, expressionDescription, provider = 'pollinations') {
@@ -189,7 +189,6 @@ async function fetchSpaceWithRetry(prompt, maxRetries = 3) {
 
 /**
  * Fetch from Hugging Face via the personalyze server plugin to avoid CORS restrictions.
- * Requires the plugin/index.js to be deployed to the ST plugins directory.
  */
 async function fetchHuggingFaceWithRetry(prompt, maxRetries = 5) {
     const s = getSettings();
@@ -285,6 +284,7 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
 
 /**
  * Generates and uploads a full-res portrait.
+ * Modified to check the global hfEngine setting when the outfit is set to Hugging Face.
  */
 export async function generate(
     characterId,
@@ -296,9 +296,16 @@ export async function generate(
 ) {
     const character = getCharacter(characterId);
     const outfit    = character?.outfits[outfitKey];
-    const provider  = outfit?.provider ?? 'pollinations';
-    const logTag    = `[${provider.toUpperCase()}]`;
+    
+    let provider = outfit?.provider ?? 'pollinations';
 
+    // If using Hugging Face, check the global engine setting to see if we route to Router or Space
+    if (provider === 'huggingface') {
+        const s = getSettings();
+        provider = s.hfEngine === 'space' ? 'hf-space' : 'huggingface';
+    }
+
+    const logTag = `[${provider.toUpperCase()}]`;
     const prompt = buildPortraitPrompt(anchor, outfitDescription, expressionLabel, provider);
     logCall('PortraitGenerate', `${logTag} ${prompt}`, null, null);
     
