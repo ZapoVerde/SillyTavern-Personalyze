@@ -5,33 +5,47 @@
  * @description
  * Handles dynamic model discovery for the Pollinations Image API.
  * 
- * Pollinations often updates their model roster. This module fetches the 
- * latest available models from their unified endpoint and updates the 
- * settings dropdown accordingly. It handles string arrays, object arrays, 
- * and ensures the user's currently selected model is preserved even 
- * if the API call fails or the model is deprecated.
+ * This module fetches the latest available models from Pollinations and 
+ * synchronizes the dropdown inside the Engines Modal (#plz-eng-pol-model).
+ * It maintains a local cache to allow the modal to populate instantly
+ * even if the network call is still in progress or failed.
  *
  * @api-declaration
  * refreshModelDropdown(currentModel) -> Promise<void>
+ * getCachedModels() -> string[]
  *
  * @contract
  *   assertions:
  *     purity: IO / Side-effect
- *     state_ownership: []
- *     external_io: [fetch(Pollinations API), DOM (#plz-image-model)]
+ *     state_ownership: [cachedModels]
+ *     external_io: [fetch(Pollinations API), DOM (#plz-eng-pol-model)]
  */
 
 import { POLLINATIONS_BASE_URL, POLLINATIONS_MODELS } from '../../defaults.js';
 import { log } from '../../utils/logger.js';
 
 /**
- * Fetches latest models from Pollinations and updates the #plz-image-model dropdown.
+ * Global cache of fetched models.
+ * Defaults to the hardcoded list from defaults.js.
+ */
+let cachedModels = [...POLLINATIONS_MODELS];
+
+/**
+ * Returns the latest known list of models.
+ * @returns {string[]}
+ */
+export function getCachedModels() {
+    return cachedModels;
+}
+
+/**
+ * Fetches latest models from Pollinations and updates the Engines Modal dropdown.
  * 
  * @param {string|null} currentModel — The currently selected model in the settings.
  */
 export async function refreshModelDropdown(currentModel) {
-    const $select = $('#plz-image-model');
-    if (!$select.length) return;
+    const selector = '#plz-eng-pol-model';
+    const $select  = $(selector);
 
     try {
         const response = await fetch(`${POLLINATIONS_BASE_URL}/image/models`);
@@ -40,7 +54,7 @@ export async function refreshModelDropdown(currentModel) {
         const data = await response.json();
         let models = [];
 
-        // Pollinations response format can vary; handle arrays of strings or objects
+        // Pollinations response format can vary (Array of strings vs Array of objects)
         if (Array.isArray(data)) {
             models = data.map(m => typeof m === 'object' ? (m.id || m.name) : m).filter(Boolean);
         } else if (data.data && Array.isArray(data.data)) {
@@ -52,28 +66,30 @@ export async function refreshModelDropdown(currentModel) {
             models = [...POLLINATIONS_MODELS];
         }
 
-        // Ensure the current selection is always part of the list to prevent empty selects
+        // Ensure the current user selection is part of the list
         if (currentModel && !models.includes(currentModel)) {
             models.unshift(currentModel);
         }
 
-        // De-duplicate and sort
-        const finalModels = [...new Set(models)];
+        // Update the cache for subsequent modal opens
+        cachedModels = [...new Set(models)];
 
-        // Update the DOM
-        const options = finalModels
-            .map(m => `<option value="${m}" ${m === currentModel ? 'selected' : ''}>${m}</option>`)
-            .join('');
+        // If the modal is currently open, update the DOM immediately
+        if ($select.length) {
+            const options = cachedModels
+                .map(m => `<option value="${m}" ${m === currentModel ? 'selected' : ''}>${m}</option>`)
+                .join('');
 
-        $select.html(options);
-        $select.val(currentModel);
+            $select.html(options);
+            $select.val(currentModel);
+        }
 
-        log('Models', `Updated dropdown with ${finalModels.length} models.`);
+        log('Models', `Discovered ${cachedModels.length} models from Pollinations API.`);
     } catch (err) {
-        log('Models', 'Discovery failed, utilizing current list.', err);
+        log('Models', 'Discovery failed, utilizing fallback list.', err);
         
-        // Final safety: if the dropdown is currently empty, at least populate the hardcoded ones
-        if ($select.find('option').length === 0) {
+        // Final safety: if the modal is open and the select is empty, use defaults
+        if ($select.length && $select.find('option').length === 0) {
             const fallback = [...new Set([...POLLINATIONS_MODELS, currentModel])].filter(Boolean);
             $select.html(fallback.map(m => `<option value="${m}">${m}</option>`).join(''));
             $select.val(currentModel);

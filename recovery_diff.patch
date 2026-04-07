@@ -1,0 +1,347 @@
+diff --git a/index.js b/index.js
+index 22c108d..f97e437 100644
+--- a/index.js
++++ b/index.js
+@@ -1,7 +1,7 @@
+ /**
+  * @file data/default-user/extensions/personalyze/index.js
+  * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+- * @version 0.2.13
++ * @version 0.2.14
+  * @architectural-role Feature Entry Point / Orchestrator
+  * @description
+  * SillyTavern Personalyze (PLZ) — extension entry point.
+diff --git a/manifest.json b/manifest.json
+index da9dc7a..520f614 100644
+--- a/manifest.json
++++ b/manifest.json
+@@ -6,7 +6,7 @@
+     "js": "index.js",
+     "css": "style.css",
+     "author": "ZapoVerde",
+-    "version": "0.2.13",
++    "version": "0.2.14",
+     "homePage": "https://github.com/ZapoVerde/SillyTavern-Personalyze",
+     "auto_update": false
+ }
+diff --git a/ui/panel.js b/ui/panel.js
+index d2983a4..9f183cd 100644
+--- a/ui/panel.js
++++ b/ui/panel.js
+@@ -4,14 +4,15 @@
+  * @architectural-role UI Orchestrator (Settings)
+  * @description
+  * Main orchestrator for the PersonaLyze extensions settings panel.
+- *
++ * 
+  * Responsibilities:
+  * - Injects the panel HTML (via templates.js).
+  * - Binds profile management (via profiles.js).
+  * - Binds ST connections (via connection.js).
++ * - Binds API key vault (via vault.js).
+  * - Manages global settings toggles and numerical inputs.
+  * - Handles the multi-line Prompt Editor modal with unlimited auto-resize.
+- * - Delegates engine/key/model configuration to the Engines Modal (enginesModal.js).
++ * - Triggers dynamic model discovery for Pollinations (via models.js).
+  *
+  * @api-declaration
+  * injectSettingsPanel() — Builds and appends the panel and binds all sub-systems.
+@@ -20,7 +21,7 @@
+  *   assertions:
+  *     purity: Stateful UI Orchestrator
+  *     state_ownership: [extension_settings.personalyze.activeState]
+- *     external_io: [DOM, callPopup, smartResize, settings.js, enginesModal.js]
++ *     external_io: [DOM, callPopup, smartResize, settings.js]
+  */
+ 
+ import { callPopup } from '../../../../../script.js';
+@@ -36,7 +37,8 @@ import { smartResize } from '../utils/dom.js';
+ import { buildPanelHTML } from './panel/templates.js';
+ import { bindProfileHandlers, refreshProfileDropdown, updateDirtyIndicator } from './panel/profiles.js';
+ import { refreshConnectionDropdowns } from './panel/connection.js';
+-import { openEnginesModal, injectEnginesModal } from './enginesModal.js';
++import { bindVaultHandlers, updateKeyStatusIndicator } from './panel/vault.js';
++import { refreshModelDropdown } from './panel/models.js';
+ 
+ import {
+     DEFAULT_SUBJECT_MATCH_PROMPT,
+@@ -85,6 +87,14 @@ function refreshUI() {
+     $(`#plz-dev-mode`).prop('checked', s.devMode);
+     $(`#plz-verbose-logging`).prop('checked', s.verboseLogging);
+     $(`#plz-portrait-position`).val(s.portraitPosition);
++
++    // Image Model Dropdown: ensure the model from the profile is an option
++    const $modelSelect = $(`#plz-image-model`);
++    if ($modelSelect.find(`option[value="${s.imageModel}"]`).length === 0 && s.imageModel) {
++        $modelSelect.append(`<option value="${s.imageModel}">${s.imageModel}</option>`);
++    }
++    $modelSelect.val(s.imageModel);
++
+     // 2. Numerical Inputs
+     $(`.plz-history-input`).each(function () {
+         const key = $(this).data('history-key');
+@@ -92,6 +102,7 @@ function refreshUI() {
+     });
+ 
+     // 3. Sub-modules
++    updateKeyStatusIndicator();
+     refreshConnectionDropdowns(() => updateDirtyIndicator());
+     updateDirtyIndicator();
+ 
+@@ -129,6 +140,11 @@ function bindHandlers() {
+     });
+ 
+     // 3. Image & Logging
++    $panel.on('change', '#plz-image-model', function () {
++        updateSetting('imageModel', $(this).val());
++        updateDirtyIndicator();
++    });
++
+     $panel.on('change', '#plz-dev-mode', function () {
+         updateSetting('devMode', $(this).prop('checked'));
+         updateDirtyIndicator();
+@@ -149,8 +165,8 @@ function bindHandlers() {
+         updateDirtyIndicator();
+     });
+ 
+-    // 5. Engines Modal
+-    $panel.on('click', '#plz-open-engines', () => openEnginesModal());
++    // 5. Vault & Test (Pollinations Logic)
++    bindVaultHandlers($panel);
+ 
+     // 6. Prompt Editor
+     $panel.on('click', '.plz-open-prompt', async function () {
+@@ -159,7 +175,6 @@ function bindHandlers() {
+         const defaultValue = PROMPT_DEFAULTS[key] ?? '';
+         const current      = getSettings()[key]   ?? defaultValue;
+ 
+-        $('body').addClass('plz-modal-open');
+         const popupPromise = callPopup(
+             `<h3>${title}</h3>
+              <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="10"
+@@ -205,7 +220,6 @@ function bindHandlers() {
+ 
+         $(document).off('input', '#plz-prompt-editor');
+         $(document).off('click', '#plz-prompt-reset');
+-        $('body').removeClass('plz-modal-open');
+     });
+ 
+     // 7. Workshop Links
+@@ -214,7 +228,6 @@ function bindHandlers() {
+ 
+     // 8. Call Log Viewer
+     $panel.on('click', '#plz-view-logs', async function () {
+-        $('body').addClass('plz-modal-open');
+         const popupPromise = callPopup(buildLogModalHTML(), 'text');
+ 
+         $(document).on('click.plz-logs', '.plz-log-toggle', function () {
+@@ -238,7 +251,6 @@ function bindHandlers() {
+ 
+         await popupPromise;
+         $(document).off('.plz-logs');
+-        $('body').removeClass('plz-modal-open');
+     });
+ }
+ 
+@@ -337,11 +349,13 @@ export function injectSettingsPanel() {
+     const profiles = Object.keys(meta.profiles);
+ 
+     $parent.append(buildPanelHTML(settings, meta, profiles));
+-    injectEnginesModal();
+ 
+     bindHandlers();
+     refreshUI();
+     refreshProfileDropdown();
+ 
++    // Fetch dynamic models in the background
++    refreshModelDropdown(settings.imageModel);
++
+     log('Panel', 'Settings panel refactored and injected.');
+ }
+\ No newline at end of file
+diff --git a/ui/panel/models.js b/ui/panel/models.js
+new file mode 100644
+index 0000000..85c5dc3
+--- /dev/null
++++ b/ui/panel/models.js
+@@ -0,0 +1,82 @@
++/**
++ * @file data/default-user/extensions/personalyze/ui/panel/models.js
++ * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
++ * @architectural-role UI Logic (API Discovery)
++ * @description
++ * Handles dynamic model discovery for the Pollinations Image API.
++ * 
++ * Pollinations often updates their model roster. This module fetches the 
++ * latest available models from their unified endpoint and updates the 
++ * settings dropdown accordingly. It handles string arrays, object arrays, 
++ * and ensures the user's currently selected model is preserved even 
++ * if the API call fails or the model is deprecated.
++ *
++ * @api-declaration
++ * refreshModelDropdown(currentModel) -> Promise<void>
++ *
++ * @contract
++ *   assertions:
++ *     purity: IO / Side-effect
++ *     state_ownership: []
++ *     external_io: [fetch(Pollinations API), DOM (#plz-image-model)]
++ */
++
++import { POLLINATIONS_BASE_URL, POLLINATIONS_MODELS } from '../../defaults.js';
++import { log } from '../../utils/logger.js';
++
++/**
++ * Fetches latest models from Pollinations and updates the #plz-image-model dropdown.
++ * 
++ * @param {string|null} currentModel — The currently selected model in the settings.
++ */
++export async function refreshModelDropdown(currentModel) {
++    const $select = $('#plz-image-model');
++    if (!$select.length) return;
++
++    try {
++        const response = await fetch(`${POLLINATIONS_BASE_URL}/image/models`);
++        if (!response.ok) throw new Error(`HTTP ${response.status}`);
++        
++        const data = await response.json();
++        let models = [];
++
++        // Pollinations response format can vary; handle arrays of strings or objects
++        if (Array.isArray(data)) {
++            models = data.map(m => typeof m === 'object' ? (m.id || m.name) : m).filter(Boolean);
++        } else if (data.data && Array.isArray(data.data)) {
++            models = data.data.map(m => typeof m === 'object' ? (m.id || m.name) : m).filter(Boolean);
++        }
++
++        if (models.length === 0) {
++            log('Models', 'Empty model list received, falling back to defaults.');
++            models = [...POLLINATIONS_MODELS];
++        }
++
++        // Ensure the current selection is always part of the list to prevent empty selects
++        if (currentModel && !models.includes(currentModel)) {
++            models.unshift(currentModel);
++        }
++
++        // De-duplicate and sort
++        const finalModels = [...new Set(models)];
++
++        // Update the DOM
++        const options = finalModels
++            .map(m => `<option value="${m}" ${m === currentModel ? 'selected' : ''}>${m}</option>`)
++            .join('');
++
++        $select.html(options);
++        $select.val(currentModel);
++
++        log('Models', `Updated dropdown with ${finalModels.length} models.`);
++    } catch (err) {
++        log('Models', 'Discovery failed, utilizing current list.', err);
++        
++        // Final safety: if the dropdown is currently empty, at least populate the hardcoded ones
++        if ($select.find('option').length === 0) {
++            const fallback = [...new Set([...POLLINATIONS_MODELS, currentModel])].filter(Boolean);
++            $select.html(fallback.map(m => `<option value="${m}">${m}</option>`).join(''));
++            $select.val(currentModel);
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/ui/panel/templates.js b/ui/panel/templates.js
+index 44f4674..fa3a6db 100644
+--- a/ui/panel/templates.js
++++ b/ui/panel/templates.js
+@@ -4,10 +4,11 @@
+  * @architectural-role Pure UI Templates
+  * @description
+  * Generates the HTML strings for the PersonaLyze settings panel.
++ * Uses a modular approach to build the profile bar, pipeline step rows, 
++ * and developer configuration sections.
+  *
+- * Engine configuration (API keys, models, HF Spaces) has been moved to the
+- * dedicated Engines Modal (ui/enginesModal.js). The panel now shows a single
+- * "Configure Engines" button that opens that modal.
++ * Modified to ensure the initial model list includes the current selection
++ * to prevent UI flickering during the dynamic discovery phase.
+  *
+  * @api-declaration
+  * buildPanelHTML(settings, meta, profileNames) -> string (HTML)
+@@ -19,6 +20,9 @@
+  *     external_io: []
+  */
+ 
++import { 
++    POLLINATIONS_MODELS,
++} from '../../defaults.js';
+ 
+ /**
+  * Generates a styled informational icon with a hover tooltip.
+@@ -78,6 +82,13 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
+         .map(n => `<option value="${n}"${n === meta.currentProfileName ? ' selected' : ''}>${n}</option>`)
+         .join('');
+ 
++    // Ensure the current model is in the initial dropdown list even if not in hardcoded defaults.
++    // This prevents the dropdown from showing an incorrect value before the async fetch completes.
++    const initialModels = [...new Set([...POLLINATIONS_MODELS, s.imageModel])].filter(Boolean);
++    const modelOptions = initialModels
++        .map(m => `<option value="${m}"${m === s.imageModel ? ' selected' : ''}>${m}</option>`)
++        .join('');
++
+     return `
+     <div id="plz-settings" class="extension_settings">
+         <div class="inline-drawer">
+@@ -148,20 +159,36 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
+ 
+                 <!-- Image Generation -->
+                 <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--SmartThemeBorderColor,#444);">
+-                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
++                    <div style="display:flex; align-items:center; margin-bottom:10px;">
+                         <strong style="font-size:0.95em;">Image Generation</strong>
+-                        ${tip("Configure image generation engines, API keys, models, and HuggingFace Spaces.")}
++                        ${tip("Configure how portraits are rendered via the Pollinations API.")}
+                     </div>
+-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+-                        <button class="menu_button" id="plz-open-engines" style="flex:1;">
+-                            <i class="fa-solid fa-gear"></i> Configure Engines
+-                        </button>
++                    
++                    <!-- API Key row -->
++                    <div style="display:flex; align-items:center; gap:6px;">
++                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:60px;">API Key:</label>
++                        <input type="password" id="plz-pollinations-key" class="text_pole"
++                               placeholder="sk_..." style="flex:1; min-width:0;" />
++                        <button class="menu_button" id="plz-pollinations-save" style="white-space:nowrap;">Save to Vault</button>
++                        <button class="menu_button" id="plz-pollinations-test" style="white-space:nowrap;">Test Connection</button>
+                     </div>
+-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+-                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Prompt:</label>
++                    <div id="plz-key-status" style="font-size:0.82em; margin-left:68px; margin-bottom:5px;"></div>
++                    <div id="plz-pollinations-status" style="font-size:0.82em; opacity:0.65; margin-left:68px; margin-bottom:10px;"></div>
++
++                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
++                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:60px;">Model:</label>
++                        <select id="plz-image-model" class="text_pole" style="flex:1;">
++                            ${modelOptions}
++                        </select>
++                        ${tip("The specific image generation model provided by Pollinations.")}
++                    </div>
++
++                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
++                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:60px;">Prompt:</label>
+                         <button class="menu_button plz-open-prompt" data-prompt-key="vnStyleSuffix" style="flex:1;">Edit Portrait Prompt Template</button>
+                         ${tip("The foundation of your image prompt. Supports {{character}}, {{outfit}}, and {{expression}} variables.")}
+                     </div>
++
+                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                         <label class="checkbox_label" style="font-size:0.85em; cursor:pointer;">
+                             <input type="checkbox" id="plz-dev-mode" ${s.devMode ? 'checked' : ''} />
+@@ -188,7 +215,7 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
+                         <button class="menu_button" id="plz-view-logs" style="font-size:0.85em; padding:4px 10px;">
+                             <i class="fa-solid fa-list"></i> View Logs
+                         </button>
+-                        ${tip("Inspect the last few turns of AI call logs — prompts sent, responses received, and any errors.")}
++                        ${tip("Inspect the last two turns of AI call logs — prompts sent, responses received, and any errors.")}
+                     </div>
+                 </div>
+ 

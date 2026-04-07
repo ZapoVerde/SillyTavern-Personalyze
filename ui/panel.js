@@ -9,9 +9,9 @@
  * - Injects the panel HTML (via templates.js).
  * - Binds profile management (via profiles.js).
  * - Binds ST connections (via connection.js).
- * - Binds API key vault (via vault.js).
  * - Manages global settings toggles and numerical inputs.
  * - Handles the multi-line Prompt Editor modal with unlimited auto-resize.
+ * - Delegates engine/key/model configuration to the Engines Modal (enginesModal.js).
  * - Triggers dynamic model discovery for Pollinations (via models.js).
  *
  * @api-declaration
@@ -21,7 +21,7 @@
  *   assertions:
  *     purity: Stateful UI Orchestrator
  *     state_ownership: [extension_settings.personalyze.activeState]
- *     external_io: [DOM, callPopup, smartResize, settings.js]
+ *     external_io: [DOM, callPopup, smartResize, settings.js, enginesModal.js]
  */
 
 import { callPopup } from '../../../../../script.js';
@@ -37,7 +37,7 @@ import { smartResize } from '../utils/dom.js';
 import { buildPanelHTML } from './panel/templates.js';
 import { bindProfileHandlers, refreshProfileDropdown, updateDirtyIndicator } from './panel/profiles.js';
 import { refreshConnectionDropdowns } from './panel/connection.js';
-import { bindVaultHandlers, updateKeyStatusIndicator } from './panel/vault.js';
+import { openEnginesModal, injectEnginesModal } from './enginesModal.js';
 import { refreshModelDropdown } from './panel/models.js';
 
 import {
@@ -88,13 +88,6 @@ function refreshUI() {
     $(`#plz-verbose-logging`).prop('checked', s.verboseLogging);
     $(`#plz-portrait-position`).val(s.portraitPosition);
 
-    // Image Model Dropdown: ensure the model from the profile is an option
-    const $modelSelect = $(`#plz-image-model`);
-    if ($modelSelect.find(`option[value="${s.imageModel}"]`).length === 0 && s.imageModel) {
-        $modelSelect.append(`<option value="${s.imageModel}">${s.imageModel}</option>`);
-    }
-    $modelSelect.val(s.imageModel);
-
     // 2. Numerical Inputs
     $(`.plz-history-input`).each(function () {
         const key = $(this).data('history-key');
@@ -102,7 +95,6 @@ function refreshUI() {
     });
 
     // 3. Sub-modules
-    updateKeyStatusIndicator();
     refreshConnectionDropdowns(() => updateDirtyIndicator());
     updateDirtyIndicator();
 
@@ -140,11 +132,6 @@ function bindHandlers() {
     });
 
     // 3. Image & Logging
-    $panel.on('change', '#plz-image-model', function () {
-        updateSetting('imageModel', $(this).val());
-        updateDirtyIndicator();
-    });
-
     $panel.on('change', '#plz-dev-mode', function () {
         updateSetting('devMode', $(this).prop('checked'));
         updateDirtyIndicator();
@@ -165,8 +152,8 @@ function bindHandlers() {
         updateDirtyIndicator();
     });
 
-    // 5. Vault & Test (Pollinations Logic)
-    bindVaultHandlers($panel);
+    // 5. Engines Modal (Refactored logic)
+    $panel.on('click', '#plz-open-engines', () => openEnginesModal());
 
     // 6. Prompt Editor
     $panel.on('click', '.plz-open-prompt', async function () {
@@ -175,6 +162,7 @@ function bindHandlers() {
         const defaultValue = PROMPT_DEFAULTS[key] ?? '';
         const current      = getSettings()[key]   ?? defaultValue;
 
+        $('body').addClass('plz-modal-open');
         const popupPromise = callPopup(
             `<h3>${title}</h3>
              <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="10"
@@ -187,17 +175,15 @@ function bindHandlers() {
             'confirm',
         );
 
-        // Multiple frame catch to ensure smartResize runs after modal is DOM-ready and visible
         const triggerResize = () => {
             const el = document.getElementById('plz-prompt-editor');
             if (el) smartResize(el);
         };
         requestAnimationFrame(() => {
             triggerResize();
-            setTimeout(triggerResize, 50); // Second pass for layout stability
+            setTimeout(triggerResize, 50);
         });
 
-        // Delegate listener for live resize inside callPopup
         $(document).on('input', '#plz-prompt-editor', function() {
             smartResize(this);
         });
@@ -220,6 +206,7 @@ function bindHandlers() {
 
         $(document).off('input', '#plz-prompt-editor');
         $(document).off('click', '#plz-prompt-reset');
+        $('body').removeClass('plz-modal-open');
     });
 
     // 7. Workshop Links
@@ -228,6 +215,7 @@ function bindHandlers() {
 
     // 8. Call Log Viewer
     $panel.on('click', '#plz-view-logs', async function () {
+        $('body').addClass('plz-modal-open');
         const popupPromise = callPopup(buildLogModalHTML(), 'text');
 
         $(document).on('click.plz-logs', '.plz-log-toggle', function () {
@@ -251,6 +239,7 @@ function bindHandlers() {
 
         await popupPromise;
         $(document).off('.plz-logs');
+        $('body').removeClass('plz-modal-open');
     });
 }
 
@@ -276,12 +265,12 @@ function buildLogModalHTML() {
         if (content === null) return '';
         return `
         <div class="plz-log-field" style="margin-bottom:8px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
-                <span style="font-size:0.76em;opacity:0.55;text-transform:uppercase;letter-spacing:0.05em;">${label}</span>
-                <button class="menu_button plz-log-copy" style="font-size:0.73em;padding:1px 6px;">Copy</button>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:3px;">
+                <span style="font-size:0.76em; opacity:0.55; text-transform:uppercase; letter-spacing:0.05em;">${label}</span>
+                <button class="menu_button plz-log-copy" style="font-size:0.73em; padding:1px 6px;">Copy</button>
             </div>
             <textarea class="text_pole" readonly rows="3"
-                      style="width:100%;font-family:monospace;font-size:0.78em;overflow:hidden;resize:none;"
+                      style="width:100%; font-family:monospace; font-size:0.78em; overflow:hidden; resize:none;"
                       >${esc(content)}</textarea>
         </div>`;
     }
@@ -290,11 +279,11 @@ function buildLogModalHTML() {
         const callsHTML = turn.calls.map(call => `
         <div style="border-top:1px solid var(--SmartThemeBorderColor,#444);">
             <button class="plz-log-toggle"
-                    style="width:100%;text-align:left;padding:7px 12px;background:none;border:none;cursor:pointer;font-size:0.86em;color:inherit;display:flex;align-items:center;gap:6px;">
-                <span class="plz-log-arrow" style="font-size:0.8em;opacity:0.7;">▶</span>
+                    style="width:100%; text-align:left; padding:7px 12px; background:none; border:none; cursor:pointer; font-size:0.86em; color:inherit; display:flex; align-items:center; gap:6px;">
+                <span class="plz-log-arrow" style="font-size:0.8em; opacity:0.7;">▶</span>
                 <span>${esc(call.label)}</span>
-                <span style="opacity:0.45;font-size:0.8em;margin-left:auto;">${relTime(call.timestamp)}</span>
-                ${call.error ? '<span style="color:#e05555;font-size:0.78em;margin-left:6px;">error</span>' : ''}
+                <span style="opacity:0.45; font-size:0.8em; margin-left:auto;">${relTime(call.timestamp)}</span>
+                ${call.error ? '<span style="color:#e05555; font-size:0.78em; margin-left:6px;">error</span>' : ''}
             </button>
             <div class="plz-log-body plz-hidden" style="padding:0 12px 10px;">
                 ${fieldBox('Prompt', call.prompt)}
@@ -304,12 +293,12 @@ function buildLogModalHTML() {
         </div>`).join('');
 
         return `
-        <div style="border:1px solid var(--SmartThemeBorderColor,#555);border-radius:6px;overflow:hidden;margin-bottom:10px;">
-            <div style="background:rgba(255,255,255,0.04);padding:7px 12px;font-size:0.82em;display:flex;align-items:center;gap:8px;">
+        <div style="border:1px solid var(--SmartThemeBorderColor,#555); border-radius:6px; overflow:hidden; margin-bottom:10px;">
+            <div style="background:rgba(255,255,255,0.04); padding:7px 12px; font-size:0.82em; display:flex; align-items:center; gap:8px;">
                 <strong>${esc(turn.label)}</strong>
                 <span style="opacity:0.5;">·</span>
                 <span style="opacity:0.6;">${turn.calls.length} call${turn.calls.length !== 1 ? 's' : ''}</span>
-                <span style="opacity:0.5;margin-left:auto;">${relTime(turn.timestamp)}</span>
+                <span style="opacity:0.5; margin-left:auto;">${relTime(turn.timestamp)}</span>
             </div>
             ${callsHTML}
         </div>`;
@@ -318,19 +307,19 @@ function buildLogModalHTML() {
     function buildSection(title, subtitle, turns) {
         const body = turns.length
             ? [...turns].reverse().map(buildTurnHTML).join('')
-            : `<p style="opacity:0.5;font-size:0.85em;margin:8px 0;">No calls logged yet.</p>`;
+            : `<p style="opacity:0.5; font-size:0.85em; margin:8px 0;">No calls logged yet.</p>`;
         return `
         <div style="margin-bottom:20px;">
-            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
+            <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
                 <strong style="font-size:0.95em;">${title}</strong>
-                <span style="font-size:0.78em;opacity:0.5;">${subtitle}</span>
+                <span style="font-size:0.78em; opacity:0.5;">${subtitle}</span>
             </div>
             ${body}
         </div>`;
     }
 
     return `<h3 style="margin:0 0 14px;">AI Call Log</h3>
-    <div style="max-height:65vh;overflow-y:auto;">
+    <div style="max-height:65vh; overflow-y:auto;">
         ${buildSection('Pipeline', 'last 2 turn pairs', pipelineTurns)}
         ${buildSection('Workshop', 'last 3 queries', workshopTurns)}
     </div>`;
@@ -349,6 +338,7 @@ export function injectSettingsPanel() {
     const profiles = Object.keys(meta.profiles);
 
     $parent.append(buildPanelHTML(settings, meta, profiles));
+    injectEnginesModal();
 
     bindHandlers();
     refreshUI();

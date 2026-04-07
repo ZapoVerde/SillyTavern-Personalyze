@@ -3,8 +3,11 @@
  * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role UI Logic (Engines Modal)
  * @description
- * Event bindings for the Engines configuration modal.
- * Uses the standalone ping utility to validate connections.
+ * Event bindings for the Engines configuration modal. 
+ * 
+ * This version uses the dynamic model discovery cache for Pollinations, 
+ * ensuring the dropdown always shows the latest models without cluttering 
+ * the main settings panel.
  *
  * @api-declaration
  * bindEnginesHandlers($modal) → void
@@ -15,7 +18,7 @@
  *   assertions:
  *     purity: IO
  *     state_ownership: [settings]
- *     external_io: [DOM, writeSecret, ping utility, toastr]
+ *     external_io: [DOM, writeSecret, ping utility, toastr, models.js]
  */
 
 import { getSettings, updateSetting } from '../../settings.js';
@@ -26,6 +29,7 @@ import { pingPollinations, pingHFRouter, pingHFSpace } from '../../utils/ping.js
 import { writeSecret, secret_state } from '../../../../../secrets.js';
 import { callPopup } from '../../../../../../script.js';
 import { rebuildSpaceDropdown } from './templates.js';
+import { getCachedModels } from '../panel/models.js';
 
 // ─── Key Status ───────────────────────────────────────────────────────────────
 
@@ -69,13 +73,31 @@ function refreshHFModelDropdown(provider, selectedModel) {
 
 /**
  * Syncs all modal inputs to current settings.
+ * Uses the dynamic model discovery cache for Pollinations.
  */
 export function refreshEnginesUI() {
     const s = getSettings();
-    $('#plz-eng-pol-model').val(s.imageModel);
+    const currentPolModel = s.imageModel;
+
+    // 1. Populate Pollinations Model Dropdown from Discovery Cache
+    const $polSelect = $('#plz-eng-pol-model');
+    if ($polSelect.length) {
+        const dynamicModels = getCachedModels();
+        const options = dynamicModels
+            .map(m => `<option value="${m}"${m === currentPolModel ? ' selected' : ''}>${m}</option>`)
+            .join('');
+        $polSelect.html(options);
+        $polSelect.val(currentPolModel);
+    }
+
+    // 2. Populate Hugging Face Provider/Model
     $('#plz-eng-hf-provider').val(s.hfProvider);
     refreshHFModelDropdown(s.hfProvider, s.hfImageModel);
+
+    // 3. Populate HF Space
     $('#plz-eng-space-id').val(s.hfSpaceId ?? '');
+
+    // 4. Update Vault Indicators
     updateEngineKeyStatuses();
 }
 
