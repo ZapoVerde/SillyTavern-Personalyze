@@ -159,6 +159,7 @@ function bindHandlers() {
         const defaultValue = PROMPT_DEFAULTS[key] ?? '';
         const current      = getSettings()[key]   ?? defaultValue;
 
+        $('body').addClass('plz-modal-open');
         const popupPromise = callPopup(
             `<h3>${title}</h3>
              <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="10"
@@ -204,6 +205,7 @@ function bindHandlers() {
 
         $(document).off('input', '#plz-prompt-editor');
         $(document).off('click', '#plz-prompt-reset');
+        $('body').removeClass('plz-modal-open');
     });
 
     // 7. Workshop Links
@@ -212,6 +214,7 @@ function bindHandlers() {
 
     // 8. Call Log Viewer
     $panel.on('click', '#plz-view-logs', async function () {
+        $('body').addClass('plz-modal-open');
         const popupPromise = callPopup(buildLogModalHTML(), 'text');
 
         $(document).on('click.plz-logs', '.plz-log-toggle', function () {
@@ -235,6 +238,7 @@ function bindHandlers() {
 
         await popupPromise;
         $(document).off('.plz-logs');
+        $('body').removeClass('plz-modal-open');
     });
 }
 

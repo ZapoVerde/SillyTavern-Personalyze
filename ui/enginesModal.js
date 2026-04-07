@@ -46,16 +46,12 @@ export function injectEnginesModal() {
         $('#plz-engines-overlay').addClass('plz-hidden');
     });
 
-    // Overlay click closes modal (but not click inside modal)
+    // Capture all clicks — prevent leaking to underlying ST UI
     $('#plz-engines-overlay').on('click', function (e) {
+        e.stopPropagation();
         if ($(e.target).is('#plz-engines-overlay')) {
             $('#plz-engines-overlay').addClass('plz-hidden');
         }
-    });
-
-    // Stop propagation on modal itself
-    $('#plz-engines-modal').on('click', function (e) {
-        e.stopPropagation();
     });
 
     bindEnginesHandlers($('#plz-engines-overlay'));

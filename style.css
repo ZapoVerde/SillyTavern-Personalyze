@@ -140,6 +140,11 @@
     display: none !important;
 }
 
+/* Block pointer events on the settings panel while any callPopup modal is open */
+body.plz-modal-open #extensions_settings {
+    pointer-events: none;
+}
+
 /* ─── Auto-growing Textareas ─────────────────────────────────────────────── */
 /* Replaces broken resize handle (overridden by .text_pole) and avoids the   */
 /* resize grip landing on ST's mobile send-slider.                            */

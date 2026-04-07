@@ -68,8 +68,9 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
         $overlay.addClass('plz-hidden');
     });
 
-    // Close on backdrop click
+    // Capture all clicks — prevent leaking to underlying ST UI
     $overlay.on('click', function (e) {
+        e.stopPropagation();
         if (e.target === this) $overlay.addClass('plz-hidden');
     });
 
