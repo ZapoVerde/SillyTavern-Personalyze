@@ -1,21 +1,24 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/enginesModal.js
- * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-07T00:00:00.000Z"}
  * @architectural-role UI Orchestrator (Engines Modal)
  * @description
- * Manages the lifecycle of the Image Engines configuration modal. 
- * Handles the two-tab layout (Pollinations/Hugging Face) and the internal
- * mode toggle for Hugging Face (Router vs Spaces).
+ * Manages the lifecycle and navigation of the Image Engines configuration modal.
+ * 
+ * Supports the Multi-Engine architecture with a three-tab layout:
+ * 1. Pollinations (Direct API)
+ * 2. Fal AI (Proxy API)
+ * 3. Hugging Face (Proxy Router / Proxy Spaces)
  *
  * @api-declaration
  * injectEnginesModal() — idempotent, injects modal HTML into DOM
- * openEnginesModal() — opens the modal, refreshes UI
+ * openEnginesModal() — opens the modal, refreshes UI and tab state
  *
  * @contract
  *   assertions:
  *     purity: Stateful UI Shell
  *     state_ownership: []
- *     external_io: [jQuery DOM]
+ *     external_io: [jQuery DOM, templates.js, listeners.js, settings.js]
  */
 
 import { getSettings, updateSetting } from '../settings.js';
@@ -25,12 +28,13 @@ import { bindEnginesHandlers, refreshEnginesUI } from './engines/listeners.js';
 // ─── Mode Switching Logic ───────────────────────────────────────────────────
 
 /**
- * Updates the Hugging Face mode UI (Router vs Space).
+ * Updates the Hugging Face internal mode UI (Router vs Space).
+ * This only affects the content inside the Hugging Face tab.
  * @param {jQuery} $overlay 
  * @param {'router'|'space'} mode 
  */
 function switchHFMode($overlay, mode) {
-    // 1. Update buttons
+    // 1. Update mode buttons
     $overlay.find('.plz-eng-mode-btn').removeClass('plz-active');
     $overlay.find(`.plz-eng-mode-btn[data-mode="${mode}"]`).addClass('plz-active');
 
@@ -54,7 +58,7 @@ export function injectEnginesModal() {
     const $overlay = $(getEnginesModalHTML(settings));
     $('body').append($overlay);
 
-    // 1. Main Tab Switching
+    // 1. Main Tab Switching (Pollinations / Fal / Hugging Face)
     $overlay.on('click', '.plz-tab-btn', function (e) {
         e.stopPropagation();
         const tab = $(this).data('tab');
@@ -66,7 +70,7 @@ export function injectEnginesModal() {
         $overlay.find(`#plz-eng-tab-${tab}`).removeClass('plz-hidden');
     });
 
-    // 2. HF Internal Mode Switching
+    // 2. HF Internal Mode Switching (Router vs Space)
     $overlay.on('click', '.plz-eng-mode-btn', function (e) {
         e.stopPropagation();
         const mode = $(this).data('mode');
@@ -79,7 +83,7 @@ export function injectEnginesModal() {
         $overlay.addClass('plz-hidden');
     });
 
-    // 4. Backdrop click (idempotent modal pattern)
+    // 4. Backdrop click (close modal if clicking outside the modal content)
     $overlay.on('click', function (e) {
         if (e.target === this) {
             $(this).addClass('plz-hidden');
@@ -102,12 +106,12 @@ export function openEnginesModal() {
 
     $overlay.removeClass('plz-hidden');
     
-    // Initial sync of the HF Mode UI
+    // Initial sync of the HF Mode UI (Router vs Space)
     switchHFMode($overlay, s.hfEngine || 'router');
 
-    // Refresh model dropdowns and key statuses via listeners.js
+    // Refresh model dropdowns, key statuses, and availability toggles via listeners.js
     refreshEnginesUI();
 
-    // Default to Pollinations tab on open
+    // Default to Pollinations tab on every fresh open to ensure a clean state
     $overlay.find('.plz-tab-btn[data-tab="pollinations"]').trigger('click');
 }

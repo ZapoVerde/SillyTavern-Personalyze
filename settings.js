@@ -78,6 +78,10 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     outfitDescriberPrompt:      DEFAULT_OUTFIT_DESCRIBER_PROMPT,
     expressionDescriberPrompt:  DEFAULT_EXPRESSION_DESCRIBER_PROMPT,
     testPrompt:                 DEFAULT_TEST_PROMPT,
+    falModel:                   DEFAULT_FAL_MODEL,
+    engineEnablePollinations:   true,
+    engineEnableHuggingFace:    true,
+    engineEnableFal:            false, // Off by default until key is added
 });
 
 /**

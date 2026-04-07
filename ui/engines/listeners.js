@@ -1,13 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/engines/listeners.js
- * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-07T00:00:00.000Z"}
  * @architectural-role UI Logic (Engines Modal)
  * @description
  * Event bindings for the Engines configuration modal. 
  * 
- * Updated to support user-configurable test prompts. All "Test" buttons 
- * now pull the prompt string from the dedicated #plz-eng-test-prompt 
- * textarea. Includes reset-to-default logic.
+ * Updated to support the Multi-Engine architecture, including Fal AI.
+ * Handles the "Availability" master toggles to control which engines appear 
+ * in the Dressing Room and Studio dropdowns.
  *
  * @api-declaration
  * bindEnginesHandlers($modal) → void
@@ -18,14 +18,14 @@
  *   assertions:
  *     purity: IO
  *     state_ownership: [settings]
- *     external_io: [DOM, writeSecret, fetchPreviewBlob, toastr, models.js]
+ *     external_io:[DOM, writeSecret, fetchPreviewBlob, toastr, models.js]
  */
 
 import { getSettings, updateSetting } from '../../settings.js';
 import { fetchPreviewBlob } from '../../imageCache.js';
 import { HF_PROVIDER_MODELS, DEFAULT_TEST_PROMPT } from '../../defaults.js';
 import { log, error } from '../../utils/logger.js';
-import { pingPollinations, pingHFRouter, pingHFSpace } from '../../utils/ping.js';
+import { pingPollinations, pingHFRouter, pingHFSpace, pingFal } from '../../utils/ping.js';
 import { writeSecret, secret_state } from '../../../../../secrets.js';
 import { callPopup } from '../../../../../../script.js';
 import { rebuildSpaceDropdown } from './templates.js';
@@ -40,19 +40,18 @@ import { smartResize } from '../../utils/dom.js';
 export function updateEngineKeyStatuses() {
     const polState = secret_state['api_key_pollinations'];
     const hfState  = secret_state['api_key_huggingface'];
+    const falState = secret_state['api_key_fal'];
 
     const hasPol = Array.isArray(polState) && polState.length > 0;
     const hasHf  = Array.isArray(hfState)  && hfState.length  > 0;
+    const hasFal = Array.isArray(falState) && falState.length > 0;
 
-    const polHtml  = hasPol
-        ? '<span style="color:var(--SmartThemeQuoteColor,#28a745); font-size:0.9em;">● Key saved in vault</span>'
-        : '<span style="color:var(--SmartThemeErrorColor,#e05555); font-size:0.9em;">○ No key found</span>';
-    const hfHtml   = hasHf
-        ? '<span style="color:var(--SmartThemeQuoteColor,#28a745); font-size:0.9em;">● Key saved in vault</span>'
-        : '<span style="color:var(--SmartThemeErrorColor,#e05555); font-size:0.9em;">○ No key found</span>';
+    const okHtml  = '<span style="color:var(--SmartThemeQuoteColor,#28a745); font-size:0.9em;">● Key saved in vault</span>';
+    const errHtml = '<span style="color:var(--SmartThemeErrorColor,#e05555); font-size:0.9em;">○ No key found</span>';
 
-    $('#plz-eng-pol-key-status').html(polHtml);
-    $('#plz-eng-hf-key-status').html(hfHtml);
+    $('#plz-eng-pol-key-status').html(hasPol ? okHtml : errHtml);
+    $('#plz-eng-hf-key-status').html(hasHf ? okHtml : errHtml);
+    $('#plz-eng-fal-key-status').html(hasFal ? okHtml : errHtml);
 }
 
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
@@ -61,7 +60,7 @@ export function updateEngineKeyStatuses() {
  * Rebuilds the HF model dropdown for the given provider.
  */
 function refreshHFModelDropdown(provider, selectedModel) {
-    const models = HF_PROVIDER_MODELS[provider]?.models ?? [];
+    const models = HF_PROVIDER_MODELS[provider]?.models ??[];
     const options = models
         .map(m => `<option value="${m}"${m === selectedModel ? ' selected' : ''}>${m}</option>`)
         .join('');
@@ -75,9 +74,14 @@ function refreshHFModelDropdown(provider, selectedModel) {
  */
 export function refreshEnginesUI() {
     const s = getSettings();
-    const currentPolModel = s.imageModel;
+
+    // 0. Availability Toggles
+    $('#plz-eng-pol-enabled').prop('checked', s.engineEnablePollinations !== false);
+    $('#plz-eng-fal-enabled').prop('checked', !!s.engineEnableFal);
+    $('#plz-eng-hf-enabled').prop('checked', !!s.engineEnableHuggingFace);
 
     // 1. Populate Pollinations Model Dropdown from Discovery Cache
+    const currentPolModel = s.imageModel;
     const $polSelect = $('#plz-eng-pol-model');
     if ($polSelect.length) {
         const dynamicModels = getCachedModels();
@@ -88,19 +92,22 @@ export function refreshEnginesUI() {
         $polSelect.val(currentPolModel);
     }
 
-    // 2. Populate Hugging Face Provider/Model
+    // 2. Populate Fal AI
+    $('#plz-eng-fal-model').val(s.falModel);
+
+    // 3. Populate Hugging Face Provider/Model
     $('#plz-eng-hf-provider').val(s.hfProvider);
     refreshHFModelDropdown(s.hfProvider, s.hfImageModel);
 
-    // 3. Populate HF Space
+    // 4. Populate HF Space
     $('#plz-eng-space-id').val(s.hfSpaceId ?? '');
 
-    // 4. Test Prompt Area
+    // 5. Test Prompt Area
     const $testArea = $('#plz-eng-test-prompt');
     $testArea.val(s.testPrompt ?? DEFAULT_TEST_PROMPT);
     smartResize($testArea[0]);
 
-    // 5. Update Vault Indicators
+    // 6. Update Vault Indicators
     updateEngineKeyStatuses();
 }
 
@@ -115,8 +122,21 @@ export function bindEnginesHandlers($modal) {
     // 1. Vault Save
     $modal.on('click', '.plz-eng-vault-save', async function () {
         const secretName = $(this).data('secret');
-        const inputId    = secretName === 'api_key_huggingface' ? '#plz-eng-hf-key' : '#plz-eng-pol-key';
-        const key        = $(inputId).val().trim();
+        let inputId;
+        let label;
+
+        if (secretName === 'api_key_huggingface') {
+            inputId = '#plz-eng-hf-key';
+            label   = 'PersonaLyze: Hugging Face';
+        } else if (secretName === 'api_key_fal') {
+            inputId = '#plz-eng-fal-key';
+            label   = 'PersonaLyze: Fal AI';
+        } else {
+            inputId = '#plz-eng-pol-key';
+            label   = 'PersonaLyze: Pollinations';
+        }
+
+        const key = $(inputId).val().trim();
 
         if (!key) {
             if (window.toastr) window.toastr.warning('Please paste the API key first.', 'PersonaLyze');
@@ -124,9 +144,6 @@ export function bindEnginesHandlers($modal) {
         }
 
         try {
-            const label = secretName === 'api_key_huggingface'
-                ? 'PersonaLyze: Hugging Face'
-                : 'PersonaLyze: Pollinations';
             await writeSecret(secretName, key, label);
             $(inputId).val('');
             updateEngineKeyStatuses();
@@ -137,7 +154,7 @@ export function bindEnginesHandlers($modal) {
         }
     });
 
-    // 2. Pollinations Ping
+    // 2. Pollinations Ping & Test
     $modal.on('click', '#plz-eng-pol-ping', async function () {
         const $btn = $(this);
         const $status = $('#plz-eng-pol-status');
@@ -153,33 +170,31 @@ export function bindEnginesHandlers($modal) {
         $btn.prop('disabled', false);
     });
 
-    // 3. Pollinations Test
     $modal.on('click', '#plz-eng-pol-test', async function () {
-        const $btn = $(this);
-        const $status = $('#plz-eng-pol-status');
-        const prompt = $('#plz-eng-test-prompt').val().trim();
-        if (!prompt) return;
-
-        $btn.prop('disabled', true);
-        $status.text('Generating test image...');
-        try {
-            const objectUrl = await fetchPreviewBlob(prompt, 'test', 'pollinations');
-            $status.text('✓ Image generated');
-            await callPopup(
-                `<h3>Pollinations — Test OK</h3>
-                 <p style="opacity:0.65;font-size:0.88em;">Engine responded successfully using custom test prompt.</p>
-                 <img src="${objectUrl}" style="width:100%;border-radius:6px;margin-top:8px;" />`,
-                'text',
-            );
-        } catch (err) {
-            $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${err.message.slice(0, 80)}</span>`);
-            error('EnginesModal', 'Pollinations test failed:', err);
-        } finally {
-            $btn.prop('disabled', false);
-        }
+        await runEngineTest($(this), '#plz-eng-pol-status', 'pollinations', 'Pollinations');
     });
 
-    // 4. HF Router Ping
+    // 3. Fal AI Ping & Test
+    $modal.on('click', '#plz-eng-fal-ping', async function () {
+        const $btn = $(this);
+        const $status = $('#plz-eng-fal-status');
+        $btn.prop('disabled', true);
+        $status.text('Validating key...');
+
+        const result = await pingFal();
+        if (result.ok) {
+            $status.html(`<span style="color:var(--SmartThemeQuoteColor);">✓ Key valid</span>`);
+        } else {
+            $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${result.error}</span>`);
+        }
+        $btn.prop('disabled', false);
+    });
+
+    $modal.on('click', '#plz-eng-fal-test', async function () {
+        await runEngineTest($(this), '#plz-eng-fal-status', 'fal', 'Fal AI');
+    });
+
+    // 4. HF Router Ping & Test
     $modal.on('click', '#plz-eng-hf-ping', async function () {
         const $btn = $(this);
         const $status = $('#plz-eng-hf-status');
@@ -195,33 +210,11 @@ export function bindEnginesHandlers($modal) {
         $btn.prop('disabled', false);
     });
 
-    // 5. HF Router Test
     $modal.on('click', '#plz-eng-hf-test', async function () {
-        const $btn = $(this);
-        const $status = $('#plz-eng-hf-status');
-        const prompt = $('#plz-eng-test-prompt').val().trim();
-        if (!prompt) return;
-
-        $btn.prop('disabled', true);
-        $status.text('Generating test image...');
-        try {
-            const objectUrl = await fetchPreviewBlob(prompt, 'test', 'huggingface');
-            $status.text('✓ Image generated');
-            await callPopup(
-                `<h3>HF Router — Test OK</h3>
-                 <p style="opacity:0.65;font-size:0.88em;">Router responded successfully using custom test prompt.</p>
-                 <img src="${objectUrl}" style="width:100%;border-radius:6px;margin-top:8px;" />`,
-                'text',
-            );
-        } catch (err) {
-            $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${err.message.slice(0, 80)}</span>`);
-            error('EnginesModal', 'HF Router test failed:', err);
-        } finally {
-            $btn.prop('disabled', false);
-        }
+        await runEngineTest($(this), '#plz-eng-hf-status', 'huggingface', 'HF Router');
     });
 
-    // 6. HF Space Ping
+    // 5. HF Space Ping & Test
     $modal.on('click', '#plz-eng-space-ping', async function () {
         const $btn = $(this);
         const $status = $('#plz-eng-space-status');
@@ -241,36 +234,57 @@ export function bindEnginesHandlers($modal) {
         $btn.prop('disabled', false);
     });
 
-    // 7. HF Space Test
     $modal.on('click', '#plz-eng-space-test', async function () {
-        const $btn = $(this);
-        const $status = $('#plz-eng-space-status');
+        await runEngineTest($(this), '#plz-eng-space-status', 'hf-space', 'HF Space');
+    });
+
+    /**
+     * Shared logic for testing an engine's generation capability.
+     */
+    async function runEngineTest($btn, statusSelector, providerId, providerName) {
+        const $status = $(statusSelector);
         const prompt = $('#plz-eng-test-prompt').val().trim();
         if (!prompt) return;
 
         $btn.prop('disabled', true);
-        $status.text('Generating from space (may take 30s+)...');
+        $status.text('Generating test image...');
         try {
-            const objectUrl = await fetchPreviewBlob(prompt, 'test', 'hf-space');
+            const objectUrl = await fetchPreviewBlob(prompt, 'test', providerId);
             $status.text('✓ Image generated');
             await callPopup(
-                `<h3>HF Space — Test OK</h3>
-                 <p style="opacity:0.65;font-size:0.88em;">Space responded successfully using custom test prompt.</p>
+                `<h3>${providerName} — Test OK</h3>
+                 <p style="opacity:0.65;font-size:0.88em;">Engine responded successfully using custom test prompt.</p>
                  <img src="${objectUrl}" style="width:100%;border-radius:6px;margin-top:8px;" />`,
                 'text',
             );
         } catch (err) {
             $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${err.message.slice(0, 80)}</span>`);
-            error('EnginesModal', 'HF Space test failed:', err);
+            error('EnginesModal', `${providerName} test failed:`, err);
         } finally {
             $btn.prop('disabled', false);
         }
-    });
+    }
 
     // ─── Settings Synchronization ───
 
+    // Availability Toggles
+    $modal.on('change', '#plz-eng-pol-enabled', function () {
+        updateSetting('engineEnablePollinations', $(this).prop('checked'));
+    });
+    $modal.on('change', '#plz-eng-fal-enabled', function () {
+        updateSetting('engineEnableFal', $(this).prop('checked'));
+    });
+    $modal.on('change', '#plz-eng-hf-enabled', function () {
+        updateSetting('engineEnableHuggingFace', $(this).prop('checked'));
+    });
+
+    // Model Selectors
     $modal.on('change', '#plz-eng-pol-model', function () {
         updateSetting('imageModel', $(this).val());
+    });
+
+    $modal.on('change', '#plz-eng-fal-model', function () {
+        updateSetting('falModel', $(this).val());
     });
 
     $modal.on('change', '#plz-eng-hf-provider', function () {
@@ -319,7 +333,7 @@ export function bindEnginesHandlers($modal) {
     $modal.on('click', '.plz-eng-space-remove', function (e) {
         e.stopPropagation();
         const id = $(this).data('space-id');
-        const current = getSettings().hfSavedSpaces ?? [];
+        const current = getSettings().hfSavedSpaces ??[];
         const newList = current.filter(s => s !== id);
         updateSetting('hfSavedSpaces', newList);
         $('#plz-eng-space-dropdown').html(rebuildSpaceDropdown(newList));
@@ -328,7 +342,7 @@ export function bindEnginesHandlers($modal) {
     $modal.on('click', '#plz-eng-space-add', function () {
         const spaceId = $('#plz-eng-space-id').val().trim();
         if (!spaceId.includes('/')) return;
-        const current = getSettings().hfSavedSpaces ?? [];
+        const current = getSettings().hfSavedSpaces ??[];
         if (current.includes(spaceId)) return;
         const newList = [...current, spaceId];
         updateSetting('hfSavedSpaces', newList);

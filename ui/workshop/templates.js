@@ -1,11 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/templates.js
- * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-07T00:00:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
- * Pure functions for generating the PersonaLyze Character Workshop HTML.
+ * Generates the HTML strings for the PersonaLyze Character Workshop.
  * 
- * Updated to support per-outfit Provider selection (Pollinations/HF).
+ * Updated to support the Multi-Engine architecture. The provider selection
+ * for outfits now dynamically filters based on master availability toggles
+ * in the extension settings.
  *
  * @api-declaration
  * getBaseWorkshopHTML()                            → string
@@ -17,6 +19,36 @@
 
 import { escapeHtml } from '../../utils/history.js';
 import { buildFilenamePrefix, findCachedImage } from '../../imageCache.js';
+import { getSettings } from '../../settings.js';
+
+/**
+ * Builds the provider dropdown options based on master availability toggles.
+ * @param {string} selectedProvider 
+ * @returns {string}
+ */
+function getProviderOptionsHTML(selectedProvider) {
+    const s = getSettings();
+    const options = [];
+
+    if (s.engineEnablePollinations !== false) {
+        options.push(['pollinations', 'Pol']);
+    }
+    if (s.engineEnableFal) {
+        options.push(['fal', 'Fal']);
+    }
+    if (s.engineEnableHuggingFace) {
+        options.push(['huggingface', 'HF']);
+    }
+
+    // Fallback if no engines enabled
+    if (options.length === 0) {
+        options.push(['pollinations', 'Pol']);
+    }
+
+    return options.map(([val, label]) => 
+        `<option value="${val}" ${val === selectedProvider ? 'selected' : ''}>${label}</option>`
+    ).join('');
+}
 
 /**
  * Main modal shell.
@@ -51,7 +83,7 @@ export function getBaseWorkshopHTML() {
 }
 
 /**
- * Roster tab — list of all registered characters with per-chat enable/disable toggles.
+ * Roster tab — list of all registered characters.
  */
 export function getRosterHTML(characters, activeId, activeRoster = []) {
     const entries = Object.entries(characters);
@@ -61,8 +93,7 @@ export function getRosterHTML(characters, activeId, activeRoster = []) {
         <div style="text-align:center;padding:60px;opacity:0.5;">
             <i class="fa-solid fa-user-slash" style="font-size:2.5em;margin-bottom:12px;"></i><br/>
             No characters registered yet.<br/>
-            Use the <strong>Register</strong> tab to add one manually,<br/>
-            or PLZ will register them automatically during a chat.
+            Use the <strong>Register</strong> tab to add one manually.
         </div>`;
     }
 
@@ -75,40 +106,28 @@ export function getRosterHTML(characters, activeId, activeRoster = []) {
 
     const enabledCount = activeRoster.filter(id => id in characters).length;
     const hint = enabledCount === 0
-        ? `<p style="font-size:0.82em;opacity:0.5;margin:0 0 10px;">
-               No characters enabled for this chat. Toggle one on to start.
-           </p>`
-        : `<p style="font-size:0.82em;opacity:0.5;margin:0 0 10px;">
-               ${enabledCount} character${enabledCount !== 1 ? 's' : ''} enabled for this chat.
-           </p>`;
+        ? `<p style="font-size:0.82em;opacity:0.5;margin:0 0 10px;">No characters enabled for this chat.</p>`
+        : `<p style="font-size:0.82em;opacity:0.5;margin:0 0 10px;">${enabledCount} character${enabledCount !== 1 ? 's' : ''} enabled.</p>`;
 
     const rows = sorted.map(([id, char]) => {
         const isActive  = id === activeId;
         const isEnabled = activeRoster.includes(id);
-        const outfitCount = Object.keys(char.outfits ?? {}).length;
-        const exprCount   = Object.keys(char.expressions ?? {}).length;
         const label       = id.replace(/_/g, ' ');
 
         const toggleIcon  = isEnabled
-            ? `<i class="fa-solid fa-toggle-on  plz-roster-toggle" title="Enabled — click to disable"
-                  style="font-size:1.3em;color:var(--SmartThemeQuoteColor);cursor:pointer;"></i>`
-            : `<i class="fa-solid fa-toggle-off plz-roster-toggle" title="Disabled — click to enable"
-                  style="font-size:1.3em;opacity:0.35;cursor:pointer;"></i>`;
-
-        const dimStyle = isEnabled ? '' : 'opacity:0.45;';
+            ? `<i class="fa-solid fa-toggle-on plz-roster-toggle" style="font-size:1.3em;color:var(--SmartThemeQuoteColor);cursor:pointer;"></i>`
+            : `<i class="fa-solid fa-toggle-off plz-roster-toggle" style="font-size:1.3em;opacity:0.35;cursor:pointer;"></i>`;
 
         return `
-        <div class="plz-roster-item ${isActive ? 'plz-active-char' : ''}" data-id="${escapeHtml(id)}"
-             style="${dimStyle}">
+        <div class="plz-roster-item ${isActive ? 'plz-active-char' : ''}" data-id="${escapeHtml(id)}" style="${isEnabled ? '' : 'opacity:0.45;'}">
             <div class="plz-roster-text">
                 <strong>${isActive ? '<i class="fa-solid fa-user"></i> ' : ''}${escapeHtml(label)}</strong>
                 <small>${escapeHtml(char.identityAnchor ?? '—')}</small>
-                <small style="opacity:0.5;">${outfitCount} outfit(s) · ${exprCount} expression(s)</small>
             </div>
             <div class="plz-roster-actions">
                 ${toggleIcon}
-                <i class="fa-solid fa-pen-to-square plz-roster-edit"   title="Open in Studio"></i>
-                <i class="fa-solid fa-trash          plz-roster-delete" title="Delete character"></i>
+                <i class="fa-solid fa-pen-to-square plz-roster-edit" title="Open in Studio"></i>
+                <i class="fa-solid fa-trash plz-roster-delete" title="Delete character"></i>
             </div>
         </div>`;
     }).join('');
@@ -117,7 +136,7 @@ export function getRosterHTML(characters, activeId, activeRoster = []) {
 }
 
 /**
- * Studio tab — edit a specific character's anchor, outfits, and expressions.
+ * Studio tab content.
  */
 export function getStudioHTML(characterId, character, fileIndex, expressionLabels = [], defaultExpression = null) {
     const label = characterId.replace(/_/g, ' ');
@@ -128,14 +147,9 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
         <span style="font-size:0.8em;opacity:0.5;margin-left:8px;">[${escapeHtml(characterId)}]</span>
     </div>
 
-    <!-- Identity Anchor -->
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;">
-        <label class="plz-studio-label" style="margin-bottom:0;">Identity Anchor
-            <span style="font-size:0.78em;opacity:0.55;margin-left:6px;">permanent appearance used in every generation prompt</span>
-        </label>
-        <button class="menu_button plz-anchor-scan" data-mode="studio"
-                title="Scan recent chat to refresh this anchor"
-                style="font-size:0.78em;padding:2px 8px;flex-shrink:0;margin-left:8px;">
+        <label class="plz-studio-label" style="margin-bottom:0;">Identity Anchor</label>
+        <button class="menu_button plz-anchor-scan" data-mode="studio" style="font-size:0.78em;padding:2px 8px;">
             <i class="fa-solid fa-wand-magic-sparkles"></i> Scan Chat
         </button>
     </div>
@@ -149,11 +163,10 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
         </label>
     </div>
 
-    <!-- Outfits -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-shrink:0;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <strong>Outfits</strong>
         <div style="display:flex;gap:6px;">
-            <button class="menu_button plz-flush-images-btn" style="font-size:0.8em;padding:2px 8px;" title="Delete all generated portrait images for this character">
+            <button class="menu_button plz-flush-images-btn" style="font-size:0.8em;padding:2px 8px;">
                 <i class="fa-solid fa-trash-can"></i> Flush Images
             </button>
             <button class="menu_button plz-add-entry-btn" data-dimension="outfit" style="font-size:0.8em;padding:2px 8px;">
@@ -165,8 +178,7 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
         ${getEntryListHTML(characterId, character.outfits ?? {}, 'outfit', fileIndex, expressionLabels, defaultExpression)}
     </div>
 
-    <!-- Expressions -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-shrink:0;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <strong>Expressions</strong>
         <button class="menu_button plz-add-entry-btn" data-dimension="expression" style="font-size:0.8em;padding:2px 8px;">
             <i class="fa-solid fa-plus"></i> Add Expression
@@ -178,17 +190,14 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
 }
 
 /**
- * Renders the list of entries (outfits or expressions) for the Studio.
+ * Entry list for outfits and expressions.
  */
 export function getEntryListHTML(characterId, entries, dimension, fileIndex, expressionLabels = [], defaultExpression = null) {
     const keys = Object.keys(entries);
-
-    if (keys.length === 0) {
-        return `<p style="opacity:0.45;font-size:0.88em;margin:0 0 8px;">None registered.</p>`;
-    }
+    if (keys.length === 0) return `<p style="opacity:0.45;font-size:0.88em;">None registered.</p>`;
 
     return keys.map(key => {
-        const entry    = entries[key];
+        const entry = entries[key];
         const provider = entry.provider ?? 'pollinations';
         const imgCount = dimension === 'outfit'
             ? [...fileIndex].filter(f => f.startsWith(buildFilenamePrefix(characterId, key, ''))).length
@@ -198,15 +207,13 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex, exp
             ? getOutfitPortraitSectionHTML(characterId, key, fileIndex, expressionLabels, defaultExpression)
             : '';
 
-        // Engine selector for outfits
         const engineSelector = dimension === 'outfit' ? `
             <div style="display:flex; align-items:center; gap:5px; margin-left:auto;">
                 <span style="font-size:0.7em; opacity:0.5; text-transform:uppercase;">Engine</span>
                 <select class="plz-entry-provider text_pole" style="font-size:0.75em; padding:1px 4px; height:auto; width:auto;">
-                    <option value="pollinations" ${provider === 'pollinations' ? 'selected' : ''}>Pol</option>
-                    <option value="huggingface" ${provider === 'huggingface' ? 'selected' : ''}>HF</option>
+                    ${getProviderOptionsHTML(provider)}
                 </select>
-                ${provider === 'huggingface' ? '<i class="fa-solid fa-cloud" title="Using Hugging Face" style="font-size:0.8em; color:var(--SmartThemeQuoteColor);"></i>' : ''}
+                ${provider !== 'pollinations' ? '<i class="fa-solid fa-cloud" title="External Engine" style="font-size:0.8em; color:var(--SmartThemeQuoteColor); margin-left:5px;"></i>' : ''}
             </div>` : '';
 
         return `
@@ -215,35 +222,30 @@ export function getEntryListHTML(characterId, entries, dimension, fileIndex, exp
                 <strong style="font-size:0.9em;">${escapeHtml(entry.label)}</strong>
                 <span style="font-size:0.75em;opacity:0.45;">[${escapeHtml(key)}]</span>
                 ${engineSelector}
-                <span style="font-size:0.72em;opacity:0.4;margin-left:${dimension === 'outfit' ? '8px' : 'auto'};">${imgCount} image${imgCount !== 1 ? 's' : ''}</span>
+                <span style="font-size:0.72em;opacity:0.4;margin-left:8px;">${imgCount} image${imgCount !== 1 ? 's' : ''}</span>
             </div>
             <textarea class="text_pole plz-auto-textarea plz-entry-description" 
                       data-key="${escapeHtml(key)}" data-dimension="${dimension}"
                       style="width:100%;font-family:monospace;font-size:0.85em;overflow:hidden;resize:none;"
                       spellcheck="false">${escapeHtml(entry.description ?? '')}</textarea>
             <div style="display:flex;gap:6px;margin-top:4px;">
-                <button class="menu_button plz-entry-save-btn" data-key="${escapeHtml(key)}" data-dimension="${dimension}"
-                        style="font-size:0.78em;padding:2px 8px;">Save</button>
-                <button class="menu_button plz-entry-delete-btn" data-key="${escapeHtml(key)}" data-dimension="${dimension}"
-                        style="font-size:0.78em;padding:2px 8px;">Delete</button>
+                <button class="menu_button plz-entry-save-btn" data-key="${escapeHtml(key)}" data-dimension="${dimension}" style="font-size:0.78em;padding:2px 8px;">Save</button>
+                <button class="menu_button plz-entry-delete-btn" data-key="${escapeHtml(key)}" data-dimension="${dimension}" style="font-size:0.78em;padding:2px 8px;">Delete</button>
             </div>
             ${portraitSection}
         </div>`;
     }).join('');
 }
 
-
 /**
- * Portrait generation sub-section for an outfit entry.
+ * Outfit portrait generation section.
  */
 function getOutfitPortraitSectionHTML(characterId, outfitKey, fileIndex, expressionLabels, defaultExpression = null) {
     if (expressionLabels.length === 0) return '';
-
     const preSelected = expressionLabels.includes(defaultExpression) ? defaultExpression : null;
-    const buttonsDisabled = preSelected ? '' : 'disabled';
 
     const pills = expressionLabels.map(label => {
-        const hasImage  = findCachedImage(buildFilenamePrefix(characterId, outfitKey, label), fileIndex) !== null;
+        const hasImage = findCachedImage(buildFilenamePrefix(characterId, outfitKey, label), fileIndex) !== null;
         const isSelected = label === preSelected;
         let cls = hasImage ? ' plz-expr-has-image' : '';
         if (isSelected) cls += ' plz-expr-selected';
@@ -254,69 +256,45 @@ function getOutfitPortraitSectionHTML(characterId, outfitKey, fileIndex, express
     return `
     <div class="plz-portrait-section" data-outfit-key="${escapeHtml(outfitKey)}" data-selected-expr="${escapeHtml(preSelected ?? '')}">
         <div class="plz-portrait-section-label">Generate Portrait — pick an expression:</div>
-        <div class="plz-expr-pills">
-            ${pills}
-            <button class="plz-expr-add-btn" title="Add a custom expression to the global list">+ Add</button>
-        </div>
+        <div class="plz-expr-pills">${pills}</div>
         <div class="plz-portrait-actions">
-            <button class="menu_button plz-portrait-preview-btn" data-key="${escapeHtml(outfitKey)}"
-                    ${buttonsDisabled} style="font-size:0.78em;padding:2px 8px;">
-                <i class="fa-solid fa-eye"></i> Thumbnail
-            </button>
-            <button class="menu_button plz-portrait-generate-btn" data-key="${escapeHtml(outfitKey)}"
-                    ${buttonsDisabled} style="font-size:0.78em;padding:2px 8px;">
-                <i class="fa-solid fa-image"></i> Generate &amp; Save
-            </button>
+            <button class="menu_button plz-portrait-preview-btn" data-key="${escapeHtml(outfitKey)}" ${preSelected ? '' : 'disabled'} style="font-size:0.78em;padding:2px 8px;"><i class="fa-solid fa-eye"></i> Thumbnail</button>
+            <button class="menu_button plz-portrait-generate-btn" data-key="${escapeHtml(outfitKey)}" ${preSelected ? '' : 'disabled'} style="font-size:0.78em;padding:2px 8px;"><i class="fa-solid fa-image"></i> Generate &amp; Save</button>
         </div>
         <div class="plz-portrait-preview-area plz-hidden">
-            <img class="plz-portrait-preview-img" src="" alt="portrait thumbnail" />
+            <img class="plz-portrait-preview-img" src="" alt="preview" />
             <div class="plz-portrait-preview-label"></div>
         </div>
     </div>`;
 }
 
 /**
- * Register tab — form to manually seed a new character.
+ * Register tab content.
  */
 export function getRegisterHTML() {
     return `
     <div style="margin-bottom:20px;flex-shrink:0;">
         <h4 style="margin:0 0 6px;">Register a Character</h4>
-        <p style="opacity:0.7;font-size:0.9em;margin:0 0 16px;">
-            Manually add a character to the Global Portfolio.
-        </p>
-
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
             <label class="plz-studio-label" style="margin-bottom:0;">Character Name</label>
-            <button class="menu_button plz-anchor-scan" data-mode="register"
-                    style="font-size:0.78em;padding:2px 8px;">
+            <button class="menu_button plz-anchor-scan" data-mode="register" style="font-size:0.78em;padding:2px 8px;">
                 <i class="fa-solid fa-wand-magic-sparkles"></i> Scan Chat
             </button>
         </div>
-        <input type="text" id="plz-reg-name" class="text_pole" placeholder="e.g. Claire" style="width:100%;margin-bottom:4px;" />
-        <div style="font-size:0.8em;opacity:0.5;margin-bottom:14px;">
-            Key preview: <code id="plz-reg-key-preview">—</code>
-        </div>
-
+        <input type="text" id="plz-reg-name" class="text_pole" style="width:100%;margin-bottom:4px;" />
         <label class="plz-studio-label">Identity Anchor</label>
-        <textarea id="plz-reg-anchor" class="text_pole plz-auto-textarea" rows="4"
-                  placeholder="Permanent appearance description..."
-                  style="width:100%;margin-bottom:16px;overflow:hidden;resize:none;" spellcheck="false"></textarea>
+        <textarea id="plz-reg-anchor" class="text_pole plz-auto-textarea" rows="4" style="width:100%;margin-bottom:16px;overflow:hidden;resize:none;" spellcheck="false"></textarea>
     </div>
-
-    <button id="plz-reg-submit" class="menu_button" style="width:100%;padding:10px;">
-        <i class="fa-solid fa-user-plus"></i> Register Character
-    </button>
-    <div id="plz-reg-status" style="margin-top:10px;font-size:0.85em;opacity:0.7;"></div>`;
+    <button id="plz-reg-submit" class="menu_button" style="width:100%;padding:10px;"><i class="fa-solid fa-user-plus"></i> Register Character</button>`;
 }
 
 /**
- * Empty state for the Studio tab when no character is selected.
+ * Empty Studio placeholder.
  */
 export function getStudioEmptyHTML() {
     return `
     <div style="text-align:center;padding:60px;opacity:0.5;">
         <i class="fa-solid fa-compass-drafting" style="font-size:3em;margin-bottom:15px;"></i><br/>
-        Select a character from the Roster to open them in the Studio.
+        Select a character from the Roster to open the Studio.
     </div>`;
 }

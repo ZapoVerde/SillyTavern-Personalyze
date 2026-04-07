@@ -1,13 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/imageCache.js
- * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-07T00:00:00.000Z"}
  * @architectural-role IO Executor (Image)
  * @description
  * Owns all image-related IO for PersonaLyze.
  * 
- * Implements the Dual-Engine (Pollinations/HuggingFace) architecture. 
- * Handles prompt processing (stripping <lora> tags for Pollinations) and 
- * manages API communication with both providers.
+ * Implements the Multi-Engine architecture supporting Pollinations, 
+ * Hugging Face (Router/Spaces), and Fal AI. Handles prompt processing 
+ * and API communication with all providers via server-side proxies 
+ * where necessary to avoid CORS restrictions.
  *
  * @api-declaration
  * buildFilenamePrefix(characterId, outfitKey, expressionKey) → string
@@ -21,7 +22,7 @@
  *   assertions:
  *     purity: IO
  *     state_ownership: []
- *     external_io: [findSecret, Pollinations API, Hugging Face API]
+ *     external_io: [findSecret, Pollinations API, PersonaLyze Plugin (HF/Fal)]
  */
 
 import { getRequestHeaders } from '../../../../script.js';
@@ -29,7 +30,6 @@ import { findSecret } from '../../../secrets.js';
 import { getCharacter } from './registry.js';
 import {
     POLLINATIONS_BASE_URL,
-
     DEFAULT_IMAGE_MODEL,
     DEFAULT_IMAGE_WIDTH,
     DEFAULT_IMAGE_HEIGHT,
@@ -43,6 +43,7 @@ import { logCall } from './utils/callLog.js';
 
 const SECRET_POLLINATIONS = 'api_key_pollinations';
 const SECRET_HUGGINGFACE  = 'api_key_huggingface';
+const SECRET_FAL          = 'api_key_fal';
 const FILE_PREFIX         = 'plz_';
 
 // ─── Naming ───────────────────────────────────────────────────────────────────
@@ -62,11 +63,18 @@ export function findCachedImage(prefix, fileIndex) {
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 async function getAuthKey(provider) {
-    const secretName = provider === 'huggingface' ? SECRET_HUGGINGFACE : SECRET_POLLINATIONS;
+    let secretName;
+    switch (provider) {
+        case 'huggingface': 
+        case 'hf-space':    secretName = SECRET_HUGGINGFACE; break;
+        case 'fal':         secretName = SECRET_FAL; break;
+        default:            secretName = SECRET_POLLINATIONS; break;
+    }
+
     const key = await findSecret(secretName);
-    if (!key) {
+    if (!key && provider !== 'pollinations') {
         throw new Error(
-            `${provider === 'huggingface' ? 'Hugging Face' : 'Pollinations'} API key not found.\n` +
+            `${provider.toUpperCase()} API key not found.\n` +
             `Ensure it is set in PLZ settings / ST secrets.`
         );
     }
@@ -80,12 +88,12 @@ async function getAuthKey(provider) {
  * 
  * BRACKET LOGIC:
  * - Pollinations: Strip brackets and their contents: <tag> -> ""
- * - HuggingFace: Strip just the brackets: <tag> -> "tag"
+ * - HuggingFace/Fal: Strip just the brackets: <tag> -> "tag" (keeps trigger words)
  * 
  * @param {string} anchor
  * @param {string} outfitDescription
  * @param {string} expressionDescription
- * @param {'pollinations'|'huggingface'|'hf-space'} provider
+ * @param {'pollinations'|'huggingface'|'hf-space'|'fal'} provider
  * @returns {string}
  */
 export function buildPortraitPrompt(anchor, outfitDescription, expressionDescription, provider = 'pollinations') {
@@ -94,8 +102,8 @@ export function buildPortraitPrompt(anchor, outfitDescription, expressionDescrip
 
     let processedOutfit = outfitDescription ?? '';
 
-    if (provider === 'huggingface' || provider === 'hf-space') {
-        // Leave the triggers, just remove the brackets
+    if (provider !== 'pollinations') {
+        // Leave the trigger words, just remove the brackets
         processedOutfit = processedOutfit.replace(/[<>]/g, '');
     } else {
         // Completely remove the bracketed tags
@@ -128,7 +136,7 @@ export function buildPortraitPrompt(anchor, outfitDescription, expressionDescrip
  * Fetch from Pollinations with standard retries.
  */
 async function fetchPollinationsWithRetry(url, key, maxRetries = 3) {
-    const headers = { 'Authorization': `Bearer ${key}` };
+    const headers = key ? { 'Authorization': `Bearer ${key}` } : {};
     let lastResponse;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -147,14 +155,13 @@ async function fetchPollinationsWithRetry(url, key, maxRetries = 3) {
 
 /**
  * Fetch from a HuggingFace Gradio Space via the personalyze server plugin.
- * Handles cold-start waits (503 with estimated_time).
  */
 async function fetchSpaceWithRetry(prompt, maxRetries = 3) {
     const s = getSettings();
     const spaceId = s.hfSpaceId;
 
     if (!spaceId) {
-        throw new Error('No HuggingFace Space ID configured. Set one in the Engines modal (HF Spaces tab).');
+        throw new Error('No HuggingFace Space ID configured. Set one in the Engines modal (HF tab).');
     }
 
     const body = JSON.stringify({
@@ -188,7 +195,7 @@ async function fetchSpaceWithRetry(prompt, maxRetries = 3) {
 }
 
 /**
- * Fetch from Hugging Face via the personalyze server plugin to avoid CORS restrictions.
+ * Fetch from Hugging Face via the personalyze server plugin.
  */
 async function fetchHuggingFaceWithRetry(prompt, maxRetries = 5) {
     const s = getSettings();
@@ -214,7 +221,7 @@ async function fetchHuggingFaceWithRetry(prompt, maxRetries = 5) {
             const data = await response.json();
             const waitTime = (data.estimated_time || 10) * 1000;
             warn('ImageCache', `HF Model loading. Waiting ${waitTime}ms (Attempt ${attempt + 1}/${maxRetries})`);
-            await new Promise(r => setTimeout(r, Math.min(waitTime, 20000))); // Cap at 20s per retry
+            await new Promise(r => setTimeout(r, Math.min(waitTime, 20000)));
             continue;
         }
 
@@ -222,6 +229,34 @@ async function fetchHuggingFaceWithRetry(prompt, maxRetries = 5) {
         throw new Error(`Hugging Face API Error (${response.status}): ${errText}`);
     }
     throw new Error('Hugging Face model failed to load after multiple retries.');
+}
+
+/**
+ * Fetch from Fal AI via the personalyze server plugin.
+ */
+async function fetchFalWithRetry(prompt, maxRetries = 3) {
+    const s = getSettings();
+
+    const body = JSON.stringify({
+        model: s.falModel,
+        prompt,
+        width: DEFAULT_IMAGE_WIDTH,
+        height: DEFAULT_IMAGE_HEIGHT,
+    });
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const response = await fetch('/api/plugins/personalyze/fal-generate', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body,
+        });
+
+        if (response.ok) return response;
+
+        const errText = await response.text();
+        throw new Error(`Fal AI API Error (${response.status}): ${errText}`);
+    }
+    throw new Error('Fal AI failed to respond after multiple retries.');
 }
 
 async function validateImageResponse(response) {
@@ -250,22 +285,23 @@ export async function fetchFileIndex() {
 }
 
 /**
- * Fetches a preview image. Respects the provided provider.
+ * Fetches a preview image.
  */
 export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinations') {
     const logTag = `[${provider.toUpperCase()}]`;
     log('ImageCache', `${logTag} Preview Prompt:`, prompt);
     logCall('ImagePreview', `${logTag} ${prompt}`, null, null);
 
-    const key = (provider === 'huggingface' || provider === 'hf-space') ? null : await getAuthKey(provider);
     let res;
-
-    if (provider === 'hf-space') {
+    if (provider === 'fal') {
+        res = await fetchFalWithRetry(prompt);
+    } else if (provider === 'hf-space') {
         res = await fetchSpaceWithRetry(prompt);
     } else if (provider === 'huggingface') {
         res = await fetchHuggingFaceWithRetry(prompt);
     } else {
         const s = getSettings();
+        const key = await getAuthKey('pollinations');
         const seed = getCharacter(characterId)?.seed ?? 1;
         const params = new URLSearchParams({
             width: String(DEV_IMAGE_WIDTH),
@@ -284,7 +320,6 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
 
 /**
  * Generates and uploads a full-res portrait.
- * Modified to check the global hfEngine setting when the outfit is set to Hugging Face.
  */
 export async function generate(
     characterId,
@@ -299,7 +334,7 @@ export async function generate(
     
     let provider = outfit?.provider ?? 'pollinations';
 
-    // If using Hugging Face, check the global engine setting to see if we route to Router or Space
+    // If using Hugging Face, check the global engine setting
     if (provider === 'huggingface') {
         const s = getSettings();
         provider = s.hfEngine === 'space' ? 'hf-space' : 'huggingface';
@@ -309,15 +344,17 @@ export async function generate(
     const prompt = buildPortraitPrompt(anchor, outfitDescription, expressionLabel, provider);
     logCall('PortraitGenerate', `${logTag} ${prompt}`, null, null);
     
-    const key = (provider === 'huggingface' || provider === 'hf-space') ? null : await getAuthKey(provider);
     let imgRes;
 
-    if (provider === 'hf-space') {
+    if (provider === 'fal') {
+        imgRes = await fetchFalWithRetry(prompt);
+    } else if (provider === 'hf-space') {
         imgRes = await fetchSpaceWithRetry(prompt);
     } else if (provider === 'huggingface') {
         imgRes = await fetchHuggingFaceWithRetry(prompt);
     } else {
         const s = getSettings();
+        const key = await getAuthKey('pollinations');
         const devMode = s.devMode ?? false;
         const width  = devMode ? DEV_IMAGE_WIDTH  : DEFAULT_IMAGE_WIDTH;
         const height = devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;

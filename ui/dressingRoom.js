@@ -1,11 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/dressingRoom.js
- * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-07T00:00:00.000Z"}
  * @architectural-role UI (Dressing Room)
  * @description
  * Implements the Dressing Room modal, a confirmation dialog for newly 
- * discovered outfits. Updated to support engine selection (Pollinations/HF) 
- * so users can route tag-heavy descriptions to Hugging Face immediately.
+ * discovered outfits. 
+ * 
+ * Updated to support the Multi-Engine architecture. The engine selection 
+ * dropdown is generated dynamically based on the "Availability" toggles 
+ * in the extension settings.
  *
  * @api-declaration
  * openDressingRoom(proposed) -> Promise<{key, label, description, provider}|null>
@@ -14,15 +17,49 @@
  *   assertions:
  *     purity: IO
  *     state_ownership: []
- *     external_io: [callPopup, fetchPreviewBlob, smartResize, DOM]
+ *     external_io: [callPopup, fetchPreviewBlob, smartResize, DOM, getSettings]
  */
 
 import { callPopup } from '../../../../../script.js';
 import { fetchPreviewBlob } from '../imageCache.js';
+import { getSettings } from '../settings.js';
 import { slugify, escapeHtml } from '../utils/history.js';
 import { smartResize } from '../utils/dom.js';
 import { error } from '../utils/logger.js';
 import { startWorkshopTurn } from '../utils/callLog.js';
+
+/**
+ * Builds the dynamic engine selection HTML based on master availability toggles.
+ * @returns {string}
+ */
+function getEngineSelectorHTML() {
+    const s = getSettings();
+    const options = [];
+
+    // Check master toggles from settings
+    if (s.engineEnablePollinations !== false) {
+        options.push('<option value="pollinations">Pollinations (Fast/Default)</option>');
+    }
+    if (s.engineEnableFal) {
+        options.push('<option value="fal">Fal AI (High Speed/Quality)</option>');
+    }
+    if (s.engineEnableHuggingFace) {
+        options.push('<option value="huggingface">Hugging Face (LoRA/Space)</option>');
+    }
+
+    // Safety fallback: if nothing is enabled, provide Pollinations
+    if (options.length === 0) {
+        options.push('<option value="pollinations">Pollinations (Fallback)</option>');
+    }
+
+    return `
+        <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+            <label style="font-size:0.88em; opacity:0.75; white-space:nowrap;">Engine:</label>
+            <select id="plz-dr-provider" class="text_pole" style="flex:1;">
+                ${options.join('')}
+            </select>
+        </div>`;
+}
 
 /**
  * Opens the Dressing Room modal for an outfit or expression.
@@ -36,14 +73,7 @@ export async function openDressingRoom(proposed) {
         : 'aspect-ratio: 4/3; object-fit: cover;';
 
     // Provider selector only shown for outfits
-    const providerHtml = proposed.dimension === 'outfit' ? `
-        <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
-            <label style="font-size:0.88em; opacity:0.75; white-space:nowrap;">Engine:</label>
-            <select id="plz-dr-provider" class="text_pole" style="flex:1;">
-                <option value="pollinations">Pollinations (Fast/Default)</option>
-                <option value="huggingface">Hugging Face (High Precision/LoRA)</option>
-            </select>
-        </div>` : '';
+    const providerHtml = proposed.dimension === 'outfit' ? getEngineSelectorHTML() : '';
 
     const popupPromise = callPopup(
         `<h3>New ${escapeHtml(dimensionLabel)} Discovered</h3>
@@ -98,11 +128,12 @@ export async function openDressingRoom(proposed) {
         if (!description) return;
         
         const $btn = $(this);
-        $btn.prop('disabled', true).text(provider === 'huggingface' ? 'Waiting for HF...' : 'Fetching...');
+        const originalText = $btn.text();
+        
+        $btn.prop('disabled', true).text(`Waiting for ${provider}...`);
         
         startWorkshopTurn('Dressing Room Preview');
         try {
-            // Note: expression is empty for discovery preview
             const objectUrl = await fetchPreviewBlob(description, proposed.characterId, provider);
             $('#plz-dr-preview-container').show();
             $('#plz-dr-preview-img').attr('src', objectUrl);
@@ -110,7 +141,7 @@ export async function openDressingRoom(proposed) {
             error('DressingRoom', 'Preview failed:', err);
             if (window.toastr) window.toastr.error(`Preview failed: ${err.message}`, 'PersonaLyze');
         } finally {
-            $btn.prop('disabled', false).text('Generate Preview');
+            $btn.prop('disabled', false).text(originalText);
         }
     });
 

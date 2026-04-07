@@ -41,6 +41,17 @@ export const POLLINATIONS_BASE_URL = 'https://gen.pollinations.ai';
 /** Base URL for the HuggingFace Inference Router. Provider and model are appended at call time. */
 export const HUGGINGFACE_ROUTER_BASE = 'https://router.huggingface.co';
 
+export const FAL_BASE_URL = 'https://fal.run';
+export const FAL_MODELS = [
+    'fal-ai/flux/schnell',
+    'fal-ai/flux/dev',
+    'fal-ai/flux-pro',
+    'fal-ai/stable-diffusion-v35-large',
+    'fal-ai/z-image/turbo',
+];
+export const DEFAULT_FAL_MODEL = 'fal-ai/flux/schnell';
+
+
 /**
  * Available HuggingFace inference providers and the text-to-image models each supports.
  * Source: https://huggingface.co/docs/inference-providers/en/index (verified 2026-04-06)

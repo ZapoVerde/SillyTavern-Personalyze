@@ -1,18 +1,18 @@
 /**
  * @file data/default-user/extensions/personalyze/utils/ping.js
- * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-07T00:00:00.000Z"}
  * @architectural-role Utility (Connectivity)
  * @description
  * Centralized utility for pinging image generation engines.
  * 
- * Pollinations is pinged directly via the browser (CORS-safe).
- * Hugging Face engines (Router and Spaces) are pinged via the PersonaLyze
- * server plugin to handle API keys and Gradio info discovery safely.
+ * Supports Pollinations (direct), Hugging Face (proxy), and Fal AI (proxy).
+ * Validates API connectivity and key status via the PersonaLyze server plugin.
  *
  * @api-declaration
  * pingPollinations() → Promise<{ ok: boolean, status?: number, error?: string }>
  * pingHFRouter()      → Promise<{ ok: boolean, user?: string, error?: string }>
  * pingHFSpace(id)     → Promise<{ ok: boolean, info?: object, error?: string }>
+ * pingFal()           → Promise<{ ok: boolean, user?: string, error?: string }>
  *
  * @contract
  *   assertions:
@@ -71,7 +71,7 @@ export async function pingHFRouter() {
  * Pings a Hugging Face Space via the server plugin.
  * Returns metadata about the Space's Gradio status and hardware.
  * 
- * @param {string} spaceId - e.g. "black-forest-labs/FLUX.1-schnell"
+ * @param {string} spaceId - e.g. "owner/space-name"
  */
 export async function pingHFSpace(spaceId) {
     if (!spaceId || !spaceId.includes('/')) {
@@ -89,6 +89,29 @@ export async function pingHFSpace(spaceId) {
         
         if (response.ok) {
             return { ok: true, info: data.info };
+        }
+        
+        return { ok: false, error: data.error || `HTTP ${response.status}` };
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+}
+
+/**
+ * Pings Fal AI via the server plugin.
+ * Validates the stored API key.
+ */
+export async function pingFal() {
+    try {
+        const response = await fetch('/api/plugins/personalyze/fal-ping', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            return { ok: true, user: data.user };
         }
         
         return { ok: false, error: data.error || `HTTP ${response.status}` };
