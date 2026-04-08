@@ -237,39 +237,26 @@ async function fetchHuggingFaceWithRetry(prompt, maxRetries = 5) {
 
 /**
  * Fetch from PiAPI via the personalyze server plugin.
+ * No client-side retries — the server plugin owns the full 25s polling budget.
  */
-async function fetchPiAPIWithRetry(prompt, maxRetries = 3) {
+async function fetchPiAPIWithRetry(prompt) {
     const s = getSettings();
 
-    const body = JSON.stringify({
-        model: s.piapiModel,
-        prompt,
-        width: DEFAULT_IMAGE_WIDTH,
-        height: DEFAULT_IMAGE_HEIGHT,
+    const response = await fetch('/api/plugins/personalyze/piapi-generate', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify({
+            model: s.piapiModel,
+            prompt,
+            width: DEFAULT_IMAGE_WIDTH,
+            height: DEFAULT_IMAGE_HEIGHT,
+        }),
     });
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        const response = await fetch('/api/plugins/personalyze/piapi-generate', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body,
-        });
+    if (response.ok) return response;
 
-        if (response.ok) return response;
-
-        const errText = await response.text();
-
-        if (response.status < 500) {
-            throw new Error(`PiAPI Error (${response.status}): ${errText}`);
-        }
-
-        if (attempt < maxRetries) {
-            const delay = 1000 * Math.pow(2, attempt);
-            warn('ImageCache', `PiAPI server error ${response.status}. Retrying in ${delay}ms (Attempt ${attempt + 1}/${maxRetries})`);
-            await new Promise(r => setTimeout(r, delay));
-        }
-    }
-    throw new Error('PiAPI failed to respond after multiple retries.');
+    const errData = await response.json().catch(() => null);
+    throw new Error(errData?.error ?? `PiAPI Error (HTTP ${response.status})`);
 }
 
 /**
