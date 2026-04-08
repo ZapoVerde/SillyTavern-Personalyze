@@ -17,7 +17,7 @@
  *     external_io: [callPopup, smartResize, settings.js, jQuery]
  */
 
-import { callPopup } from '../../../../../script.js';
+import { callPopup } from '../../../../../../script.js';
 import { getSettings, updateSetting } from '../../settings.js';
 import { smartResize } from '../../utils/dom.js';
 

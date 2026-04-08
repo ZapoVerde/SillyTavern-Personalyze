@@ -18,14 +18,13 @@
  *     external_io: [DOM, settings.js, enginesModal.js, workshop/core.js]
  */
 
-import { callPopup } from '../../../../../script.js';
-import { getSettings, getMetaSettings, updateSetting } from '../settings.js';
-import { setPortraitPosition } from '../portrait.js';
+import { callPopup } from '../../../../../../script.js';
+import { getSettings, getMetaSettings, updateSetting } from '../../settings.js';
+import { setPortraitPosition } from '../../portrait.js';
 import { setVnPanelEnabled } from '../vnPanel.js';
 import { openWorkshop } from '../workshop/core.js';
-import { log, setVerbose } from '../utils/logger.js';
-import { getLogs, getWorkshopLogs } from '../utils/callLog.js';
-import { smartResize } from '../utils/dom.js';
+import { log, setVerbose } from '../../utils/logger.js';
+import { getLogs, getWorkshopLogs } from '../../utils/callLog.js';
 
 // Sub-system imports
 import { buildPanelHTML } from './templates.js';
@@ -42,7 +41,7 @@ import {
     DEFAULT_COMBINED_CLASSIFIER_PROMPT,
     DEFAULT_OUTFIT_DESCRIBER_PROMPT,
     DEFAULT_VN_STYLE_SUFFIX,
-} from '../defaults.js';
+} from '../../defaults.js';
 
 const PANEL_ID = 'plz-settings';
 

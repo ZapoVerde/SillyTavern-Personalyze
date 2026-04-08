@@ -1,7 +1,7 @@
 /**
  * @file data/default-user/extensions/personalyze/index.js
  * @stamp {"utc":"2026-04-07T15:20:00.000Z"}
- * @version 0.3.0
+ * @version 0.3.1
  * @architectural-role Feature Entry Point / Orchestrator
  * @description
  * SillyTavern Personalyze extension entry point.
