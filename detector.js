@@ -1,34 +1,32 @@
 /**
  * @file data/default-user/extensions/personalyze/detector.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-07T12:50:00.000Z"}
  * @architectural-role IO Executor (LLM)
  * @description
- * Wraps all LLM calls made by the PersonaLyze pipeline.
+ * Wraps all LLM calls made by the Personalyze pipeline.
  *
- * Pipeline call sequence per turn (best case 2, worst case 4):
- *   Step 1   — detectSubjectMatch     — Is the current character the main subject? (YES/NO)
- *   Step 2   — detectSubjectFromList  — Who is the main subject? (key or NONE)
- *   Step 2.9 — detectChangeCheck      — Did outfit or expression change? (YES/NO)
- *   Step 3   — detectCombined         — What outfit + expression? (two plain-text lines)
- *
- * All detection calls share detectionProfileId. The describer uses describerProfileId.
- * Raw LLM text is never exposed outside this module.
+ * This module is a pure worker: it does not perform state lookups. It executes 
+ * detection and extraction requests using the templates and data provided 
+ * by the controllers.
  *
  * @api-declaration
  * detectSubjectMatch(messageMes, characterName, history, promptTemplate, profileId)
  *   → Promise<boolean>
  *
  * detectSubjectFromList(messageMes, characterIds, userName, history, promptTemplate, profileId)
- *   → Promise<string|null>  — matched characterId, or null (NONE)
+ *   → Promise<string|null>
  *
- * detectChangeCheck(messageMes, characterName, currentOutfit, currentExpression, history, promptTemplate, profileId)
- *   → Promise<boolean>  — true = no change (still same), false = changed
+ * detectChangeCheck(messageMes, characterName, outfit, expression, history, promptTemplate, profileId)
+ *   → Promise<boolean>
  *
  * detectCombined(messageMes, characterName, outfitKeys, outfits, expressionLabels, history, promptTemplate, profileId)
  *   → Promise<{ outfitKey: string|'NEW'|null, expressionKey: string|null }>
  *
  * detectOutfitDescriber(context, characterName, anchor, promptTemplate, profileId)
  *   → Promise<{ label: string, description: string }|null>
+ *
+ * detectAnchorScan(context, characterName, promptTemplate, profileId)
+ *   → Promise<{ name: string, anchor: string }|null>
  *
  * @contract
  *   assertions:
@@ -46,27 +44,19 @@ import { logCall } from './utils/callLog.js';
 /**
  * Dispatches a prompt to the LLM via ConnectionManagerRequestService.
  *
- * NOTE: generateQuietPrompt is deliberately NOT used here. Despite its name it
- * routes through ST's main generation path and locks the send button for the
- * duration of the call. ConnectionManagerRequestService uses a side-channel
- * connection that never touches the generation lock.
- *
- * If no profileId is configured the call is aborted with a one-time warning
- * rather than falling back to the blocking path.
- *
  * @param {string}      prompt
  * @param {string|null} profileId
  * @param {string}      label   Log tag (e.g. 'SubjectMatch').
  * @param {object}      extraOptions
- * @returns {Promise<string>}  Empty string when no profile is configured.
+ * @returns {Promise<string>}
  */
 async function dispatch(prompt, profileId, label, extraOptions = {}) {
     if (!profileId) {
-        warn(label, 'No detection profile configured — aborting call. Set a Detection Profile in PLZ settings.');
+        warn(label, 'No detection profile configured — aborting call.');
         if (window.toastr) {
             window.toastr.warning(
-                'PersonaLyze: No Detection Profile set. Configure one in PLZ settings to enable detection.',
-                'PersonaLyze',
+                'Personalyze: No Detection Profile set. Configure one in settings to enable detection.',
+                'Personalyze',
                 { timeOut: 6000, preventDuplicates: true },
             );
         }
@@ -85,7 +75,7 @@ async function dispatch(prompt, profileId, label, extraOptions = {}) {
     } catch (err) {
         error(label, 'ConnectionManager request failed:', err);
         logCall(label, prompt, null, err.message);
-        if (window.toastr) window.toastr.error(`PLZ detection failed: ${err.message}`, 'PersonaLyze');
+        if (window.toastr) window.toastr.error(`Detection failed: ${err.message}`, 'Personalyze');
         throw err;
     }
 }
@@ -94,9 +84,6 @@ async function dispatch(prompt, profileId, label, extraOptions = {}) {
 
 /**
  * Parses a YES/NO response. Returns true for YES, false for NO or unrecognised.
- * @param {string} raw
- * @param {string} label
- * @returns {boolean}
  */
 function parseYesNo(raw, label) {
     const text = String(raw ?? '').trim();
@@ -108,21 +95,12 @@ function parseYesNo(raw, label) {
         log(label, 'Result: NO');
         return false;
     }
-    warn(label, `Could not parse YES/NO from: "${text.slice(0, 80)}". Defaulting to NO.`);
+    warn(label, `Could not parse YES/NO from response. Defaulting to NO.`);
     return false;
 }
 
 // ─── Step 1: Subject Match ────────────────────────────────────────────────────
 
-/**
- * Asks whether the current active character is the main subject of this message.
- * @param {string}      messageMes
- * @param {string}      characterName
- * @param {string}      history
- * @param {string}      promptTemplate
- * @param {string|null} profileId
- * @returns {Promise<boolean>}  true = is the main subject
- */
 export async function detectSubjectMatch(messageMes, characterName, history, promptTemplate, profileId) {
     const prompt = promptTemplate
         .replaceAll('{{character_name}}', characterName ?? 'Unknown')
@@ -135,18 +113,6 @@ export async function detectSubjectMatch(messageMes, characterName, history, pro
 
 // ─── Step 2: Subject From List ────────────────────────────────────────────────
 
-/**
- * Asks the LLM to identify the main subject from the registered character list.
- * Returns the matched characterId, or null if NONE.
- *
- * @param {string}      messageMes
- * @param {string[]}    characterIds   All registered character IDs.
- * @param {string}      userName       The ST user name to exclude.
- * @param {string}      history
- * @param {string}      promptTemplate
- * @param {string|null} profileId
- * @returns {Promise<string|null>}
- */
 export async function detectSubjectFromList(messageMes, characterIds, userName, history, promptTemplate, profileId) {
     const characterList = characterIds
         .map(id => `[${id}] ${id.replace(/_/g, ' ')}`)
@@ -166,7 +132,6 @@ export async function detectSubjectFromList(messageMes, characterIds, userName, 
         return null;
     }
 
-    // Word-boundary match against known IDs
     for (const id of characterIds) {
         const regex = new RegExp(`\\b${id.replace(/_/g, '[_ ]')}\\b`, 'i');
         if (regex.test(text)) {
@@ -181,19 +146,6 @@ export async function detectSubjectFromList(messageMes, characterIds, userName, 
 
 // ─── Step 2.9: Change Check ───────────────────────────────────────────────────
 
-/**
- * Asks whether the character's outfit and expression are unchanged from the current state.
- * Returns true if UNCHANGED (no action needed), false if something changed.
- *
- * @param {string}      messageMes
- * @param {string}      characterName
- * @param {string}      currentOutfit      Label of the current outfit.
- * @param {string}      currentExpression  Key/label of the current expression.
- * @param {string}      history
- * @param {string}      promptTemplate
- * @param {string|null} profileId
- * @returns {Promise<boolean>}  true = unchanged, false = changed
- */
 export async function detectChangeCheck(messageMes, characterName, currentOutfit, currentExpression, history, promptTemplate, profileId) {
     const prompt = promptTemplate
         .replaceAll('{{character_name}}',    characterName     ?? 'Unknown')
@@ -209,22 +161,6 @@ export async function detectChangeCheck(messageMes, characterName, currentOutfit
 
 // ─── Step 3: Combined Classifier ─────────────────────────────────────────────
 
-/**
- * Classifies both the current outfit and expression in a single LLM call.
- * Returns:
- *   outfitKey:     matched outfit key | 'NEW' | null (NULL / no change)
- *   expressionKey: matched expression label | null (NULL / no change)
- *
- * @param {string}      messageMes
- * @param {string}      characterName
- * @param {string[]}    outfitKeys
- * @param {object}      outfits        { key: { label, description } }
- * @param {string[]}    expressionLabels
- * @param {string}      history
- * @param {string}      promptTemplate
- * @param {string|null} profileId
- * @returns {Promise<{ outfitKey: string|'NEW'|null, expressionKey: string|null }>}
- */
 export async function detectCombined(messageMes, characterName, outfitKeys, outfits, expressionLabels, history, promptTemplate, profileId) {
     const outfitList = outfitKeys.length > 0
         ? outfitKeys.map(k => `[${k}] ${outfits[k].label} — ${outfits[k].description}`).join('\n')
@@ -249,69 +185,31 @@ export async function detectCombined(messageMes, characterName, outfitKeys, outf
 
 // ─── Step 3 Parsers ───────────────────────────────────────────────────────────
 
-/**
- * Extracts the Outfit line result from a combined classifier response.
- * @param {string}   raw
- * @param {string[]} outfitKeys
- * @returns {string|'NEW'|null}
- */
 function parseOutfitLine(raw, outfitKeys) {
     const line = extractLine(raw, 'outfit');
-
-    if (!line) {
-        warn('Combined', 'No "Outfit:" line found in response.');
-        return null;
-    }
-
+    if (!line) return null;
     if (/\bNULL\b/i.test(line)) return null;
     if (/\bNEW\b/i.test(line))  return 'NEW';
 
     for (const key of outfitKeys) {
         const regex = new RegExp(`\\b${key.replace(/_/g, '[_ ]')}\\b`, 'i');
-        if (regex.test(line)) {
-            log('Combined', `Outfit matched: "${key}"`);
-            return key;
-        }
+        if (regex.test(line)) return key;
     }
-
-    warn('Combined', `Outfit line could not be matched: "${line}"`);
     return null;
 }
 
-/**
- * Extracts the Expression line result from a combined classifier response.
- * @param {string}   raw
- * @param {string[]} expressionLabels
- * @returns {string|null}
- */
 function parseExpressionLine(raw, expressionLabels) {
     const line = extractLine(raw, 'expression');
-
-    if (!line) {
-        warn('Combined', 'No "Expression:" line found in response.');
-        return null;
-    }
-
+    if (!line) return null;
     if (/\bNULL\b/i.test(line)) return null;
 
     for (const label of expressionLabels) {
         const regex = new RegExp(`\\b${label}\\b`, 'i');
-        if (regex.test(line)) {
-            log('Combined', `Expression matched: "${label}"`);
-            return label;
-        }
+        if (regex.test(line)) return label;
     }
-
-    warn('Combined', `Expression line could not be matched: "${line}"`);
     return null;
 }
 
-/**
- * Extracts the value portion of a labelled line (e.g. "Outfit: casual" → "casual").
- * @param {string} raw
- * @param {string} fieldName   e.g. 'outfit' or 'expression'
- * @returns {string|null}
- */
 function extractLine(raw, fieldName) {
     const match = raw.match(new RegExp(`${fieldName}\\s*:\\s*(.+)`, 'i'));
     return match ? match[1].trim() : null;
@@ -319,20 +217,6 @@ function extractLine(raw, fieldName) {
 
 // ─── Anchor Scanner ───────────────────────────────────────────────────────────
 
-/**
- * Scans recent chat context to extract a character's name and permanent physical
- * appearance (Identity Anchor). Used by the Character Workshop to pre-fill the
- * Register and Studio forms from the live chat.
- *
- * When characterName is provided the prompt focuses on that character.
- * When null the LLM identifies whoever is most prominently described.
- *
- * @param {string}      context        Transcript context (from buildDescriberContext).
- * @param {string|null} characterName  Optional focus character name.
- * @param {string}      promptTemplate
- * @param {string|null} profileId
- * @returns {Promise<{ name: string, anchor: string }|null>}
- */
 export async function detectAnchorScan(context, characterName, promptTemplate, profileId) {
     const hasFocus       = !!characterName;
     const characterFocus = hasFocus ? `CHARACTER FOCUS: ${characterName}\n` : '';
@@ -347,14 +231,8 @@ export async function detectAnchorScan(context, characterName, promptTemplate, p
     return parseAnchorScanResponse(raw);
 }
 
-/**
- * Parses an anchor scan response into { name, anchor }.
- * @param {string} raw
- * @returns {{ name: string, anchor: string }|null}
- */
 function parseAnchorScanResponse(raw) {
     const text = String(raw ?? '');
-
     const nameMatch   = text.match(/\*?\*?Name\*?\*?:\s*(.+)/i);
     const anchorMatch = text.match(/\*?\*?Identity\s+Anchor\*?\*?:\s*([\s\S]+?)(?=\n\*?\*?[A-Z]|$)/i);
 
@@ -371,15 +249,6 @@ function parseAnchorScanResponse(raw) {
 
 // ─── Outfit Describer ─────────────────────────────────────────────────────────
 
-/**
- * Extracts a label and visual description for a newly discovered outfit.
- * @param {string}      context        Transcript context window.
- * @param {string}      characterName
- * @param {string}      anchor         Identity anchor for the character.
- * @param {string}      promptTemplate
- * @param {string|null} profileId
- * @returns {Promise<{ label: string, description: string }|null>}
- */
 export async function detectOutfitDescriber(context, characterName, anchor, promptTemplate, profileId) {
     const prompt = promptTemplate
         .replace('{{character_name}}',  characterName ?? 'Unknown')
@@ -390,18 +259,8 @@ export async function detectOutfitDescriber(context, characterName, anchor, prom
     return parseDescriberResponse(raw);
 }
 
-// ─── Describer Parser ─────────────────────────────────────────────────────────
-
-/**
- * Parses a describer response into { label, description }.
- * Tolerates bold markdown around the field names (e.g. **Label:**).
- * Returns null if the required fields cannot be extracted.
- * @param {string} raw
- * @returns {{ label: string, description: string }|null}
- */
 function parseDescriberResponse(raw) {
     const text = String(raw ?? '');
-
     const labelMatch = text.match(/\*?\*?Label\*?\*?:\s*(.+)/i);
     const descMatch  = text.match(/\*?\*?Description\*?\*?:\s*([\s\S]+?)(?=\n\*?\*?[A-Z]|$)/i);
 

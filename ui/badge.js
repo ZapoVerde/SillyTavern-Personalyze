@@ -1,50 +1,47 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/badge.js
- * @stamp {"utc":"2026-04-04T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-07T15:10:00.000Z"}
  * @architectural-role UI (Per-Message Badge)
  * @description
- * Injects a small state indicator badge into the .mes_buttons bar of each AI
- * chat message that has a PersonaLyze pointer record.
- *
- * The badge displays the active character name, outfit label, and expression
- * label at the time that message was generated, giving the user a visual audit
- * trail of the portrait state across the conversation.
- *
- * Format:  [CharacterName  |  OutfitLabel  |  ExpressionLabel]
- *
- * Badges are injected lazily after the message DOM element is rendered and
- * re-injected on chat reload via reinjectAllBadges().
+ * Injects a state indicator badge into the .mes_buttons bar of AI messages.
+ * 
+ * Updated to use the DNA Chain architecture: resolves labels using 
+ * state.chatCharacters (Local DNA) and handles the Array Pattern 
+ * in message metadata.
  *
  * @api-declaration
- * injectMessageBadge(messageId)  — Reads the pointer for messageId and stamps the badge.
- * reinjectAllBadges()            — Iterates the full chat and re-stamps all badges.
+ * injectMessageBadge(messageId)  — Resolves DNA for messageId and stamps badge.
+ * reinjectAllBadges()            — Refreshes all badges in the chat.
  *
  * @contract
  *   assertions:
  *     purity: IO
  *     state_ownership: []
- *     external_io: [DOM (.mes_buttons), registry.js, getContext()]
+ *     external_io: [DOM (.mes_buttons), state.js, getContext()]
  */
 
 import { getContext } from '../../../../extensions.js';
-import { getCharacter } from '../registry.js';
+import { state } from '../state.js';
 import { escapeHtml } from '../utils/history.js';
 
 const BADGE_CLASS = 'plz-msg-badge';
 
 /**
  * Builds and attaches the badge into .mes_buttons for a message element.
- * Removes any existing badge first — safe for repeated calls.
+ * 
  * @param {jQuery} $mes
- * @param {object} pointer  { characterId, outfit, expression }
+ * @param {object} visualState { characterId, outfit, expression }
  */
-function renderBadge($mes, pointer) {
+function renderBadge($mes, visualState) {
     $mes.find(`.${BADGE_CLASS}`).remove();
 
-    const character    = getCharacter(pointer.characterId);
-    const outfitLabel  = character?.outfits[pointer.outfit]?.label     ?? pointer.outfit     ?? '—';
-    const exprLabel    = character?.expressions[pointer.expression]?.label ?? pointer.expression ?? '—';
-    const charLabel    = pointer.characterId.replace(/_/g, ' ');
+    const charId       = visualState.characterId;
+    const character    = state.chatCharacters[charId];
+    
+    // Resolve labels from local DNA definitions
+    const outfitLabel  = character?.outfits[visualState.outfit]?.label     ?? visualState.outfit     ?? '—';
+    const exprLabel    = character?.expressions[visualState.expression]?.label ?? visualState.expression ?? '—';
+    const charLabel    = charId.replace(/_/g, ' ');
 
     const $badge = $(`
         <div class="${BADGE_CLASS}"
@@ -81,8 +78,7 @@ function renderBadge($mes, pointer) {
 }
 
 /**
- * Injects or refreshes the PLZ badge for a single AI chat message.
- * No-ops silently if the message has no PLZ pointer or the DOM element is absent.
+ * Injects or refreshes the Personalyze badge for a single AI chat message.
  * @param {number} messageId
  */
 export function injectMessageBadge(messageId) {
@@ -90,18 +86,32 @@ export function injectMessageBadge(messageId) {
     const message = context?.chat[messageId];
     if (!message || message.is_user) return;
 
-    const pointer = message.extra?.personalyze;
-    if (!pointer?.characterId) return;
+    const plzData = message.extra?.personalyze;
+    if (!plzData) return;
+
+    // Resolve the latest visual state record from the DNA array (or handle legacy object)
+    let latestState = null;
+    if (Array.isArray(plzData)) {
+        for (let i = plzData.length - 1; i >= 0; i--) {
+            if (plzData[i].type === 'visual_state') {
+                latestState = plzData[i];
+                break;
+            }
+        }
+    } else if (plzData.characterId) {
+        latestState = plzData;
+    }
+
+    if (!latestState) return;
 
     const $mes = $(`.mes[mesid="${messageId}"]`);
     if (!$mes.length) return;
 
-    renderBadge($mes, pointer);
+    renderBadge($mes, latestState);
 }
 
 /**
- * Re-renders PLZ badges for every message currently in the chat.
- * Called after boot and after a chat-changed event.
+ * Re-renders all badges for the current chat.
  */
 export function reinjectAllBadges() {
     const context = getContext();

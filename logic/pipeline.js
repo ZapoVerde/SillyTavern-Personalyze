@@ -1,12 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline.js
- * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-07T12:30:00.000Z"}
  * @architectural-role Orchestrator / Narrative Logic
  * @description
  * Implements the PersonaLyze "Falling Water" detection pipeline.
  * 
- * Updated to support the Dual-Engine (Pollinations/HF) architecture. 
- * Correctly passes provider flags from the Dressing Room to the Registry.
+ * Updated to use the DNA Chain architecture:
+ * - Reads definitions from state.chatCharacters (Local DNA).
+ * - Persists discoveries to the chat log via dnaWriter.js.
+ * - Follows the Two-Write Pattern for all visual transitions.
+ * - Adheres to the new imageCache.generate contract (seed and provider required).
  *
  * @api-declaration
  * runPipeline(messageId) → Promise<void>
@@ -15,14 +18,22 @@
  *   assertions:
  *     purity: Stateful IO
  *     state_ownership: [state (mutates via setters)]
- *     external_io: [LLM calls, chat writes, image generation, portrait UI]
+ *     external_io: [LLM calls, dnaWriter, image generation, portrait UI]
  */
 
 import { getContext } from '../../../../extensions.js';
 import { error } from '../utils/logger.js';
-import { state, updateActiveCharacter, updateActivePointers, updateActiveImage, addToFileIndex, getChainEntry, updateChainEntry } from '../state.js';
+import { 
+    state, 
+    updateActiveCharacter, 
+    updateActivePointers, 
+    updateActiveImage, 
+    addToFileIndex, 
+    getChainEntry, 
+    updateChainEntry,
+    upsertChatOutfitDef
+} from '../state.js';
 import { getSettings } from '../settings.js';
-import { getCharacter, upsertOutfit } from '../registry.js';
 import { buildHistoryText, buildDescriberContext, slugify } from '../utils/history.js';
 import {
     detectSubjectMatch,
@@ -33,7 +44,11 @@ import {
 } from '../detector.js';
 import { generate, buildFilenamePrefix, findCachedImage } from '../imageCache.js';
 import { setPortrait } from '../portrait.js';
-import { lockedWritePointer, lockedPatchPointerImage } from './pointerWriter.js';
+import { 
+    lockedWriteVisualState, 
+    lockedPatchVisualStateImage, 
+    lockedWriteOutfitDef 
+} from '../io/dnaWriter.js';
 import { openDressingRoom } from '../ui/dressingRoom.js';
 import { startTurn } from '../utils/callLog.js';
 
@@ -49,7 +64,7 @@ export async function runPipeline(messageId) {
 
     if (!message || message.is_user) return;
 
-    const s       = getSettings();
+    const s = getSettings();
     if (!s.enabled) return;
 
     if (state.activeRoster.length === 0) return;
@@ -62,8 +77,9 @@ export async function runPipeline(messageId) {
     let characterId = null;
 
     if (state.activeCharacterId && state.activeRoster.includes(state.activeCharacterId)) {
-        const activeCharacter = getCharacter(state.activeCharacterId);
-        if (activeCharacter) {
+        const localChar = state.chatCharacters[state.activeCharacterId];
+        // Only run subject match if we actually have this character defined in DNA
+        if (localChar) {
             const isMatch = await detectSubjectMatch(
                 message.mes,
                 state.activeCharacterId.replace(/_/g, ' '),
@@ -77,13 +93,14 @@ export async function runPipeline(messageId) {
 
     // ── Step 2: Subject From List ────────────────────────────────────────────
     if (!characterId) {
-        const allIds = state.activeRoster.filter(id => getCharacter(id));
-        if (allIds.length === 0) return;
+        // Filter roster to characters that actually have definitions in the chat DNA
+        const definedIds = state.activeRoster.filter(id => state.chatCharacters[id]);
+        if (definedIds.length === 0) return;
 
         const userName = context.name1 ?? 'User';
         characterId = await detectSubjectFromList(
             message.mes,
-            allIds,
+            definedIds,
             userName,
             history,
             s.subjectListPrompt,
@@ -93,7 +110,7 @@ export async function runPipeline(messageId) {
         if (!characterId) return;
     }
 
-    const character = getCharacter(characterId);
+    const character = state.chatCharacters[characterId];
     if (!character) return;
 
     updateActiveCharacter(characterId);
@@ -163,8 +180,13 @@ export async function runPipeline(messageId) {
             });
 
             if (approved) {
-                // Pass the provider flag (pollinations/huggingface) to the registry
-                upsertOutfit(characterId, approved.key, approved.label, approved.description, approved.provider);
+                // Write 1: Persistence to DNA
+                // We write the definition to the turn before the transition happens (or current turn if turn 0)
+                const defMsgId = messageId > 0 ? messageId - 1 : messageId;
+                await lockedWriteOutfitDef(defMsgId, characterId, approved.key, approved.label, approved.description, approved.provider);
+                
+                // Update local state so Step 3b can resolve the ID
+                upsertChatOutfitDef(characterId, approved.key, approved.label, approved.description, approved.provider);
                 finalOutfitKey = approved.key;
             }
         }
@@ -189,12 +211,8 @@ async function applyVisual(messageId, characterId, outfitKey, expressionKey, cha
     const prefix     = buildFilenamePrefix(characterId, outfitKey, expressionKey);
     const cachedFile = findCachedImage(prefix, state.fileIndex);
 
-    await lockedWritePointer(messageId, {
-        characterId,
-        outfit:     outfitKey,
-        expression: expressionKey,
-        image:      cachedFile,
-    });
+    // Write 1: Narrative Intent
+    await lockedWriteVisualState(messageId, characterId, outfitKey, expressionKey, cachedFile);
 
     if (cachedFile) {
         updateActiveImage(cachedFile);
@@ -206,10 +224,22 @@ async function applyVisual(messageId, characterId, outfitKey, expressionKey, cha
     if (!outfitDef) return;
 
     const capturedMsgId = messageId;
-    generate(characterId, outfitKey, expressionKey, outfitDef.description, expressionKey, character.identityAnchor)
+    generate(
+        characterId, 
+        outfitKey, 
+        expressionKey, 
+        outfitDef.description, 
+        expressionKey, 
+        character.identityAnchor, 
+        character.seed, 
+        outfitDef.provider
+    )
         .then(async newFile => {
             addToFileIndex(newFile);
-            await lockedPatchPointerImage(capturedMsgId, newFile);
+            
+            // Write 2: Asset Completion
+            await lockedPatchVisualStateImage(capturedMsgId, characterId, newFile);
+            
             updateActiveImage(newFile);
             updateChainEntry(characterId, outfitKey, expressionKey, newFile);
             setPortrait(newFile);

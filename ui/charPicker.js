@@ -37,11 +37,10 @@ import {
     addToFileIndex,
     updateChainEntry,
 } from '../state.js';
-import { getCharacter } from '../registry.js';
 import { getSettings } from '../settings.js';
 import { buildFilenamePrefix, findCachedImage, generate } from '../imageCache.js';
 import { setPortrait } from '../portrait.js';
-import { lockedWritePointer } from '../logic/pointerWriter.js';
+import { lockedWriteVisualState, lockedPatchVisualStateImage } from '../io/dnaWriter.js';
 import { escapeHtml } from '../utils/history.js';
 import { error } from '../utils/logger.js';
 
@@ -73,7 +72,7 @@ export async function openCharPicker() {
 
     const s              = getSettings();
     const exprLabels     = s.expressionLabels ?? [];
-    const rosterChars    = state.activeRoster.filter(id => getCharacter(id));
+    const rosterChars    = state.activeRoster.filter(id => state.chatCharacters[id]);
     if (rosterChars.length === 0) return;
 
     const initCharId = (state.activeCharacterId && rosterChars.includes(state.activeCharacterId))
@@ -89,7 +88,7 @@ export async function openCharPicker() {
     }
 
     function buildOutfitOptions(charId, selectedKey = null) {
-        const char    = getCharacter(charId);
+        const char    = state.chatCharacters[charId];
         const entries = Object.entries(char?.outfits ?? {});
         if (entries.length === 0) return '<option value="">— no outfits registered —</option>';
         return entries.map(([key, outfit]) => {
@@ -143,7 +142,7 @@ export async function openCharPicker() {
         return;
     }
 
-    const character = getCharacter(characterId);
+    const character = state.chatCharacters[characterId];
     if (!character) return;
 
     // Check cache
@@ -155,13 +154,8 @@ export async function openCharPicker() {
     updateActivePointers(outfitKey, expressionKey);
     updateChainEntry(characterId, outfitKey, expressionKey, filename);
 
-    // Write pointer to the chat record (image may be null if not yet generated)
-    await lockedWritePointer(lastAiIdx, {
-        characterId,
-        outfit:     outfitKey,
-        expression: expressionKey,
-        image:      filename,
-    });
+    // Write visual state to the DNA chain (image may be null if not yet generated)
+    await lockedWriteVisualState(lastAiIdx, characterId, outfitKey, expressionKey, filename);
 
     if (filename) {
         updateActiveImage(filename);
@@ -182,12 +176,7 @@ export async function openCharPicker() {
             outfitDef.description, expressionKey, character.identityAnchor
         );
         addToFileIndex(filename);
-        await lockedWritePointer(lastAiIdx, {
-            characterId,
-            outfit:     outfitKey,
-            expression: expressionKey,
-            image:      filename,
-        });
+        await lockedPatchVisualStateImage(lastAiIdx, characterId, filename);
         updateActiveImage(filename);
         updateChainEntry(characterId, outfitKey, expressionKey, filename);
         setPortrait(filename);
