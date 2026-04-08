@@ -473,12 +473,13 @@ export function bindWorkshopEvents({ switchTab, renderRoster, renderStudio }) {
 
     // UI Feedback for engine toggle
     $overlay.on('change', '.plz-entry-provider', function() {
-        const isHf = $(this).val() === 'huggingface';
+        const val = $(this).val();
+        const isExternal = val !== 'pollinations';
         const $parent = $(this).parent();
         const $icon = $parent.find('.fa-cloud');
-        if (isHf) {
+        if (isExternal) {
             if (!$icon.length) {
-                $(this).after(' <i class="fa-solid fa-cloud" title="Using Hugging Face" style="font-size:0.8em; color:var(--SmartThemeQuoteColor); margin-left:5px;"></i>');
+                $(this).after(' <i class="fa-solid fa-cloud" title="External Engine" style="font-size:0.8em; color:var(--SmartThemeQuoteColor); margin-left:5px;"></i>');
             }
         } else {
             $icon.remove();

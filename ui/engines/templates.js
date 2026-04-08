@@ -24,7 +24,7 @@
  *     external_io: []
  */
 
-import { POLLINATIONS_MODELS, HF_PROVIDER_MODELS, FAL_MODELS } from '../../defaults.js';
+import { POLLINATIONS_MODELS, HF_PROVIDER_MODELS, FAL_MODELS, PIAPI_MODELS } from '../../defaults.js';
 import { escapeHtml } from '../../utils/history.js';
 
 /**
@@ -109,6 +109,44 @@ function getFalTabHTML(settings) {
             <button class="menu_button" id="plz-eng-fal-test" style="flex:1;"><i class="fa-solid fa-flask"></i> Test</button>
         </div>
         <div id="plz-eng-fal-status" style="font-size:0.8em; opacity:0.8;"></div>
+    </div>`;
+}
+
+// ─── Tab: PiAPI ───────────────────────────────────────────────────────────────
+
+function getPiAPITabHTML(settings) {
+    const s = settings;
+    const modelOptions = PIAPI_MODELS
+        .map(m => `<option value="${escapeHtml(m)}"${m === s.piapiModel ? ' selected' : ''}>${escapeHtml(m)}</option>`)
+        .join('');
+
+    return `
+    <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
+        ${getAvailabilityToggleHTML('plz-eng-piapi-enabled', 'PiAPI', !!s.engineEnablePiAPI)}
+
+        <p style="font-size:0.85em; opacity:0.6; margin:0;">
+            Qubico Z-Image generation via PiAPI. Requires a PiAPI API key.
+        </p>
+
+        <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">API Key:</label>
+            <input type="password" id="plz-eng-piapi-key" class="text_pole" placeholder="Your PiAPI Key" style="flex:1;" />
+            <button class="menu_button plz-eng-vault-save" data-secret="api_key_piapi">Save</button>
+        </div>
+        <div id="plz-eng-piapi-key-status" style="font-size:0.8em; margin-top:-8px;"></div>
+
+        <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Model:</label>
+            <select id="plz-eng-piapi-model" class="text_pole" style="flex:1;">
+                ${modelOptions}
+            </select>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:10px;">
+            <button class="menu_button" id="plz-eng-piapi-ping" style="flex:1;"><i class="fa-solid fa-signal"></i> Ping</button>
+            <button class="menu_button" id="plz-eng-piapi-test" style="flex:1;"><i class="fa-solid fa-flask"></i> Test</button>
+        </div>
+        <div id="plz-eng-piapi-status" style="font-size:0.8em; opacity:0.8;"></div>
     </div>`;
 }
 
@@ -221,6 +259,7 @@ export function getEnginesModalHTML(settings) {
             <div class="plz-tab-bar">
                 <button class="plz-tab-btn menu_button" data-tab="pollinations">Pollinations</button>
                 <button class="plz-tab-btn menu_button" data-tab="fal">Fal AI</button>
+                <button class="plz-tab-btn menu_button" data-tab="piapi">PiAPI</button>
                 <button class="plz-tab-btn menu_button" data-tab="huggingface">Hugging Face</button>
             </div>
         </div>
@@ -231,6 +270,9 @@ export function getEnginesModalHTML(settings) {
             </div>
             <div id="plz-eng-tab-fal" class="plz-tab-panel plz-hidden">
                 ${getFalTabHTML(settings)}
+            </div>
+            <div id="plz-eng-tab-piapi" class="plz-tab-panel plz-hidden">
+                ${getPiAPITabHTML(settings)}
             </div>
             <div id="plz-eng-tab-huggingface" class="plz-tab-panel plz-hidden">
                 ${getHuggingFaceTabHTML(settings)}

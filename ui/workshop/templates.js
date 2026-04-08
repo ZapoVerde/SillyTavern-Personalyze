@@ -36,6 +36,9 @@ function getProviderOptionsHTML(selectedProvider) {
     if (s.engineEnableFal) {
         options.push(['fal', 'Fal']);
     }
+    if (s.engineEnablePiAPI) {
+        options.push(['piapi', 'PiAPI']);
+    }
     if (s.engineEnableHuggingFace) {
         options.push(['huggingface', 'HF']);
     }

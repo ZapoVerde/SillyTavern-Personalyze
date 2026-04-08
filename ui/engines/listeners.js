@@ -25,7 +25,7 @@ import { getSettings, updateSetting } from '../../settings.js';
 import { fetchPreviewBlob } from '../../imageCache.js';
 import { HF_PROVIDER_MODELS, DEFAULT_TEST_PROMPT } from '../../defaults.js';
 import { log, error } from '../../utils/logger.js';
-import { pingPollinations, pingHFRouter, pingHFSpace, pingFal } from '../../utils/ping.js';
+import { pingPollinations, pingHFRouter, pingHFSpace, pingFal, pingPiAPI } from '../../utils/ping.js';
 import { writeSecret, secret_state } from '../../../../../secrets.js';
 import { callPopup } from '../../../../../../script.js';
 import { rebuildSpaceDropdown } from './templates.js';
@@ -38,13 +38,15 @@ import { smartResize } from '../../utils/dom.js';
  * Updates all engine key status indicators in the engines modal.
  */
 export function updateEngineKeyStatuses() {
-    const polState = secret_state['api_key_pollinations'];
-    const hfState  = secret_state['api_key_huggingface'];
-    const falState = secret_state['api_key_fal'];
+    const polState   = secret_state['api_key_pollinations'];
+    const hfState    = secret_state['api_key_huggingface'];
+    const falState   = secret_state['api_key_fal'];
+    const piapiState = secret_state['api_key_piapi'];
 
-    const hasPol = Array.isArray(polState) && polState.length > 0;
-    const hasHf  = Array.isArray(hfState)  && hfState.length  > 0;
-    const hasFal = Array.isArray(falState) && falState.length > 0;
+    const hasPol   = Array.isArray(polState)   && polState.length   > 0;
+    const hasHf    = Array.isArray(hfState)    && hfState.length    > 0;
+    const hasFal   = Array.isArray(falState)   && falState.length   > 0;
+    const hasPiAPI = Array.isArray(piapiState) && piapiState.length > 0;
 
     const okHtml  = '<span style="color:var(--SmartThemeQuoteColor,#28a745); font-size:0.9em;">● Key saved in vault</span>';
     const errHtml = '<span style="color:var(--SmartThemeErrorColor,#e05555); font-size:0.9em;">○ No key found</span>';
@@ -52,6 +54,7 @@ export function updateEngineKeyStatuses() {
     $('#plz-eng-pol-key-status').html(hasPol ? okHtml : errHtml);
     $('#plz-eng-hf-key-status').html(hasHf ? okHtml : errHtml);
     $('#plz-eng-fal-key-status').html(hasFal ? okHtml : errHtml);
+    $('#plz-eng-piapi-key-status').html(hasPiAPI ? okHtml : errHtml);
 }
 
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
@@ -78,6 +81,7 @@ export function refreshEnginesUI() {
     // 0. Availability Toggles
     $('#plz-eng-pol-enabled').prop('checked', s.engineEnablePollinations !== false);
     $('#plz-eng-fal-enabled').prop('checked', !!s.engineEnableFal);
+    $('#plz-eng-piapi-enabled').prop('checked', !!s.engineEnablePiAPI);
     $('#plz-eng-hf-enabled').prop('checked', !!s.engineEnableHuggingFace);
 
     // 1. Populate Pollinations Model Dropdown from Discovery Cache
@@ -94,6 +98,9 @@ export function refreshEnginesUI() {
 
     // 2. Populate Fal AI
     $('#plz-eng-fal-model').val(s.falModel);
+
+    // 2b. Populate PiAPI
+    $('#plz-eng-piapi-model').val(s.piapiModel);
 
     // 3. Populate Hugging Face Provider/Model
     $('#plz-eng-hf-provider').val(s.hfProvider);
@@ -131,6 +138,9 @@ export function bindEnginesHandlers($modal) {
         } else if (secretName === 'api_key_fal') {
             inputId = '#plz-eng-fal-key';
             label   = 'PersonaLyze: Fal AI';
+        } else if (secretName === 'api_key_piapi') {
+            inputId = '#plz-eng-piapi-key';
+            label   = 'PersonaLyze: PiAPI';
         } else {
             inputId = '#plz-eng-pol-key';
             label   = 'PersonaLyze: Pollinations';
@@ -199,7 +209,27 @@ export function bindEnginesHandlers($modal) {
         await runEngineTest($(this), '#plz-eng-fal-status', 'fal', 'Fal AI');
     });
 
-    // 4. HF Router Ping & Test
+    // 4. PiAPI Ping & Test
+    $modal.on('click', '#plz-eng-piapi-ping', async function () {
+        const $btn = $(this);
+        const $status = $('#plz-eng-piapi-status');
+        $btn.prop('disabled', true);
+        $status.text('Validating key...');
+
+        const result = await pingPiAPI();
+        if (result.ok) {
+            $status.html(`<span style="color:var(--SmartThemeQuoteColor);">✓ Key valid</span>`);
+        } else {
+            $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${result.error}</span>`);
+        }
+        $btn.prop('disabled', false);
+    });
+
+    $modal.on('click', '#plz-eng-piapi-test', async function () {
+        await runEngineTest($(this), '#plz-eng-piapi-status', 'piapi', 'PiAPI');
+    });
+
+    // 5. HF Router Ping & Test
     $modal.on('click', '#plz-eng-hf-ping', async function () {
         const $btn = $(this);
         const $status = $('#plz-eng-hf-status');
@@ -279,6 +309,9 @@ export function bindEnginesHandlers($modal) {
     $modal.on('change', '#plz-eng-fal-enabled', function () {
         updateSetting('engineEnableFal', $(this).prop('checked'));
     });
+    $modal.on('change', '#plz-eng-piapi-enabled', function () {
+        updateSetting('engineEnablePiAPI', $(this).prop('checked'));
+    });
     $modal.on('change', '#plz-eng-hf-enabled', function () {
         updateSetting('engineEnableHuggingFace', $(this).prop('checked'));
     });
@@ -290,6 +323,10 @@ export function bindEnginesHandlers($modal) {
 
     $modal.on('change', '#plz-eng-fal-model', function () {
         updateSetting('falModel', $(this).val());
+    });
+
+    $modal.on('change', '#plz-eng-piapi-model', function () {
+        updateSetting('piapiModel', $(this).val());
     });
 
     $modal.on('change', '#plz-eng-hf-provider', function () {

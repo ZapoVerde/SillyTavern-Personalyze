@@ -3,10 +3,10 @@
  * @stamp {"utc":"2026-04-07T00:00:00.000Z"}
  * @architectural-role Server-Side Plugin
  * @description
- * Proxies Hugging Face and Fal AI API calls for the PersonaLyze extension.
- * This server-side component bypasses CORS restrictions and handles secure 
+ * Proxies Hugging Face, Fal AI, and PiAPI calls for the PersonaLyze extension.
+ * This server-side component bypasses CORS restrictions and handles secure
  * API key injection from the SillyTavern secrets vault.
- * 
+ *
  * Routes provided:
  * - /hf-generate    : Hugging Face Inference Router proxy
  * - /hf-ping        : HF API key validation
@@ -14,10 +14,12 @@
  * - /space-ping     : HF Space status check
  * - /fal-generate   : Fal AI generation proxy (JSON -> Image pipe)
  * - /fal-ping       : Fal AI API key validation
+ * - /piapi-generate : PiAPI image generation proxy (async task polling -> Image pipe)
+ * - /piapi-ping     : PiAPI API key validation
  *
  * @contract
  *   assertions:
- *     external_io: [HuggingFace API, Fal AI API, SillyTavern Secrets]
+ *     external_io: [HuggingFace API, Fal AI API, PiAPI, SillyTavern Secrets]
  */
 
 import { readSecret } from '../../src/endpoints/secrets.js';
@@ -25,7 +27,7 @@ import { readSecret } from '../../src/endpoints/secrets.js';
 export const info = {
     id: 'personalyze',
     name: 'PersonaLyze',
-    description: 'Proxies Hugging Face and Fal AI API calls for PersonaLyze extension',
+    description: 'Proxies Hugging Face, Fal AI, and PiAPI calls for PersonaLyze extension',
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -253,6 +255,7 @@ export async function init(router) {
                     prompt,
                     image_size: { width: width ?? 512, height: height ?? 768 },
                     sync_mode: true,
+                    enable_safety_checker: false,
                 }),
             });
 
@@ -291,10 +294,128 @@ export async function init(router) {
             if (!apiKey) {
                 return res.status(401).json({ error: 'Fal AI API key not configured.' });
             }
-            
-            // Fal doesn't have a specific "whoami" endpoint, so we try a lightweight 
+
+            // Fal doesn't have a specific "whoami" endpoint, so we try a lightweight
             // metadata check or just confirm key presence/format.
             // For now, we return success if the key is present.
+            return res.json({ ok: true, user: 'authenticated' });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ── PiAPI: image generation ───────────────────────────────────────────────
+    router.post('/piapi-generate', async (req, res) => {
+        try {
+            const { model, prompt, negative_prompt, width, height, seed, flow_shift, batch_size } = req.body;
+            const apiKey = readSecret(req.user.directories, 'api_key_piapi');
+
+            if (!apiKey) {
+                return res.status(401).json({ error: 'PiAPI key not configured.' });
+            }
+
+            // Step 1: Submit the task
+            const taskResponse = await fetch('https://api.piapi.ai/api/v1/task', {
+                method: 'POST',
+                headers: {
+                    'X-API-Key': apiKey,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: model ?? 'Qubico/z-image',
+                    task_type: 'txt2img',
+                    input: {
+                        prompt,
+                        negative_prompt,
+                        width: width ?? 1024,
+                        height: height ?? 1024,
+                        seed: seed ?? -1,
+                        flow_shift: flow_shift ?? 3,
+                        batch_size: batch_size ?? 1,
+                    },
+                }),
+            });
+
+            if (!taskResponse.ok) {
+                const text = await taskResponse.text();
+                return res.status(taskResponse.status).send(text);
+            }
+
+            const taskData = await taskResponse.json();
+            const taskId = taskData.data?.task_id;
+
+            if (!taskId) {
+                return res.status(500).json({ error: 'No task_id returned from PiAPI' });
+            }
+
+            // Step 2: Poll until Completed or Failed (max 60 seconds, 2s interval)
+            const maxAttempts = 30;
+            let imageUrl = null;
+
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+
+                const statusResponse = await fetch(`https://api.piapi.ai/api/v1/task/${taskId}`, {
+                    headers: { 'X-API-Key': apiKey },
+                });
+
+                if (!statusResponse.ok) {
+                    const text = await statusResponse.text();
+                    return res.status(statusResponse.status).send(text);
+                }
+
+                const statusData = await statusResponse.json();
+                const status = statusData.data?.status;
+
+                if (status === 'Completed') {
+                    const output = statusData.data?.output;
+                    imageUrl = output?.image_url || output?.image_urls?.[0];
+                    break;
+                }
+
+                if (status === 'Failed') {
+                    const msg = statusData.data?.error?.message || 'Task failed';
+                    return res.status(500).json({ error: msg });
+                }
+            }
+
+            if (!imageUrl) {
+                return res.status(504).json({ error: 'PiAPI task timed out or returned no image URL' });
+            }
+
+            // Step 3: Fetch the actual image binary
+            const imgRes = await fetch(imageUrl);
+            if (!imgRes.ok) {
+                return res.status(imgRes.status).json({ error: `Failed to fetch image from PiAPI CDN: ${imgRes.status}` });
+            }
+
+            const contentType = imgRes.headers.get('Content-Type') ?? 'image/png';
+            res.setHeader('Content-Type', contentType);
+            const buffer = await imgRes.arrayBuffer();
+            res.send(Buffer.from(buffer));
+
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ── PiAPI: key ping ───────────────────────────────────────────────────────
+    router.post('/piapi-ping', async (req, res) => {
+        try {
+            const apiKey = readSecret(req.user.directories, 'api_key_piapi');
+            if (!apiKey) {
+                return res.status(401).json({ error: 'PiAPI key not configured.' });
+            }
+
+            // Probe with a task fetch for a non-existent ID; 401 = bad key, anything else = key valid
+            const probeResponse = await fetch('https://api.piapi.ai/api/v1/task/ping-probe', {
+                headers: { 'X-API-Key': apiKey },
+            });
+
+            if (probeResponse.status === 401) {
+                return res.status(401).json({ error: 'PiAPI key is invalid.' });
+            }
+
             return res.json({ ok: true, user: 'authenticated' });
         } catch (err) {
             res.status(500).json({ error: err.message });

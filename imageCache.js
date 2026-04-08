@@ -44,6 +44,7 @@ import { logCall } from './utils/callLog.js';
 const SECRET_POLLINATIONS = 'api_key_pollinations';
 const SECRET_HUGGINGFACE  = 'api_key_huggingface';
 const SECRET_FAL          = 'api_key_fal';
+const SECRET_PIAPI        = 'api_key_piapi';
 const FILE_PREFIX         = 'plz_';
 
 export const PLZ_IMAGE_FOLDER = 'personalyze';
@@ -67,9 +68,10 @@ export function findCachedImage(prefix, fileIndex) {
 async function getAuthKey(provider) {
     let secretName;
     switch (provider) {
-        case 'huggingface': 
+        case 'huggingface':
         case 'hf-space':    secretName = SECRET_HUGGINGFACE; break;
         case 'fal':         secretName = SECRET_FAL; break;
+        case 'piapi':       secretName = SECRET_PIAPI; break;
         default:            secretName = SECRET_POLLINATIONS; break;
     }
 
@@ -234,6 +236,43 @@ async function fetchHuggingFaceWithRetry(prompt, maxRetries = 5) {
 }
 
 /**
+ * Fetch from PiAPI via the personalyze server plugin.
+ */
+async function fetchPiAPIWithRetry(prompt, maxRetries = 3) {
+    const s = getSettings();
+
+    const body = JSON.stringify({
+        model: s.piapiModel,
+        prompt,
+        width: DEFAULT_IMAGE_WIDTH,
+        height: DEFAULT_IMAGE_HEIGHT,
+    });
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const response = await fetch('/api/plugins/personalyze/piapi-generate', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body,
+        });
+
+        if (response.ok) return response;
+
+        const errText = await response.text();
+
+        if (response.status < 500) {
+            throw new Error(`PiAPI Error (${response.status}): ${errText}`);
+        }
+
+        if (attempt < maxRetries) {
+            const delay = 1000 * Math.pow(2, attempt);
+            warn('ImageCache', `PiAPI server error ${response.status}. Retrying in ${delay}ms (Attempt ${attempt + 1}/${maxRetries})`);
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+    throw new Error('PiAPI failed to respond after multiple retries.');
+}
+
+/**
  * Fetch from Fal AI via the personalyze server plugin.
  */
 async function fetchFalWithRetry(prompt, maxRetries = 3) {
@@ -303,7 +342,9 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
     logCall('ImagePreview', `${logTag} ${prompt}`, null, null);
 
     let res;
-    if (provider === 'fal') {
+    if (provider === 'piapi') {
+        res = await fetchPiAPIWithRetry(prompt);
+    } else if (provider === 'fal') {
         res = await fetchFalWithRetry(prompt);
     } else if (provider === 'hf-space') {
         res = await fetchSpaceWithRetry(prompt);
@@ -356,7 +397,9 @@ export async function generate(
     
     let imgRes;
 
-    if (provider === 'fal') {
+    if (provider === 'piapi') {
+        imgRes = await fetchPiAPIWithRetry(prompt);
+    } else if (provider === 'fal') {
         imgRes = await fetchFalWithRetry(prompt);
     } else if (provider === 'hf-space') {
         imgRes = await fetchSpaceWithRetry(prompt);

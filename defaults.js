@@ -51,6 +51,12 @@ export const FAL_MODELS = [
 ];
 export const DEFAULT_FAL_MODEL = 'fal-ai/flux/schnell';
 
+export const PIAPI_BASE_URL = 'https://api.piapi.ai';
+export const PIAPI_MODELS = [
+    'Qubico/z-image',
+];
+export const DEFAULT_PIAPI_MODEL = 'Qubico/z-image';
+
 
 /**
  * Available HuggingFace inference providers and the text-to-image models each supports.

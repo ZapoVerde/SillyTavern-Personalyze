@@ -46,6 +46,7 @@ import {
     DEFAULT_PLZ_VN_SPLIT,
     DEFAULT_TEST_PROMPT,
     DEFAULT_FAL_MODEL,
+    DEFAULT_PIAPI_MODEL,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
@@ -80,9 +81,11 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     expressionDescriberPrompt:  DEFAULT_EXPRESSION_DESCRIBER_PROMPT,
     testPrompt:                 DEFAULT_TEST_PROMPT,
     falModel:                   DEFAULT_FAL_MODEL,
+    piapiModel:                 DEFAULT_PIAPI_MODEL,
     engineEnablePollinations:   true,
     engineEnableHuggingFace:    true,
     engineEnableFal:            false, // Off by default until key is added
+    engineEnablePiAPI:          false, // Off by default until key is added
 });
 
 /**
