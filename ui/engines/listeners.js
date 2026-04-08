@@ -78,7 +78,17 @@ function refreshHFModelDropdown(provider, selectedModel) {
 export function refreshEnginesUI() {
     const s = getSettings();
 
-    // 0. Availability Toggles
+    // 0. Default Engine Buttons
+    const defaultEngine = s.defaultEngine || 'pollinations';
+    $('.plz-eng-set-default').each(function () {
+        const engineId = $(this).data('engine');
+        const isDefault = engineId === defaultEngine;
+        $(this)
+            .toggleClass('plz-active', isDefault)
+            .html(`<i class="fa-${isDefault ? 'solid' : 'regular'} fa-star"></i> ${isDefault ? 'Default Engine' : 'Set as Default'}`);
+    });
+
+    // 0b. Availability Toggles
     $('#plz-eng-pol-enabled').prop('checked', s.engineEnablePollinations !== false);
     $('#plz-eng-fal-enabled').prop('checked', !!s.engineEnableFal);
     $('#plz-eng-piapi-enabled').prop('checked', !!s.engineEnablePiAPI);
@@ -125,6 +135,19 @@ export function refreshEnginesUI() {
  * @param {jQuery} $modal - The overlay element (#plz-engines-overlay).
  */
 export function bindEnginesHandlers($modal) {
+
+    // 0. Default Engine Selection
+    $modal.on('click', '.plz-eng-set-default', function () {
+        const engineId = $(this).data('engine');
+        updateSetting('defaultEngine', engineId);
+        $('.plz-eng-set-default').each(function () {
+            const id = $(this).data('engine');
+            const isDefault = id === engineId;
+            $(this)
+                .toggleClass('plz-active', isDefault)
+                .html(`<i class="fa-${isDefault ? 'solid' : 'regular'} fa-star"></i> ${isDefault ? 'Default Engine' : 'Set as Default'}`);
+        });
+    });
 
     // 1. Vault Save
     $modal.on('click', '.plz-eng-vault-save', async function () {

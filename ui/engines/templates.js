@@ -28,6 +28,21 @@ import { POLLINATIONS_MODELS, HF_PROVIDER_MODELS, FAL_MODELS, PIAPI_MODELS } fro
 import { escapeHtml } from '../../utils/history.js';
 
 /**
+ * Helper to build the "Set as Default" radio-style button for an engine.
+ */
+function getDefaultEngineButtonHTML(engineId, isDefault) {
+    return `
+    <div style="margin-bottom:10px;">
+        <button class="menu_button plz-eng-set-default${isDefault ? ' plz-active' : ''}"
+                data-engine="${engineId}"
+                style="width:100%; font-size:0.85em;">
+            <i class="fa-${isDefault ? 'solid' : 'regular'} fa-star"></i>
+            ${isDefault ? 'Default Engine' : 'Set as Default'}
+        </button>
+    </div>`;
+}
+
+/**
  * Helper to build the master availability checkbox for an engine.
  */
 function getAvailabilityToggleHTML(id, label, checked) {
@@ -50,6 +65,7 @@ function getPollinationsTabHTML(settings) {
 
     return `
     <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
+        ${getDefaultEngineButtonHTML('pollinations', (s.defaultEngine || 'pollinations') === 'pollinations')}
         ${getAvailabilityToggleHTML('plz-eng-pol-enabled', 'Pollinations', s.engineEnablePollinations !== false)}
 
         <div style="display:flex; align-items:center; gap:8px;">
@@ -84,6 +100,7 @@ function getFalTabHTML(settings) {
 
     return `
     <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
+        ${getDefaultEngineButtonHTML('fal', s.defaultEngine === 'fal')}
         ${getAvailabilityToggleHTML('plz-eng-fal-enabled', 'Fal AI', !!s.engineEnableFal)}
 
         <p style="font-size:0.85em; opacity:0.6; margin:0;">
@@ -122,6 +139,7 @@ function getPiAPITabHTML(settings) {
 
     return `
     <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
+        ${getDefaultEngineButtonHTML('piapi', s.defaultEngine === 'piapi')}
         ${getAvailabilityToggleHTML('plz-eng-piapi-enabled', 'PiAPI', !!s.engineEnablePiAPI)}
 
         <p style="font-size:0.85em; opacity:0.6; margin:0;">
@@ -156,6 +174,7 @@ function getHuggingFaceTabHTML(settings) {
     const s = settings;
     return `
     <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
+        ${getDefaultEngineButtonHTML('huggingface', s.defaultEngine === 'huggingface')}
         ${getAvailabilityToggleHTML('plz-eng-hf-enabled', 'Hugging Face', !!s.engineEnableHuggingFace)}
 
         <!-- Shared Key -->

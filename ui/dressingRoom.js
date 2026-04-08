@@ -34,17 +34,18 @@ import { startWorkshopTurn } from '../utils/callLog.js';
  */
 function getEngineSelectorHTML() {
     const s = getSettings();
+    const defaultEngine = s.defaultEngine || 'pollinations';
     const options = [];
 
     // Check master toggles from settings
     if (s.engineEnablePollinations !== false) {
-        options.push('<option value="pollinations">Pollinations (Fast/Default)</option>');
+        options.push(`<option value="pollinations"${defaultEngine === 'pollinations' ? ' selected' : ''}>Pollinations (Fast/Default)</option>`);
     }
     if (s.engineEnableFal) {
-        options.push('<option value="fal">Fal AI (High Speed/Quality)</option>');
+        options.push(`<option value="fal"${defaultEngine === 'fal' ? ' selected' : ''}>Fal AI (High Speed/Quality)</option>`);
     }
     if (s.engineEnableHuggingFace) {
-        options.push('<option value="huggingface">Hugging Face (LoRA/Space)</option>');
+        options.push(`<option value="huggingface"${defaultEngine === 'huggingface' ? ' selected' : ''}>Hugging Face (LoRA/Space)</option>`);
     }
 
     // Safety fallback: if nothing is enabled, provide Pollinations

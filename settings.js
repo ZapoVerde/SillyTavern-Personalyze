@@ -86,6 +86,7 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     engineEnableHuggingFace:    true,
     engineEnableFal:            false, // Off by default until key is added
     engineEnablePiAPI:          false, // Off by default until key is added
+    defaultEngine:              'pollinations',
 });
 
 /**
