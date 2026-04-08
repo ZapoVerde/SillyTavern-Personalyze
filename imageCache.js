@@ -46,6 +46,8 @@ const SECRET_HUGGINGFACE  = 'api_key_huggingface';
 const SECRET_FAL          = 'api_key_fal';
 const FILE_PREFIX         = 'plz_';
 
+export const PLZ_IMAGE_FOLDER = 'personalyze';
+
 // ─── Naming ───────────────────────────────────────────────────────────────────
 
 export function buildFilenamePrefix(characterId, outfitKey, expressionKey) {
@@ -273,13 +275,12 @@ async function validateImageResponse(response) {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function fetchFileIndex() {
-    const res = await fetch('/api/backgrounds/all', {
+    const res = await fetch('/api/images/list', {
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify({}),
+        body: JSON.stringify({ folder: PLZ_IMAGE_FOLDER }),
     });
-    const data = await res.json();
-    const allImages = data.images ?? [];
+    const allImages = await res.json();
     const fileIndex = new Set(allImages.filter(f => f.startsWith(FILE_PREFIX)));
     return { fileIndex, allImages };
 }
@@ -376,15 +377,22 @@ export async function generate(
 
     const filename = `${buildFilenamePrefix(characterId, outfitKey, expressionKey)}${Date.now()}.png`;
     const blob     = await imgRes.blob();
-    const file     = new File([blob], filename, { type: 'image/png' });
 
-    const formData = new FormData();
-    formData.append('avatar', file);
+    const base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.readAsDataURL(blob);
+    });
 
-    const uploadRes = await fetch('/api/backgrounds/upload', {
+    const uploadRes = await fetch('/api/images/upload', {
         method: 'POST',
-        headers: getRequestHeaders({ omitContentType: true }),
-        body: formData,
+        headers: getRequestHeaders(),
+        body: JSON.stringify({
+            image: base64,
+            format: 'png',
+            filename,
+            ch_name: PLZ_IMAGE_FOLDER,
+        }),
     });
 
     if (!uploadRes.ok) {
@@ -400,10 +408,10 @@ export async function flushCharacterImages(characterId) {
     const toDelete = [...fileIndex].filter(f => f.startsWith(prefix));
 
     await Promise.all(toDelete.map(f =>
-        fetch('/api/backgrounds/delete', {
+        fetch('/api/images/delete', {
             method: 'POST',
             headers: getRequestHeaders(),
-            body: JSON.stringify({ bg: f }),
+            body: JSON.stringify({ path: `user/images/${PLZ_IMAGE_FOLDER}/${f}` }),
         })
     ));
 

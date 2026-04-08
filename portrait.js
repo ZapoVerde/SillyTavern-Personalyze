@@ -30,6 +30,7 @@
 
 import { state } from './state.js';
 import { log } from './utils/logger.js';
+import { PLZ_IMAGE_FOLDER } from './imageCache.js';
 
 const CONTAINER_ID     = 'plz-portrait-container';
 const FADE_DURATION_MS = 300;
@@ -111,7 +112,7 @@ export function setPortrait(filename) {
     if (!filename) return;
 
     const cacheBuster = `?v=${Date.now()}`;
-    const src = `backgrounds/${encodeURIComponent(filename)}${cacheBuster}`;
+    const src = `user/images/${PLZ_IMAGE_FOLDER}/${encodeURIComponent(filename)}${cacheBuster}`;
 
     // Always notify the VN panel regardless of which display mode is active.
     document.dispatchEvent(new CustomEvent('plz:portrait-set', { detail: { src } }));

@@ -30,7 +30,7 @@ import {
     upsertExpression,
 } from '../registry.js';
 import { state, updateActivePointers, updateActiveImage, addToFileIndex } from '../state.js';
-import { buildFilenamePrefix, generate } from '../imageCache.js';
+import { buildFilenamePrefix, generate, PLZ_IMAGE_FOLDER } from '../imageCache.js';
 import { setPortrait } from '../portrait.js';
 import { lockedWritePointer } from '../logic/pointerWriter.js';
 import { escapeHtml } from '../utils/history.js';
@@ -257,7 +257,7 @@ function buildPortraitCell(characterId, outfitKey, exprKey, filename, hasImage) 
                  ${activeBorder}
              ">
             ${hasImage
-                ? `<img src="backgrounds/${encodeURIComponent(filename)}?v=${Date.now()}"
+                ? `<img src="user/images/${PLZ_IMAGE_FOLDER}/${encodeURIComponent(filename)}?v=${Date.now()}"
                         alt="${escapeHtml(exprLabel)}"
                         style="width:100%;display:block;aspect-ratio:2/3;object-fit:cover;" />`
                 : `<div style="
