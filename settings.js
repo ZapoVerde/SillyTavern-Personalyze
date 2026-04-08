@@ -3,7 +3,7 @@
  * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
- * Manages the PersonaLyze profile-based settings lifecycle.
+ * Manages the Personalyze profile-based settings lifecycle.
  *
  * Implements the CNZ-style "Active State" architecture:
  * - 'activeState' is the current working copy (the "Working Table").

@@ -3,7 +3,7 @@
  * @stamp {"utc":"2026-04-07T00:00:00.000Z"}
  * @architectural-role IO Executor (Image)
  * @description
- * Owns all image-related IO for PersonaLyze.
+ * Owns all image-related IO for Personalyze.
  * 
  * Implements the Multi-Engine architecture supporting Pollinations, 
  * Hugging Face (Router/Spaces), and Fal AI. Handles prompt processing 
@@ -22,7 +22,7 @@
  *   assertions:
  *     purity: IO
  *     state_ownership: []
- *     external_io: [findSecret, Pollinations API, PersonaLyze Plugin (HF/Fal)]
+ *     external_io: [findSecret, Pollinations API, Personalyze Plugin (HF/Fal)]
  */
 
 import { getRequestHeaders } from '../../../../script.js';
