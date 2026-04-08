@@ -232,8 +232,11 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
     logCall('ImagePreview', `${logTag} ${prompt}`, null, null);
 
     let res;
-    if (provider === 'piapi') res = await fetchPiAPIWithRetry(prompt);
-    else if (provider === 'fal') res = await fetchFalWithRetry(prompt);
+    if (provider === 'piapi') {
+        res = await fetchPiAPIWithRetry(prompt);
+        const taskId = res.headers.get('X-PiAPI-Task-ID');
+        if (taskId) logCall('PiAPI Task', prompt, `task_id: ${taskId}`, null);
+    } else if (provider === 'fal') res = await fetchFalWithRetry(prompt);
     else if (provider === 'hf-space') res = await fetchSpaceWithRetry(prompt);
     else if (provider === 'huggingface') res = await fetchHuggingFaceWithRetry(prompt);
     else {
@@ -263,8 +266,11 @@ export async function generate(characterId, outfitKey, expressionKey, outfitDesc
     logCall('PortraitGenerate', `${logTag} ${prompt}`, null, null);
     
     let imgRes;
-    if (provider === 'piapi') imgRes = await fetchPiAPIWithRetry(prompt);
-    else if (provider === 'fal') imgRes = await fetchFalWithRetry(prompt);
+    if (provider === 'piapi') {
+        imgRes = await fetchPiAPIWithRetry(prompt);
+        const taskId = imgRes.headers.get('X-PiAPI-Task-ID');
+        if (taskId) logCall('PiAPI Task', prompt, `task_id: ${taskId}`, null);
+    } else if (provider === 'fal') imgRes = await fetchFalWithRetry(prompt);
     else if (provider === 'hf-space') imgRes = await fetchSpaceWithRetry(prompt);
     else if (provider === 'huggingface') imgRes = await fetchHuggingFaceWithRetry(prompt);
     else {

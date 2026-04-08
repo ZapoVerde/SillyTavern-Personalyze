@@ -422,6 +422,7 @@ export async function init(router) {
 
             const contentType = imgRes.headers.get('Content-Type') ?? 'image/png';
             res.setHeader('Content-Type', contentType);
+            res.setHeader('X-PiAPI-Task-ID', taskId);
             const buffer = await imgRes.arrayBuffer();
             res.send(Buffer.from(buffer));
 
