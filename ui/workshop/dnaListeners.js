@@ -26,15 +26,18 @@ import {
     setWorkshopCharacter,
     upsertChatCharacterDef,
     upsertChatOutfitDef,
+    upsertChatExpressionDef,
     addToFileIndex,
     removeFromFileIndex,
     updateChainEntry
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
-import { 
-    lockedWriteCharacterDef, 
-    lockedWriteOutfitDef, 
-    lockedPatchVisualStateImage 
+import { slugify } from '../../utils/history.js';
+import {
+    lockedWriteCharacterDef,
+    lockedWriteOutfitDef,
+    lockedWriteExpressionDef,
+    lockedPatchVisualStateImage
 } from '../../io/dnaWriter.js';
 import { handleSyncRoster, handleExportToLibrary } from '../../logic/importExport.js';
 import { buildPortraitPrompt, fetchPreviewBlob, generate, flushCharacterImages } from '../../imageCache.js';
@@ -197,6 +200,77 @@ export function bindDNAHandlers() {
             error('Studio', 'Preview failed:', err);
         } finally {
             $icon.removeClass('fa-spinner fa-spin').addClass('fa-eye');
+        }
+    });
+
+    // ─── Add Outfit / Expression ─────────────────────────────────────────────
+
+    $overlay.on('click', '.plz-add-entry-btn', async function() {
+        const id        = state._workshopCharacterId;
+        const dimension = $(this).data('dimension');
+        if (!id) return;
+
+        const { callPopup } = await import('../../../../../../script.js');
+        const label = dimension === 'outfit' ? 'Outfit' : 'Expression';
+
+        const confirmed = await callPopup(
+            `<h3 style="margin-top:0;">Add ${label}</h3>
+            <label style="display:block;margin:8px 0 3px;font-size:0.88em;opacity:0.75;">Label</label>
+            <input type="text" id="plz-add-entry-label" class="text_pole" style="width:100%;" />
+            <label style="display:block;margin:8px 0 3px;font-size:0.88em;opacity:0.75;">Key (auto-generated)</label>
+            <input type="text" id="plz-add-entry-key" class="text_pole" readonly style="width:100%;opacity:0.6;cursor:not-allowed;" />
+            <label style="display:block;margin:8px 0 3px;font-size:0.88em;opacity:0.75;">Description</label>
+            <textarea id="plz-add-entry-desc" class="text_pole plz-auto-textarea" rows="3" style="width:100%;font-family:monospace;font-size:0.9em;overflow:hidden;resize:none;"></textarea>`,
+            'confirm'
+        );
+        if (!confirmed) return;
+
+        const entryLabel = $('#plz-add-entry-label').val().trim();
+        const key        = slugify(entryLabel);
+        const desc       = $('#plz-add-entry-desc').val().trim();
+        if (!entryLabel || !key) {
+            if (window.toastr) window.toastr.warning('Label is required.', 'Personalyze');
+            return;
+        }
+
+        const context   = getContext();
+        const lastMsgId = Math.max(0, context.chat.length - 1);
+
+        if (dimension === 'outfit') {
+            await lockedWriteOutfitDef(lastMsgId, id, key, entryLabel, desc, 'pollinations');
+            upsertChatOutfitDef(id, key, entryLabel, desc, 'pollinations');
+        } else {
+            await lockedWriteExpressionDef(lastMsgId, id, key, entryLabel, desc);
+            upsertChatExpressionDef(id, key, entryLabel, desc);
+        }
+
+        renderStudioView();
+        if (window.toastr) window.toastr.success(`${label} "${entryLabel}" added to DNA.`, 'Personalyze');
+    });
+
+    // ─── Flush Images ────────────────────────────────────────────────────────
+
+    $overlay.on('click', '.plz-flush-images-btn', async function() {
+        const id   = state._workshopCharacterId;
+        const name = id?.replace(/_/g, ' ') ?? '';
+        if (!id) return;
+        if (!confirm(`Delete all generated portrait images for "${name}"?\n\nThis cannot be undone.`)) return;
+
+        const $btn  = $(this);
+        const $icon = $btn.find('i');
+        $icon.removeClass('fa-trash-can').addClass('fa-spinner fa-spin');
+        $btn.prop('disabled', true);
+
+        try {
+            const deleted = await flushCharacterImages(id);
+            removeFromFileIndex(deleted);
+            renderStudioView();
+            if (window.toastr) window.toastr.success(`Flushed ${deleted.length} image(s) for "${name}".`, 'Personalyze');
+        } catch (err) {
+            error('Studio', 'Flush images failed:', err);
+            if (window.toastr) window.toastr.error(`Flush failed: ${err.message}`, 'Personalyze');
+            $icon.removeClass('fa-spinner fa-spin').addClass('fa-trash-can');
+            $btn.prop('disabled', false);
         }
     });
 

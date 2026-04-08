@@ -345,7 +345,9 @@ export async function init(router) {
             }
 
             const taskData = await taskResponse.json();
-            const taskId = taskData.data?.task_id;
+            // PiAPI submit response may be wrapped in `data` or flat — handle both.
+            const taskPayloadInit = taskData.data ?? taskData;
+            const taskId = taskPayloadInit.task_id;
 
             if (!taskId) {
                 return res.status(500).json({ error: `PiAPI returned no task_id. Response: ${JSON.stringify(taskData).slice(0, 300)}` });
@@ -375,11 +377,14 @@ export async function init(router) {
                 }
 
                 const statusData = await statusResponse.json();
-                lastStatus = statusData.data?.status ?? 'unknown';
+                // PiAPI status polling returns a flat object (task_id, status, output at root),
+                // but some versions wrap it in a `data` envelope — handle both.
+                const taskPayload = statusData.data ?? statusData;
+                lastStatus = taskPayload.status ?? 'unknown';
 
                 // PiAPI uses 'completed' or 'success' (case-insensitive) for done tasks
                 if (/^(completed|success)$/i.test(lastStatus)) {
-                    const output = statusData.data?.output;
+                    const output = taskPayload.output;
                     imageUrl = output?.image_url || output?.image_urls?.[0];
                     if (!imageUrl) {
                         return res.status(500).json({
@@ -390,9 +395,10 @@ export async function init(router) {
                 }
 
                 if (/^failed$/i.test(lastStatus)) {
-                    const errDetail = statusData.data?.error?.message
-                        || statusData.data?.error
-                        || JSON.stringify(statusData.data?.error_reason ?? {});
+                    const errDetail = taskPayload.error?.message
+                        || taskPayload.error?.raw_message
+                        || (taskPayload.error?.code ? `error code ${taskPayload.error.code}` : null)
+                        || JSON.stringify(taskPayload.error_reason ?? {});
                     return res.status(500).json({
                         error: `PiAPI task "${taskId}" failed (model: "${modelId}"): ${errDetail}`,
                     });

@@ -21,6 +21,52 @@
 import { escapeHtml } from '../../utils/history.js';
 
 /**
+ * Renders the call log modal HTML from pipeline and workshop turn records.
+ * @param {object[]} pipelineLogs
+ * @param {object[]} workshopLogs
+ */
+export function buildLogModalHTML(pipelineLogs, workshopLogs) {
+    function renderTurns(turns) {
+        if (!turns.length) return `<p style="opacity:0.5;font-size:0.88em;">No entries yet.</p>`;
+        return [...turns].reverse().map(turn => {
+            const time = new Date(turn.timestamp).toLocaleTimeString();
+            const calls = turn.calls.map(c => {
+                const status = c.error
+                    ? `<span style="color:var(--SmartThemeQuoteColor);">✗ ${escapeHtml(c.error)}</span>`
+                    : `<span style="opacity:0.6;">✓</span>`;
+                return `
+                <div style="margin-top:8px;border-left:2px solid rgba(255,255,255,0.1);padding-left:8px;">
+                    <div style="display:flex;justify-content:space-between;font-size:0.8em;margin-bottom:3px;">
+                        <strong>${escapeHtml(c.label)}</strong>${status}
+                    </div>
+                    <details>
+                        <summary style="font-size:0.78em;opacity:0.6;cursor:pointer;">Prompt</summary>
+                        <pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-word;max-height:120px;overflow-y:auto;margin:4px 0 0;">${escapeHtml(c.prompt)}</pre>
+                    </details>
+                    ${c.response ? `<details><summary style="font-size:0.78em;opacity:0.6;cursor:pointer;">Response</summary><pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-word;max-height:80px;overflow-y:auto;margin:4px 0 0;">${escapeHtml(c.response)}</pre></details>` : ''}
+                </div>`;
+            }).join('');
+            return `
+            <div style="margin-bottom:14px;padding:10px;background:rgba(255,255,255,0.04);border-radius:6px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <strong style="font-size:0.88em;">${escapeHtml(turn.label)}</strong>
+                    <span style="font-size:0.78em;opacity:0.45;">${time}</span>
+                </div>
+                ${calls || '<span style="font-size:0.8em;opacity:0.5;">No calls recorded.</span>'}
+            </div>`;
+        }).join('');
+    }
+
+    return `
+    <h3 style="margin-top:0;">Call Logs</h3>
+    <div style="margin-bottom:6px;"><strong style="font-size:0.9em;">Pipeline</strong></div>
+    ${renderTurns(pipelineLogs)}
+    <hr style="margin:16px 0;opacity:0.2;">
+    <div style="margin-bottom:6px;"><strong style="font-size:0.9em;">Workshop</strong></div>
+    ${renderTurns(workshopLogs)}`;
+}
+
+/**
  * Generates a styled informational icon with a hover tooltip.
  * @param {string} text 
  */

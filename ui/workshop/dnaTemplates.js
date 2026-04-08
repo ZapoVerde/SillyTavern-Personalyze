@@ -118,7 +118,10 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
             <input id="plz-studio-seed" type="number" min="1" max="98" value="${character.seed}" style="width:60px;margin-left:5px;" class="text_pole" />
         </label>
     </div>
-    <strong>Outfits</strong>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <strong>Outfits</strong>
+        <button class="menu_button plz-add-entry-btn" data-dimension="outfit" style="font-size:0.8em;padding:2px 8px;"><i class="fa-solid fa-plus"></i> Add Outfit</button>
+    </div>
     <div id="plz-studio-outfits" style="margin-bottom:20px;">
         ${getEntryListHTML(characterId, character.outfits, 'outfit', fileIndex, expressionLabels, lastExpr)}
     </div>
