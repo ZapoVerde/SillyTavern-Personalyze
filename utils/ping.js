@@ -54,13 +54,18 @@ export async function pingHFRouter() {
             method: 'POST',
             headers: getRequestHeaders(),
         });
-        
+
+        const contentType = response.headers.get('Content-Type') ?? '';
+        if (!contentType.includes('application/json')) {
+            return { ok: false, error: `Plugin not responding (HTTP ${response.status}). Server restart may be required.` };
+        }
+
         const data = await response.json();
-        
+
         if (response.ok) {
             return { ok: true, user: data.user };
         }
-        
+
         return { ok: false, error: data.error || `HTTP ${response.status}` };
     } catch (err) {
         return { ok: false, error: err.message };
@@ -84,13 +89,18 @@ export async function pingHFSpace(spaceId) {
             headers: getRequestHeaders(),
             body: JSON.stringify({ spaceId }),
         });
-        
+
+        const contentType = response.headers.get('Content-Type') ?? '';
+        if (!contentType.includes('application/json')) {
+            return { ok: false, error: `Plugin not responding (HTTP ${response.status}). Server restart may be required.` };
+        }
+
         const data = await response.json();
-        
+
         if (response.ok) {
             return { ok: true, info: data.info };
         }
-        
+
         return { ok: false, error: data.error || `HTTP ${response.status}` };
     } catch (err) {
         return { ok: false, error: err.message };
@@ -107,13 +117,18 @@ export async function pingFal() {
             method: 'POST',
             headers: getRequestHeaders(),
         });
-        
+
+        const contentType = response.headers.get('Content-Type') ?? '';
+        if (!contentType.includes('application/json')) {
+            return { ok: false, error: `Plugin not responding (HTTP ${response.status}). Server restart may be required.` };
+        }
+
         const data = await response.json();
-        
+
         if (response.ok) {
             return { ok: true, user: data.user };
         }
-        
+
         return { ok: false, error: data.error || `HTTP ${response.status}` };
     } catch (err) {
         return { ok: false, error: err.message };

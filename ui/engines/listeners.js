@@ -144,7 +144,12 @@ export function bindEnginesHandlers($modal) {
         }
 
         try {
-            await writeSecret(secretName, key, label);
+            const result = await writeSecret(secretName, key, label);
+            if (result === null) {
+                error('EnginesModal', 'writeSecret returned null — vault write failed silently.');
+                if (window.toastr) window.toastr.error('Failed to save key to vault.', 'PersonaLyze');
+                return;
+            }
             $(inputId).val('');
             updateEngineKeyStatuses();
             if (window.toastr) window.toastr.success('API key saved to vault.', 'PersonaLyze');
