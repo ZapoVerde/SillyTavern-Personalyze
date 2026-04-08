@@ -45,6 +45,7 @@ import {
     DEFAULT_EXPRESSION_LABELS,
     DEFAULT_PLZ_VN_SPLIT,
     DEFAULT_TEST_PROMPT,
+    DEFAULT_FAL_MODEL,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';

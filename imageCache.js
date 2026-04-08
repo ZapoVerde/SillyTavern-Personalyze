@@ -256,7 +256,16 @@ async function fetchFalWithRetry(prompt, maxRetries = 3) {
         if (response.ok) return response;
 
         const errText = await response.text();
-        throw new Error(`Fal AI API Error (${response.status}): ${errText}`);
+
+        if (response.status < 500) {
+            throw new Error(`Fal AI API Error (${response.status}): ${errText}`);
+        }
+
+        if (attempt < maxRetries) {
+            const delay = 1000 * Math.pow(2, attempt);
+            warn('ImageCache', `Fal AI server error ${response.status}. Retrying in ${delay}ms (Attempt ${attempt + 1}/${maxRetries})`);
+            await new Promise(r => setTimeout(r, delay));
+        }
     }
     throw new Error('Fal AI failed to respond after multiple retries.');
 }
