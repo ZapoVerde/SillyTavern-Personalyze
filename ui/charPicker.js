@@ -38,6 +38,7 @@ import {
     updateChainEntry,
 } from '../state.js';
 import { getSettings } from '../settings.js';
+import { openWorkshop } from './workshop/core.js';
 import { buildFilenamePrefix, findCachedImage, generate } from '../imageCache.js';
 import { setPortrait } from '../portrait.js';
 import { lockedWriteVisualState, lockedPatchVisualStateImage } from '../io/dnaWriter.js';
@@ -49,14 +50,6 @@ import { error } from '../utils/logger.js';
  * Writes the confirmed selection to the last AI message and applies the portrait.
  */
 export async function openCharPicker() {
-    if (state.activeRoster.length === 0) {
-        if (window.toastr) window.toastr.info(
-            'No characters enabled for this chat. Enable them in the Character Workshop.',
-            'PersonaLyze'
-        );
-        return;
-    }
-
     const context = getContext();
     let lastAiIdx = -1;
     for (let i = context.chat.length - 1; i >= 0; i--) {
@@ -70,10 +63,18 @@ export async function openCharPicker() {
         return;
     }
 
-    const s              = getSettings();
-    const exprLabels     = s.expressionLabels ?? [];
-    const rosterChars    = state.activeRoster.filter(id => state.chatCharacters[id]);
-    if (rosterChars.length === 0) return;
+    const s          = getSettings();
+    const exprLabels = s.expressionLabels ?? [];
+    const rosterChars = state.activeRoster.filter(id => state.chatCharacters[id]);
+
+    if (rosterChars.length === 0) {
+        const open = await callPopup(
+            'No characters are active in this chat yet.<br><br>Would you like to open the Workshop to add some?',
+            'confirm'
+        );
+        if (open) openWorkshop('library');
+        return;
+    }
 
     const initCharId = (state.activeCharacterId && rosterChars.includes(state.activeCharacterId))
         ? state.activeCharacterId
@@ -173,7 +174,8 @@ export async function openCharPicker() {
     try {
         filename = await generate(
             characterId, outfitKey, expressionKey,
-            outfitDef.description, expressionKey, character.identityAnchor
+            outfitDef.description, expressionKey, character.identityAnchor,
+            character.seed, outfitDef.provider
         );
         addToFileIndex(filename);
         await lockedPatchVisualStateImage(lastAiIdx, characterId, filename);

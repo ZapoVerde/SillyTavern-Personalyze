@@ -20,10 +20,11 @@
  */
 
 import { getContext } from '../../../../../extensions.js';
-import { 
-    state, 
-    setWorkshopCharacter, 
-    upsertChatCharacterDef, 
+import {
+    state,
+    setActiveRoster,
+    setWorkshopCharacter,
+    upsertChatCharacterDef,
     upsertChatOutfitDef,
     addToFileIndex,
     removeFromFileIndex,
@@ -92,8 +93,21 @@ export function bindDNAHandlers() {
         e.stopPropagation();
         const id = $(this).closest('.plz-roster-item').data('id');
         const isEnabled = state.activeRoster.includes(id);
-        await handleSyncRoster(id, !isEnabled);
+        const previousRoster = [...state.activeRoster];
+        const newRoster = isEnabled
+            ? state.activeRoster.filter(x => x !== id)
+            : [...state.activeRoster, id];
+
+        // Optimistic update — render immediately, persist in the background.
+        setActiveRoster(newRoster);
         renderDNAView();
+
+        handleSyncRoster(id, !isEnabled).catch(err => {
+            error('Workshop', 'Roster toggle failed, rolling back:', err);
+            setActiveRoster(previousRoster);
+            renderDNAView();
+            if (window.toastr) window.toastr.error(`Roster update failed: ${err.message}`, 'Personalyze');
+        });
     });
 
     $overlay.on('click', '.plz-dna-edit', function(e) {
