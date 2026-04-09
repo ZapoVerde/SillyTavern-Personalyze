@@ -19,7 +19,7 @@
  *     external_io: [LLM, Archivist Modal, dnaWriter.js, state.js]
  */
 
-import { getContext } from '../../../../extensions.js';
+import { getContext } from '../../../../../extensions.js';
 import { getSettings } from '../../settings.js';
 import { log, error } from '../../utils/logger.js';
 import { buildDescriberContext, slugify } from '../../utils/history.js';

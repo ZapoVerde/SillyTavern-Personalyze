@@ -20,7 +20,7 @@
  *     external_io: [LLM, dnaWriter.js, ensembleEngine.js, imageCache.js, portrait.js]
  */
 
-import { getContext } from '../../../../extensions.js';
+import { getContext } from '../../../../../extensions.js';
 import { getSettings } from '../../settings.js';
 import { log, error } from '../../utils/logger.js';
 import { slugify } from '../../utils/history.js';

@@ -20,7 +20,7 @@
  *     external_io: [LLM, resolveAliasToId, archivist.js, dnaWriter.js, imageCache.js]
  */
 
-import { getContext } from '../../../../extensions.js';
+import { getContext } from '../../../../../extensions.js';
 import { log, warn, error } from '../../utils/logger.js';
 import { 
     state, 
