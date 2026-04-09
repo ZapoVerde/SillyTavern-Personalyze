@@ -1,18 +1,26 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaTemplates.js
- * @stamp {"utc":"2026-04-07T13:30:00.000Z"}
+ * @stamp {"utc":"2026-04-09T00:00:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Generates the HTML strings for the Personalyze Workshop DNA views.
- * 
- * Handles the main modal shell and the views for characters already 
- * present in the chat's DNA (Active Roster and Studio).
+ *
+ * Pure functions: take data in, return HTML strings out. No DOM reads,
+ * no state mutations, no IO calls. All dynamic rendering is triggered
+ * by dnaListeners.js and core.js after they obtain the necessary data.
  *
  * @api-declaration
- * getBaseWorkshopHTML() — main shell
- * getDnaRosterHTML(characters, activeRoster, activeId) — DNA tab list
+ * getBaseWorkshopHTML() — main modal shell (DNA / Studio / Library / Add tabs)
+ * getDnaRosterHTML(characters, activeRoster, activeId) — DNA tab roster list
  * getStudioHTML(characterId, character, fileIndex, expressionLabels, lastExpr) — Studio tab
- * getStudioEmptyHTML() — Studio placeholder
+ * getStudioEmptyHTML() — Studio placeholder when no character is selected
+ * getAddCharacterHTML() — Add tab form for creating a new character in chat DNA
+ *
+ * @contract
+ *   assertions:
+ *     purity: Pure
+ *     state_ownership: []
+ *     external_io: []
  */
 
 import { escapeHtml } from '../../utils/history.js';
@@ -52,12 +60,14 @@ export function getBaseWorkshopHTML() {
                     <button class="plz-tab-btn menu_button" data-tab="dna">DNA</button>
                     <button class="plz-tab-btn menu_button" data-tab="studio">Studio</button>
                     <button class="plz-tab-btn menu_button" data-tab="library">Library</button>
+                    <button class="plz-tab-btn menu_button" data-tab="add">Add</button>
                 </div>
             </div>
             <div class="plz-workshop-body">
                 <div id="plz-tab-dna"     class="plz-tab-panel plz-hidden"></div>
                 <div id="plz-tab-studio"  class="plz-tab-panel plz-hidden"></div>
                 <div id="plz-tab-library" class="plz-tab-panel plz-hidden"></div>
+                <div id="plz-tab-add"     class="plz-tab-panel plz-hidden"></div>
             </div>
         </div>
     </div>`;
@@ -110,7 +120,12 @@ export function getStudioHTML(characterId, character, fileIndex, expressionLabel
         </div>
         <button class="menu_button plz-flush-images-btn" style="font-size:0.8em;padding:2px 8px;"><i class="fa-solid fa-trash-can"></i> Flush Images</button>
     </div>
-    <label class="plz-studio-label">Identity Anchor</label>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;">
+        <label class="plz-studio-label" style="margin-bottom:0;">Identity Anchor</label>
+        <button class="menu_button plz-anchor-scan" data-mode="studio" style="font-size:0.78em;padding:2px 8px;">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Scan Chat
+        </button>
+    </div>
     <textarea id="plz-studio-anchor" class="text_pole plz-auto-textarea" rows="3" style="width:100%;margin-bottom:12px;overflow:hidden;resize:none;">${escapeHtml(character.identityAnchor)}</textarea>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
         <button id="plz-studio-anchor-save" class="menu_button">Commit Anchor to DNA</button>
@@ -190,4 +205,28 @@ export function getStudioEmptyHTML() {
         <i class="fa-solid fa-compass-drafting" style="font-size:3em;margin-bottom:15px;"></i><br/>
         Select a character from the DNA tab to edit their local working copy.
     </div>`;
+}
+
+/**
+ * Add Tab — form to manually create a new character and inject them into chat DNA.
+ */
+export function getAddCharacterHTML() {
+    return `
+    <div style="margin-bottom:20px;flex-shrink:0;">
+        <h4 style="margin:0 0 6px;">Add a Character</h4>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;">
+            <label class="plz-studio-label" style="margin-bottom:0;">Character Name</label>
+            <button class="menu_button plz-anchor-scan" data-mode="add" style="font-size:0.78em;padding:2px 8px;">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Scan Chat
+            </button>
+        </div>
+        <input type="text" id="plz-add-name" class="text_pole" placeholder="e.g. Alice" style="width:100%;margin-bottom:4px;" />
+        <div style="font-size:0.8em;opacity:0.5;margin-bottom:10px;">Key: <span id="plz-add-key-preview">—</span></div>
+        <label class="plz-studio-label">Identity Anchor</label>
+        <textarea id="plz-add-anchor" class="text_pole plz-auto-textarea" rows="4"
+                  style="width:100%;margin-bottom:16px;overflow:hidden;resize:none;" spellcheck="false"></textarea>
+    </div>
+    <button id="plz-add-submit" class="menu_button" style="width:100%;padding:10px;">
+        <i class="fa-solid fa-user-plus"></i> Add to DNA
+    </button>`;
 }

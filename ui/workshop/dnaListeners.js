@@ -1,22 +1,33 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaListeners.js
- * @stamp {"utc":"2026-04-07T14:00:00.000Z"}
+ * @stamp {"utc":"2026-04-09T00:00:00.000Z"}
  * @architectural-role UI Controller (Workshop DNA)
  * @description
- * Manages event listeners and rendering for the Chat DNA and Studio tabs.
- * 
- * All interactions here modify the current chat's DNA working copy and 
- * persist changes back to the chat history via dnaWriter.js.
+ * Manages event listeners and rendering for the Chat DNA, Studio, and Add tabs.
+ *
+ * All interactions here modify the current chat's DNA working copy and
+ * persist changes back to the chat history via dnaWriter.js. This is the
+ * Stateful Owner for DNA-side workshop interactions.
+ *
+ * Add Tab: creates a new character definition directly in the active chat's
+ * DNA (lockedWriteCharacterDef). This upholds the DNA Chain principle — the
+ * chat log remains the only source of truth for narrative character state.
+ *
+ * Anchor Scan: dispatches a detectAnchorScan LLM call (IO Executor) to
+ * extract character name and identity anchor from the current chat transcript.
+ * Works in both 'studio' mode (updates existing anchor) and 'add' mode
+ * (pre-fills the Add tab form).
  *
  * @api-declaration
- * renderDNAView() — renders the DNA roster.
- * bindDNAHandlers() — binds all DNA and Studio events.
+ * renderDNAView()  — renders the DNA tab roster.
+ * renderStudioView() — renders the Studio tab for the active workshop character.
+ * bindDNAHandlers() — binds all DNA, Studio, and Add tab event handlers.
  *
  * @contract
  *   assertions:
  *     purity: IO / Stateful UI
- *     state_ownership: [state (mutates local copy)]
- *     external_io: [dnaWriter.js, importExport.js, imageCache.js, portrait.js]
+ *     state_ownership: [state (mutates via setters)]
+ *     external_io: [dnaWriter.js, importExport.js, imageCache.js, portrait.js, detector.js]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -32,13 +43,15 @@ import {
     updateChainEntry
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
-import { slugify } from '../../utils/history.js';
+import { slugify, buildDescriberContext } from '../../utils/history.js';
 import {
     lockedWriteCharacterDef,
     lockedWriteOutfitDef,
     lockedWriteExpressionDef,
+    lockedWriteRoster,
     lockedPatchVisualStateImage
 } from '../../io/dnaWriter.js';
+import { detectAnchorScan } from '../../detector.js';
 import { handleSyncRoster, handleExportToLibrary } from '../../logic/importExport.js';
 import { buildPortraitPrompt, fetchPreviewBlob, generate, flushCharacterImages } from '../../imageCache.js';
 import { getDnaRosterHTML, getStudioHTML, getStudioEmptyHTML } from './dnaTemplates.js';
@@ -304,6 +317,100 @@ export function bindDNAHandlers() {
         } finally {
             $btn.prop('disabled', false);
         }
+    });
+
+    // ─── Anchor Scan (Add + Studio) ───────────────────────────────────────────
+
+    $overlay.on('click', '.plz-anchor-scan', async function() {
+        const mode  = $(this).data('mode');
+        const $btn  = $(this);
+        const $icon = $btn.find('i');
+
+        $icon.removeClass('fa-wand-magic-sparkles').addClass('fa-spinner fa-spin');
+        $btn.prop('disabled', true);
+
+        try {
+            const context = getContext();
+            const chat    = context?.chat;
+            if (!chat?.length) {
+                if (window.toastr) window.toastr.warning('No active chat to scan.', 'Personalyze');
+                return;
+            }
+
+            const s          = getSettings();
+            const lastIdx    = chat.length - 1;
+            const transcript = buildDescriberContext(chat, lastIdx, s.describerHistory ?? 3);
+            const focusName  = mode === 'studio'
+                ? (state._workshopCharacterId?.replace(/_/g, ' ') ?? null)
+                : ($('#plz-add-name').val().trim() || null);
+
+            startWorkshopTurn('Anchor Scan');
+            const result = await detectAnchorScan(transcript, focusName, s.anchorScanPrompt, s.describerProfileId);
+
+            if (!result) {
+                if (window.toastr) window.toastr.warning('Could not extract character details from chat.', 'Personalyze');
+                return;
+            }
+
+            if (mode === 'add') {
+                $('#plz-add-name').val(result.name).trigger('input');
+                $('#plz-add-anchor').val(result.anchor).trigger('input');
+            } else {
+                $('#plz-studio-anchor').val(result.anchor).trigger('input');
+            }
+
+            if (window.toastr) window.toastr.success('Character details scanned from chat.', 'Personalyze');
+        } catch (err) {
+            error('Workshop', 'Anchor scan failed:', err);
+            if (window.toastr) window.toastr.error(`Scan failed: ${err.message}`, 'Personalyze');
+        } finally {
+            $icon.removeClass('fa-spinner fa-spin').addClass('fa-wand-magic-sparkles');
+            $btn.prop('disabled', false);
+        }
+    });
+
+    // ─── Add Tab ──────────────────────────────────────────────────────────────
+
+    $overlay.on('input', '#plz-add-name', function() {
+        const key = slugify(this.value);
+        $('#plz-add-key-preview').text(key || '—');
+    });
+
+    $overlay.on('click', '#plz-add-submit', async function() {
+        const name   = $('#plz-add-name').val().trim();
+        const anchor = $('#plz-add-anchor').val().trim();
+        const key    = slugify(name);
+
+        if (!name || !key || !anchor) {
+            if (window.toastr) window.toastr.warning('Name and Identity Anchor are required.', 'Personalyze');
+            return;
+        }
+
+        if (state.chatCharacters[key]) {
+            if (window.toastr) window.toastr.warning(`"${name}" already exists in this chat's DNA.`, 'Personalyze');
+            return;
+        }
+
+        const context   = getContext();
+        const lastMsgId = Math.max(0, context.chat.length - 1);
+
+        await lockedWriteCharacterDef(lastMsgId, key, anchor, 1);
+        upsertChatCharacterDef(key, anchor, 1);
+
+        if (!state.activeRoster.includes(key)) {
+            const newRoster = [...state.activeRoster, key];
+            setActiveRoster(newRoster);
+            lockedWriteRoster(lastMsgId, newRoster).catch(() => {});
+        }
+
+        $('#plz-add-name').val('');
+        $('#plz-add-anchor').val('').trigger('input');
+        $('#plz-add-key-preview').text('—');
+
+        setWorkshopCharacter(key);
+        switchTab('studio');
+
+        if (window.toastr) window.toastr.success(`"${name}" added to DNA.`, 'Personalyze');
     });
 }
 

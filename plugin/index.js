@@ -354,8 +354,8 @@ export async function init(router) {
             }
 
             // Step 2: Poll until done. Adaptive intervals: 1s → 1.5s → 2.25s → cap 3s.
-            // Total budget ~25s so the full round-trip stays under 30s.
-            const POLL_BUDGET_MS = 25000;
+            // Total budget ~55s so the full round-trip stays under 60s.
+            const POLL_BUDGET_MS = 55000;
             const deadline = Date.now() + POLL_BUDGET_MS;
             let pollDelay = 1000;
             let imageUrl = null;
