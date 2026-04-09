@@ -1,7 +1,7 @@
 /**
  * @file data/default-user/extensions/personalyze/index.js
  * @stamp {"utc":"2026-04-10T23:50:00.000Z"}
- * @version 0.4.3
+ * @version 0.4.4
  * @architectural-role Feature Entry Point / Orchestrator
  * @description
  * SillyTavern Personalyze extension entry point.
@@ -24,6 +24,7 @@
 import { eventSource, event_types } from '../../../../script.js';
 import { getContext } from '../../../extensions.js';
 import { resetState } from './state.js';
+import { clearIgnored } from './logic/blacklist.js';
 import { log, error, setVerbose } from './utils/logger.js';
 import { initLibrary } from './library.js';
 import { getSettings } from './settings.js';
@@ -114,21 +115,18 @@ async function init() {
         eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, injectMessageBadge);
         
-        // Localyze Stub: Fires only for out-of-band location changes that arrive
-        // OUTSIDE a normal MESSAGE_RECEIVED flow. If the last message already carries
-        // the localyze.location_changed flag, master.js will handle it via the standard
-        // pipeline — skip here to avoid running runScenePipeline twice.
-        document.addEventListener('localyze:location-changed', async () => {
+        // Localyze Integration: When Localyze confirms a scene change it broadcasts
+        // this event with the triggering messageId. We clear the session blacklist
+        // (new scene = fresh slate) and run the wardrobe redress pipeline.
+        document.addEventListener('localyze:location-changed', async (e) => {
             const context = getContext();
-            if (context?.chatId) {
-                const lastIdx = context.chat.length - 1;
-                if (lastIdx < 0) return;
-                const lastMsg = context.chat[lastIdx];
-                if (lastMsg?.extra?.localyze?.location_changed) return;
-                log('Core', 'Received out-of-band Localyze signal. Running scene pipeline...');
-                const { runScenePipeline } = await import('./logic/pipeline/scene.js');
-                await runScenePipeline(lastIdx);
-            }
+            if (!context?.chatId) return;
+            const messageId = e.detail?.messageId ?? context.chat.length - 1;
+            if (messageId < 0) return;
+            log('Core', `Localyze scene change confirmed (msg ${messageId}). Running redress...`);
+            clearIgnored();
+            const { runScenePipeline } = await import('./logic/pipeline/scene.js');
+            await runScenePipeline(messageId);
         });
 
         log('Core', 'Listeners active.');

@@ -48,24 +48,21 @@ export async function runPipeline(messageId) {
 
     try {
         // ─── Phase 0: Scene Check ─────────────────────────────────────────────
-        
+
         let sceneChanged = false;
 
-        // 1. Check for Localyze Extension Signal
-        // If Localyze just updated the location in this turn, we honor it immediately.
-        if (message.extra?.localyze?.location_changed) {
-            log('Master', 'Localyze signal detected. Triggering scene redress.');
-            sceneChanged = true;
-        } 
-        // 2. Fallback to LLM Scene Detection if Localyze isn't present/active
-        else {
+        // If Localyze is active it will broadcast 'localyze:location-changed' after its
+        // own pipeline commits the scene record. index.js catches that event and runs
+        // runScenePipeline directly, so we skip the LLM check here entirely.
+        // Only fall back to our own LLM check when Localyze is absent.
+        const localyzeActive = !!(window.extension_settings?.localyze?.enabled);
+
+        if (!localyzeActive) {
             const history = buildHistoryText(context.chat, messageId, s.detectionHistory);
-            const currentLoc = context.chat[messageId - 1]?.extra?.localyze?.location || 'Unknown';
-            
             sceneChanged = await detectSceneChange(
-                currentLoc, 
-                history, 
-                message.mes, 
+                'Unknown',
+                history,
+                message.mes,
                 s.booleanProfileId || s.fastProfileId
             );
         }

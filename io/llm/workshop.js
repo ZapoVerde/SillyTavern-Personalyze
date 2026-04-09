@@ -20,7 +20,7 @@
  *     external_io: [ConnectionManagerRequestService, prompts.js, logger.js]
  */
 
-import { ConnectionManagerRequestService } from '../../../../../shared.js';
+import { ConnectionManagerRequestService } from '../../../../shared.js';
 import { log, warn, error } from '../../utils/logger.js';
 import { logCall } from '../../utils/callLog.js';
 import { 
