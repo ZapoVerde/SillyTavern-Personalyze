@@ -1,15 +1,17 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline.js
- * @stamp {"utc":"2026-04-07T12:30:00.000Z"}
+ * @stamp {"utc":"2026-04-10T12:40:00.000Z"}
  * @architectural-role Orchestrator / Narrative Logic
  * @description
- * Implements the PersonaLyze "Falling Water" detection pipeline.
+ * Orchestrates the 4-Phase Layered State Pipeline:
+ * 1. Subject Detection & Roster Interrupt.
+ * 2. Change Check Gate.
+ * 3. State Update Extraction.
+ * 4. Parsing, Prompt Construction, and DNA Commit.
  * 
- * Updated to use the DNA Chain architecture:
- * - Reads definitions from state.chatCharacters (Local DNA).
- * - Persists discoveries to the chat log via dnaWriter.js.
- * - Follows the Two-Write Pattern for all visual transitions.
- * - Adheres to the new imageCache.generate contract (seed and provider required).
+ * Adheres to the Two-Write Pattern:
+ * - Write 1: Narrative Intent (Layers updated, image is null).
+ * - Write 2: Asset Completion (Image generated and patched).
  *
  * @api-declaration
  * runPipeline(messageId) → Promise<void>
@@ -17,42 +19,31 @@
  * @contract
  *   assertions:
  *     purity: Stateful IO
- *     state_ownership: [state (mutates via setters)]
- *     external_io: [LLM calls, dnaWriter, image generation, portrait UI]
+ *     state_ownership: [state (via setters)]
+ *     external_io: [LLM, dnaWriter, image generation, toastr/popups]
  */
 
 import { getContext } from '../../../../extensions.js';
-import { error } from '../utils/logger.js';
+import { callPopup } from '../../../../../../script.js';
+import { log, warn, error } from '../utils/logger.js';
 import { 
     state, 
     updateActiveCharacter, 
-    updateActivePointers, 
+    updateActiveLayers, 
     updateActiveImage, 
     addToFileIndex, 
     getChainEntry, 
-    updateChainEntry,
-    upsertChatOutfitDef
+    updateChainLayers
 } from '../state.js';
 import { getSettings } from '../settings.js';
-import { buildHistoryText, buildDescriberContext, slugify } from '../utils/history.js';
-import {
-    detectSubjectMatch,
-    detectSubjectFromList,
-    detectChangeCheck,
-    detectCombined,
-    detectOutfitDescriber,
-} from '../detector.js';
-import { generate, buildFilenamePrefix, findCachedImage } from '../imageCache.js';
+import { slugify } from '../utils/history.js';
+import { detectSubject, detectChange, detectLayers } from '../detector.js';
+import { parsePhase3, mergeLayeredUpdate } from './parsers.js';
+import { compilePrompt } from './promptCompiler.js';
+import { generate } from '../imageCache.js';
 import { setPortrait } from '../portrait.js';
-import { 
-    lockedWriteVisualState, 
-    lockedPatchVisualStateImage, 
-    lockedWriteOutfitDef 
-} from '../io/dnaWriter.js';
-import { openDressingRoom } from '../ui/dressingRoom.js';
+import { lockedWriteVisualState, lockedPatchVisualStateImage } from '../io/dnaWriter.js';
 import { startTurn } from '../utils/callLog.js';
-
-// ─── Entry Point ──────────────────────────────────────────────────────────────
 
 /**
  * Main entry point for the per-turn detection logic.
@@ -61,191 +52,129 @@ import { startTurn } from '../utils/callLog.js';
 export async function runPipeline(messageId) {
     const context = getContext();
     const message = context.chat[messageId];
-
     if (!message || message.is_user) return;
 
     const s = getSettings();
     if (!s.enabled) return;
 
-    if (state.activeRoster.length === 0) return;
-
     startTurn('Pipeline');
 
-    const history = buildHistoryText(context.chat, messageId, s.detectionHistory ?? 2);
-
-    // ── Step 1: Subject Match ────────────────────────────────────────────────
-    let characterId = null;
-
-    if (state.activeCharacterId && state.activeRoster.includes(state.activeCharacterId)) {
-        const localChar = state.chatCharacters[state.activeCharacterId];
-        // Only run subject match if we actually have this character defined in DNA
-        if (localChar) {
-            const isMatch = await detectSubjectMatch(
-                message.mes,
-                state.activeCharacterId.replace(/_/g, ' '),
-                history,
-                s.subjectMatchPrompt,
-                s.booleanProfileId,
-            );
-            if (isMatch) characterId = state.activeCharacterId;
-        }
+    // ── Phase 1: Subject Detection ──
+    let detectedName;
+    try {
+        detectedName = await detectSubject(message.mes, state.activeRoster, s.booleanProfileId || s.fastProfileId);
+    } catch (err) {
+        const reason = err.cause?.message || err.message;
+        if (window.toastr) window.toastr.error(`Subject Detection failed — ${reason}`, 'PersonaLyze');
+        error('Pipeline', 'Phase 1 failed:', err);
+        return;
     }
+    if (!detectedName) return;
 
-    // ── Step 2: Subject From List ────────────────────────────────────────────
-    if (!characterId) {
-        // Filter roster to characters that actually have definitions in the chat DNA
-        const definedIds = state.activeRoster.filter(id => state.chatCharacters[id]);
-        if (definedIds.length === 0) return;
+    const characterId = slugify(detectedName);
 
-        const userName = context.name1 ?? 'User';
-        characterId = await detectSubjectFromList(
-            message.mes,
-            definedIds,
-            userName,
-            history,
-            s.subjectListPrompt,
-            s.classifierProfileId,
+    // Roster Interrupt: If character is detected but not active in this chat.
+    if (!state.activeRoster.includes(characterId)) {
+        log('Pipeline', `New character detected: ${detectedName}. Halting for interrupt.`);
+        const confirmed = await callPopup(
+            `<h3>New Character Detected</h3>
+             <p>Personalyze detected <b>${detectedName}</b> as the subject. Add them to the visual roster for this chat?</p>`,
+            'confirm'
         );
-
-        if (!characterId) return;
-    }
-
-    const character = state.chatCharacters[characterId];
-    if (!character) return;
-
-    updateActiveCharacter(characterId);
-
-    // ── Step 2.9: Change Check ───────────────────────────────────────────────
-    const chainEntry = getChainEntry(characterId);
-
-    if (chainEntry?.outfit && chainEntry?.expression) {
-        const currentOutfitLabel     = character.outfits[chainEntry.outfit]?.label ?? chainEntry.outfit;
-        const currentExpressionLabel = chainEntry.expression;
-
-        const unchanged = await detectChangeCheck(
-            message.mes,
-            characterId.replace(/_/g, ' '),
-            currentOutfitLabel,
-            currentExpressionLabel,
-            history,
-            s.changeCheckPrompt,
-            s.booleanProfileId,
-        );
-
-        if (unchanged) {
-            if (chainEntry.image) setPortrait(chainEntry.image);
-            return;
+        if (confirmed) {
+            const { handleSyncRoster } = await import('./importExport.js');
+            await handleSyncRoster(characterId, true);
+            // Resume pipeline after roster update
+            return runPipeline(messageId);
         }
-    }
-
-    // ── Step 3: Combined Classifier ──────────────────────────────────────────
-    const outfitKeys = Object.keys(character.outfits);
-    const { outfitKey, expressionKey } = await detectCombined(
-        message.mes,
-        characterId.replace(/_/g, ' '),
-        outfitKeys,
-        character.outfits,
-        s.expressionLabels,
-        history,
-        s.combinedClassifierPrompt,
-        s.classifierProfileId,
-    );
-
-    if (!outfitKey && !expressionKey) return;
-
-    // ── Step 3a: Outfit Describer (only if NEW) ──────────────────────────────
-    let finalOutfitKey = outfitKey !== 'NEW' ? outfitKey : null;
-
-    if (outfitKey === 'NEW') {
-        const contextText = buildDescriberContext(context.chat, messageId, s.describerHistory ?? 3);
-        const described   = await detectOutfitDescriber(
-            contextText,
-            message.name,
-            character.identityAnchor,
-            s.outfitDescriberPrompt,
-            s.describerProfileId,
-        );
-
-        if (described) {
-            const charEditorOpen = document.getElementById('rm_ch_create_block')?.offsetParent !== null;
-            if (charEditorOpen) return;
-
-            const newKey  = slugify(described.label);
-            const approved = await openDressingRoom({ 
-                dimension: 'outfit', 
-                ...described, 
-                key: newKey, 
-                characterId, 
-                anchor: character.identityAnchor 
-            });
-
-            if (approved) {
-                // Write 1: Persistence to DNA
-                // We write the definition to the turn before the transition happens (or current turn if turn 0)
-                const defMsgId = messageId > 0 ? messageId - 1 : messageId;
-                await lockedWriteOutfitDef(defMsgId, characterId, approved.key, approved.label, approved.description, approved.provider);
-                
-                // Update local state so Step 3b can resolve the ID
-                upsertChatOutfitDef(characterId, approved.key, approved.label, approved.description, approved.provider);
-                finalOutfitKey = approved.key;
-            }
-        }
-    }
-
-    const resolvedOutfitKey     = finalOutfitKey  ?? chainEntry?.outfit     ?? null;
-    const resolvedExpressionKey = expressionKey   ?? chainEntry?.expression ?? null;
-
-    if (!resolvedOutfitKey || !resolvedExpressionKey) return;
-
-    updateActivePointers(resolvedOutfitKey, resolvedExpressionKey);
-    updateChainEntry(characterId, resolvedOutfitKey, resolvedExpressionKey, null);
-    await applyVisual(messageId, characterId, resolvedOutfitKey, resolvedExpressionKey, character);
-}
-
-// ─── Visual Commit ────────────────────────────────────────────────────────────
-
-/**
- * Resolves the portrait image for the given outfit × expression combination.
- */
-async function applyVisual(messageId, characterId, outfitKey, expressionKey, character) {
-    const prefix     = buildFilenamePrefix(characterId, outfitKey, expressionKey);
-    const cachedFile = findCachedImage(prefix, state.fileIndex);
-
-    // Write 1: Narrative Intent
-    await lockedWriteVisualState(messageId, characterId, outfitKey, expressionKey, cachedFile);
-
-    if (cachedFile) {
-        updateActiveImage(cachedFile);
-        setPortrait(cachedFile);
         return;
     }
 
-    const outfitDef = character.outfits[outfitKey];
-    if (!outfitDef) return;
+    const character = state.chatCharacters[characterId];
+    if (!character) {
+        warn('Pipeline', `Character ${characterId} in roster but no DNA found.`);
+        return;
+    }
 
-    const capturedMsgId = messageId;
-    generate(
-        characterId, 
-        outfitKey, 
-        expressionKey, 
-        outfitDef.description, 
-        expressionKey, 
-        character.identityAnchor, 
-        character.seed, 
-        outfitDef.provider
-    )
-        .then(async newFile => {
-            addToFileIndex(newFile);
-            
-            // Write 2: Asset Completion
-            await lockedPatchVisualStateImage(capturedMsgId, characterId, newFile);
-            
-            updateActiveImage(newFile);
-            updateChainEntry(characterId, outfitKey, expressionKey, newFile);
-            setPortrait(newFile);
-        })
-        .catch(err => {
-            error('Pipeline', 'Portrait generation failed:', err);
-            if (window.toastr) window.toastr.error(`Generation failed: ${err.message}`, 'PersonaLyze');
-        });
+    updateActiveCharacter(characterId);
+
+    // ── Phase 2: Change Gate ──
+    const chainEntry = getChainEntry(characterId);
+    const currentLayers = chainEntry?.layers || state.activeLayers;
+
+    let hasChanged;
+    try {
+        hasChanged = await detectChange(
+            message.mes,
+            detectedName,
+            currentLayers,
+            s.booleanProfileId || s.fastProfileId
+        );
+    } catch (err) {
+        const reason = err.cause?.message || err.message;
+        if (window.toastr) window.toastr.error(`Change Gate failed — ${reason}`, 'PersonaLyze');
+        error('Pipeline', 'Phase 2 failed:', err);
+        return;
+    }
+
+    if (!hasChanged) {
+        log('Pipeline', 'No visual change detected. Persisting current state.');
+        if (chainEntry?.image) setPortrait(chainEntry.image);
+        return;
+    }
+
+    // ── Phase 3: Extraction (Smart Model) ──
+    let rawUpdate;
+    try {
+        rawUpdate = await detectLayers(
+            message.mes,
+            detectedName,
+            character.identityAnchor,
+            s.describerProfileId || s.smartProfileId
+        );
+    } catch (err) {
+        const reason = err.cause?.message || err.message;
+        if (window.toastr) window.toastr.error(`State Extraction failed — ${reason}`, 'PersonaLyze');
+        error('Pipeline', 'Phase 3 failed:', err);
+        return;
+    }
+
+    const parsedUpdate = parsePhase3(rawUpdate);
+    const nextLayers   = mergeLayeredUpdate(currentLayers, parsedUpdate);
+
+    // ── Phase 4: Compile & Commit ──
+    updateActiveLayers(nextLayers);
+    updateChainLayers(characterId, nextLayers, null);
+
+    const imagePrompt = compilePrompt(character.identityAnchor, nextLayers);
+    
+    // Write 1: Narrative Intent (DNA)
+    await lockedWriteVisualState(messageId, characterId, nextLayers, null);
+
+    // Trigger Generation
+    try {
+        const filename = await generate(
+            characterId,
+            'layered', // No longer using outfit keys for naming
+            slugify(nextLayers.emotion),
+            imagePrompt,
+            nextLayers.emotion,
+            character.identityAnchor,
+            character.seed,
+            s.defaultEngine || 'pollinations'
+        );
+
+        addToFileIndex(filename);
+        updateActiveImage(filename);
+        updateChainLayers(characterId, nextLayers, filename);
+        
+        // Write 2: Asset Completion (DNA Patch)
+        await lockedPatchVisualStateImage(messageId, characterId, filename);
+        
+        setPortrait(filename);
+    } catch (err) {
+        const reason = err.cause?.message || err.message;
+        if (window.toastr) window.toastr.warning(`Image generation failed — ${reason}`, 'PersonaLyze');
+        error('Pipeline', 'Image generation failed:', err);
+    }
 }

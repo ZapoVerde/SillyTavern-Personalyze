@@ -1,326 +1,149 @@
 /**
  * @file data/default-user/extensions/personalyze/detector.js
- * @stamp {"utc":"2026-04-07T12:50:00.000Z"}
+ * @stamp {"utc":"2026-04-10T12:20:00.000Z"}
  * @architectural-role IO Executor (LLM)
  * @description
- * Wraps all LLM calls made by the Personalyze pipeline.
+ * Wraps all LLM calls for the 3-Phase Layered State pipeline.
+ * Implements Dual-Model routing via ST Connection Manager profiles.
  *
- * This module is a pure worker: it does not perform state lookups. It executes 
- * detection and extraction requests using the templates and data provided 
- * by the controllers.
+ * Phases:
+ * 1. Subject Detection (Fast Model)
+ * 2. Change Gate (Fast Model)
+ * 3. State Extraction (Smart Model)
  *
  * @api-declaration
- * detectSubjectMatch(messageMes, characterName, history, promptTemplate, profileId)
- *   → Promise<boolean>
- *
- * detectSubjectFromList(messageMes, characterIds, userName, history, promptTemplate, profileId)
- *   → Promise<string|null>
- *
- * detectChangeCheck(messageMes, characterName, outfit, expression, history, promptTemplate, profileId)
- *   → Promise<boolean>
- *
- * detectCombined(messageMes, characterName, outfitKeys, outfits, expressionLabels, history, promptTemplate, profileId)
- *   → Promise<{ outfitKey: string|'NEW'|null, expressionKey: string|null }>
- *
- * detectOutfitDescriber(context, characterName, anchor, promptTemplate, profileId)
- *   → Promise<{ label: string, description: string }|null>
- *
- * detectAnchorScan(context, characterName, promptTemplate, profileId)
- *   → Promise<{ name: string, anchor: string }|null>
- *
+ * detectSubject(message, roster, profileId) -> Promise<string|null>
+ * detectChange(message, charName, layers, profileId) -> Promise<boolean>
+ * detectLayers(message, charName, anchor, profileId) -> Promise<string>
+ * detectAnchorScan(context, charName, profileId) -> Promise<object|null>
+ * 
  * @contract
  *   assertions:
- *     purity: IO
+ *     purity: IO Executor
  *     state_ownership: []
- *     external_io: [ConnectionManagerRequestService]
+ *     external_io: [ConnectionManagerRequestService, prompts.js, logger.js, callLog.js]
  */
 
 import { ConnectionManagerRequestService } from '../../shared.js';
 import { log, warn, error } from './utils/logger.js';
 import { logCall } from './utils/callLog.js';
+import { 
+    PHASE_1_SUBJECT_PROMPT, 
+    PHASE_2_CHANGE_PROMPT, 
+    PHASE_3_LAYERED_PROMPT,
+    ANCHOR_SCAN_PROMPT,
+    OUTFIT_GENERATOR_PROMPT 
+} from './logic/prompts.js';
+import { parsePhase1, parsePhase2 } from './logic/parsers.js';
 
-// ─── Core Dispatch ────────────────────────────────────────────────────────────
+// ─── Internal Dispatcher ──────────────────────────────────────────────────────
 
 /**
- * Dispatches a prompt to the LLM via ConnectionManagerRequestService.
- *
- * @param {string}      prompt
- * @param {string|null} profileId
- * @param {string}      label   Log tag (e.g. 'SubjectMatch').
- * @param {object}      extraOptions
- * @returns {Promise<string>}
+ * Sends a prompt to the LLM and logs the turn.
  */
 async function dispatch(prompt, profileId, label, extraOptions = {}) {
     if (!profileId) {
-        warn(label, 'No detection profile configured — aborting call.');
-        if (window.toastr) {
-            window.toastr.warning(
-                'Personalyze: No Detection Profile set. Configure one in settings to enable detection.',
-                'Personalyze',
-                { timeOut: 6000, preventDuplicates: true },
-            );
-        }
-        logCall(label, prompt, null, 'No detection profile configured.');
+        warn(label, 'No connection profile configured for this stage.');
         return '';
     }
 
-    log(label, `--- PROMPT SENT ---\n${prompt}`);
-
+    log(label, `--- PROMPT ---\n${prompt}`);
     try {
         const result = await ConnectionManagerRequestService.sendRequest(profileId, prompt, null, extraOptions);
-        const text   = result?.content ?? result;
-        log(label, `--- RAW AI RESPONSE ---\n${text}`);
-        logCall(label, prompt, String(text ?? ''), null);
-        return String(text ?? '');
+        const text   = String(result?.content ?? result ?? '').trim();
+        log(label, `--- RESPONSE ---\n${text}`);
+        logCall(label, prompt, text, null);
+        return text;
     } catch (err) {
-        error(label, 'ConnectionManager request failed:', err);
+        error(label, 'LLM Request failed:', err);
         logCall(label, prompt, null, err.message);
-        if (window.toastr) window.toastr.error(`Detection failed: ${err.message}`, 'Personalyze');
         throw err;
     }
 }
 
-// ─── YES/NO Parser ────────────────────────────────────────────────────────────
+// ─── Phase 1: Subject Detection ───────────────────────────────────────────────
 
 /**
- * Parses a YES/NO response. Returns true for YES, false for NO or unrecognised.
+ * Identifies which character from the roster is the main subject.
  */
-function parseYesNo(raw, label) {
-    const text = String(raw ?? '').trim();
-    if (/\byes\b/i.test(text)) {
-        log(label, 'Result: YES');
-        return true;
-    }
-    if (/\bno\b/i.test(text)) {
-        log(label, 'Result: NO');
-        return false;
-    }
-    warn(label, `Could not parse YES/NO from response. Defaulting to NO.`);
-    return false;
+export async function detectSubject(message, roster, profileId) {
+    const rosterList = roster.join(', ') || 'None';
+    const prompt = PHASE_1_SUBJECT_PROMPT
+        .replace('{{active_roster}}', rosterList)
+        .replace('{{message}}', message);
+
+    const raw = await dispatch(prompt, profileId, 'SubjectDetect', { temperature: 0.1 });
+    return parsePhase1(raw);
 }
 
-// ─── Step 1: Subject Match ────────────────────────────────────────────────────
+// ─── Phase 2: Change Gate ─────────────────────────────────────────────────────
 
-export async function detectSubjectMatch(messageMes, characterName, history, promptTemplate, profileId) {
-    const prompt = promptTemplate
-        .replaceAll('{{character_name}}', characterName ?? 'Unknown')
-        .replace('{{history}}',           history       ?? '')
-        .replace('{{message}}',           messageMes    ?? '');
-
-    const raw = await dispatch(prompt, profileId, 'SubjectMatch', { temperature: 0.1 });
-    return parseYesNo(raw, 'SubjectMatch');
-}
-
-// ─── Step 2: Subject From List ────────────────────────────────────────────────
-
-export async function detectSubjectFromList(messageMes, characterIds, userName, history, promptTemplate, profileId) {
-    const characterList = characterIds
-        .map(id => `[${id}] ${id.replace(/_/g, ' ')}`)
+/**
+ * Checks if the visual state needs an update based on the message.
+ */
+export async function detectChange(message, charName, layers, profileId) {
+    // Stringify current layers for context
+    const layerSummary = Object.entries(layers)
+        .map(([k, v]) => {
+            if (!v) return `${k}: None`;
+            if (typeof v === 'string') return `${k}: ${v}`;
+            return `${k}: ${v.item} | ${v.modifier || 'None'}`;
+        })
         .join('\n');
 
-    const prompt = promptTemplate
-        .replace('{{character_list}}', characterList)
-        .replace(/\{\{user_name\}\}/g, userName ?? 'User')
-        .replace('{{history}}',        history  ?? '')
-        .replace('{{message}}',        messageMes ?? '');
+    const prompt = PHASE_2_CHANGE_PROMPT
+        .replace('{{character_name}}', charName)
+        .replace('{{current_layers}}', layerSummary)
+        .replace('{{message}}', message);
 
-    const raw = await dispatch(prompt, profileId, 'SubjectList', { temperature: 0.1 });
-    const text = String(raw ?? '').trim();
-
-    if (/\bNONE\b/i.test(text)) {
-        log('SubjectList', 'Result: NONE');
-        return null;
-    }
-
-    for (const id of characterIds) {
-        const regex = new RegExp(`\\b${id.replace(/_/g, '[_ ]')}\\b`, 'i');
-        if (regex.test(text)) {
-            log('SubjectList', `Result: matched "${id}"`);
-            return id;
-        }
-    }
-
-    warn('SubjectList', `No character matched in response. Treating as NONE.`);
-    return null;
+    const raw = await dispatch(prompt, profileId, 'ChangeGate', { temperature: 0.1 });
+    return parsePhase2(raw);
 }
 
-// ─── Step 2.9: Change Check ───────────────────────────────────────────────────
+// ─── Phase 3: Extraction ──────────────────────────────────────────────────────
 
-export async function detectChangeCheck(messageMes, characterName, currentOutfit, currentExpression, history, promptTemplate, profileId) {
-    const prompt = promptTemplate
-        .replaceAll('{{character_name}}',    characterName     ?? 'Unknown')
-        .replace('{{current_outfit}}',       currentOutfit     ?? 'unknown')
-        .replace('{{current_expression}}',   currentExpression ?? 'neutral')
-        .replace('{{history}}',              history           ?? '')
-        .replace('{{message}}',              messageMes        ?? '');
+/**
+ * Extracts the specific layer updates from the text.
+ * Note: Uses the Smart Profile.
+ */
+export async function detectLayers(message, charName, anchor, profileId) {
+    const prompt = PHASE_3_LAYERED_PROMPT
+        .replace('{{character_name}}', charName)
+        .replace('{{identity_anchor}}', anchor)
+        .replace('{{message}}', message);
 
-    const raw = await dispatch(prompt, profileId, 'ChangeCheck', { temperature: 0.1 });
-    // YES = still the same = unchanged = true
-    return parseYesNo(raw, 'ChangeCheck');
+    return await dispatch(prompt, profileId, 'Extraction', { temperature: 0.3 });
 }
 
-// ─── Step 3: Combined Classifier ─────────────────────────────────────────────
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
-export async function detectCombined(messageMes, characterName, outfitKeys, outfits, expressionLabels, history, promptTemplate, profileId) {
-    const outfitList = outfitKeys.length > 0
-        ? outfitKeys.map(k => `[${k}] ${outfits[k].label} — ${outfits[k].description}`).join('\n')
-        : '(none registered — reply NEW if any outfit is described)';
-
-    const expressionList = expressionLabels.join(', ');
-
-    const prompt = promptTemplate
-        .replace('{{character_name}}',  characterName  ?? 'Unknown')
-        .replace('{{outfit_list}}',     outfitList)
-        .replace('{{expression_list}}', expressionList)
-        .replace('{{history}}',         history        ?? '')
-        .replace('{{message}}',         messageMes     ?? '');
-
-    const raw = await dispatch(prompt, profileId, 'Combined', { temperature: 0.1 });
-
-    return {
-        outfitKey:     parseOutfitLine(raw, outfitKeys),
-        expressionKey: parseExpressionLine(raw, expressionLabels),
-    };
-}
-
-// ─── Step 3 Parsers ───────────────────────────────────────────────────────────
-
-function parseOutfitLine(raw, outfitKeys) {
-    const line = extractLine(raw, 'outfit');
-    if (!line) return null;
-    if (/\bNULL\b/i.test(line)) return null;
-    if (/\bNEW\b/i.test(line))  return 'NEW';
-
-    for (const key of outfitKeys) {
-        const regex = new RegExp(`\\b${key.replace(/_/g, '[_ ]')}\\b`, 'i');
-        if (regex.test(line)) return key;
-    }
-    return null;
-}
-
-function parseExpressionLine(raw, expressionLabels) {
-    const line = extractLine(raw, 'expression');
-    if (!line) return null;
-    if (/\bNULL\b/i.test(line)) return null;
-
-    for (const label of expressionLabels) {
-        const regex = new RegExp(`\\b${label}\\b`, 'i');
-        if (regex.test(line)) return label;
-    }
-    return null;
-}
-
-function extractLine(raw, fieldName) {
-    const match = raw.match(new RegExp(`${fieldName}\\s*:\\s*(.+)`, 'i'));
-    return match ? match[1].trim() : null;
-}
-
-// ─── Anchor Scanner ───────────────────────────────────────────────────────────
-
-export async function detectAnchorScan(context, characterName, promptTemplate, profileId) {
-    const hasFocus       = !!characterName;
-    const characterFocus = hasFocus ? `CHARACTER FOCUS: ${characterName}\n` : '';
-    const focusNote      = hasFocus ? ` (focus on ${characterName})` : '';
-
-    const prompt = promptTemplate
-        .replace('{{character_focus}}', characterFocus)
-        .replace('{{focus_note}}',      focusNote)
-        .replace('{{context}}',         context ?? '');
+/**
+ * Scans chat for permanent physical identity.
+ */
+export async function detectAnchorScan(context, charName, profileId) {
+    const charFocus = charName ? `CHARACTER FOCUS: ${charName}\n` : '';
+    const prompt = ANCHOR_SCAN_PROMPT
+        .replace('{{character_focus}}', charFocus)
+        .replace('{{context}}', context);
 
     const raw = await dispatch(prompt, profileId, 'AnchorScan', { temperature: 0.3 });
-    return parseAnchorScanResponse(raw);
-}
+    
+    // Inline parser for Anchor Scan
+    const nameMatch   = raw.match(/Name:\s*(.+)/i);
+    const anchorMatch = raw.match(/Identity\s+Anchor:\s*([\s\S]+)/i);
 
-function parseAnchorScanResponse(raw) {
-    const text = String(raw ?? '');
-    const nameMatch   = text.match(/\*?\*?Name\*?\*?:\s*(.+)/i);
-    const anchorMatch = text.match(/\*?\*?Identity\s+Anchor\*?\*?:\s*([\s\S]+?)(?=\n\*?\*?[A-Z]|$)/i);
-
-    if (!nameMatch || !anchorMatch) {
-        warn('AnchorScan', 'Could not extract Name/Identity Anchor from response.');
-        return null;
-    }
-
+    if (!nameMatch || !anchorMatch) return null;
     return {
-        name:   nameMatch[1].trim().replace(/^\*+|\*+$/g, ''),
-        anchor: anchorMatch[1].trim().replace(/^\*+|\*+$/g, ''),
+        name:   nameMatch[1].trim(),
+        anchor: anchorMatch[1].trim()
     };
 }
 
-// ─── Outfit Describer ─────────────────────────────────────────────────────────
-
-export async function detectOutfitDescriber(context, characterName, anchor, promptTemplate, profileId) {
-    const prompt = promptTemplate
-        .replace('{{character_name}}',  characterName ?? 'Unknown')
-        .replace('{{identity_anchor}}', anchor        ?? '')
-        .replace('{{context}}',         context       ?? '');
-
-    const raw = await dispatch(prompt, profileId, 'OutfitDescriber', { temperature: 0.3 });
-    return parseDescriberResponse(raw);
-}
-
-// ─── Outfit Generator (Workshop) ─────────────────────────────────────────────
-
 /**
- * Generates an outfit description from keyword(s) alone.
- * @param {string}      keyword
- * @param {string}      promptTemplate
- * @param {string|null} profileId
- * @returns {Promise<string|null>}
+ * Generates an outfit description from a keyword.
  */
-export async function detectOutfitGenerator(keyword, promptTemplate, profileId) {
-    const prompt = promptTemplate
-        .replace('{{keyword}}', keyword ?? '');
-
-    const raw = await dispatch(prompt, profileId, 'OutfitGenerator', { temperature: 0.5 });
-    return parseDescriptionLine(raw);
-}
-
-/**
- * Extracts an outfit description from the current turn, using optional keyword guidance.
- * @param {string}      charName
- * @param {string}      turn       Formatted user+AI turn text.
- * @param {string}      keyword    Optional steering keyword(s).
- * @param {string}      promptTemplate
- * @param {string|null} profileId
- * @returns {Promise<string|null>}
- */
-export async function detectOutfitGeneratorScan(charName, turn, keyword, promptTemplate, profileId) {
-    const keywordGuidance = keyword
-        ? `KEYWORD GUIDANCE: ${keyword}\n`
-        : '';
-
-    const prompt = promptTemplate
-        .replaceAll('{{char_name}}',     charName        ?? 'Unknown')
-        .replace('{{keyword_guidance}}', keywordGuidance)
-        .replace('{{turn}}',             turn            ?? '');
-
-    const raw = await dispatch(prompt, profileId, 'OutfitGeneratorScan', { temperature: 0.5 });
-    return parseDescriptionLine(raw);
-}
-
-function parseDescriptionLine(raw) {
-    const text = String(raw ?? '');
-    const match = text.match(/\*?\*?Description\*?\*?:\s*([\s\S]+?)(?=\n\*?\*?[A-Z]|$)/i);
-    if (!match) {
-        warn('OutfitGenerator', 'Could not extract Description from response. Using raw text.');
-        return text.trim() || null;
-    }
-    return match[1].trim().replace(/^\*+|\*+$/g, '');
-}
-
-function parseDescriberResponse(raw) {
-    const text = String(raw ?? '');
-    const labelMatch = text.match(/\*?\*?Label\*?\*?:\s*(.+)/i);
-    const descMatch  = text.match(/\*?\*?Description\*?\*?:\s*([\s\S]+?)(?=\n\*?\*?[A-Z]|$)/i);
-
-    if (!labelMatch || !descMatch) {
-        warn('Describer', 'Could not extract Label/Description from response.');
-        return null;
-    }
-
-    return {
-        label:       labelMatch[1].trim().replace(/^\*+|\*+$/g, ''),
-        description: descMatch[1].trim().replace(/^\*+|\*+$/g, ''),
-    };
+export async function detectOutfitGenerator(keyword, profileId) {
+    const prompt = OUTFIT_GENERATOR_PROMPT.replace('{{keyword}}', keyword);
+    const raw = await dispatch(prompt, profileId, 'OutfitGen', { temperature: 0.5 });
+    return raw.replace(/^\[|\]$/g, '').trim();
 }

@@ -1,0 +1,106 @@
+/**
+ * @file data/default-user/extensions/personalyze/logic/prompts.js
+ * @stamp {"utc":"2026-04-10T10:10:00.000Z"}
+ * @architectural-role Pipeline Templates
+ * @description
+ * Defines the strict Key-Value templates for the Layered State Pipeline.
+ * Optimized for Dual-Model routing (Fast/Smart).
+ * 
+ * Phases:
+ * 1. Subject Detection (Mistral Small)
+ * 2. Change Gate (Mistral Small)
+ * 3. State Extraction (Gemini 3.1 Flash Lite)
+ */
+
+/** Phase 1: Identify the active character. Output: [Name] or None. */
+export const PHASE_1_SUBJECT_PROMPT =
+`[SYSTEM: TASK — SUBJECT IDENTIFICATION]
+Identify the primary character speaking or acting in the following text.
+
+ROSTER:
+{{active_roster}}
+
+TEXT:
+{{message}}
+
+INSTRUCTIONS:
+- Return ONLY the exact name from the roster if they are the main focus.
+- If it is a narrator, a group, or an unlisted character, return 'None'.
+- Do NOT provide explanations.
+
+RESULT:`;
+
+/** Phase 2: YES/NO Gate for visual changes. Output: YES or NO. */
+export const PHASE_2_CHANGE_PROMPT =
+`[SYSTEM: TASK — VISUAL CHANGE GATE]
+Determine if the character's appearance or emotion has changed in the new text.
+
+CHARACTER: {{character_name}}
+CURRENT STATE:
+{{current_layers}}
+
+NEW TEXT:
+{{message}}
+
+QUESTION:
+In the New Text, does the character explicitly change clothes, put something on, take something off, or does an item get dirty/damaged? Has their emotion or body language significantly shifted?
+
+Reply ONLY with 'YES' or 'NO'.
+
+RESULT:`;
+
+/** Phase 3: Structural Extraction. Output: Key-Value List. */
+export const PHASE_3_LAYERED_PROMPT =
+`[SYSTEM: TASK — VISUAL STATE EXTRACTION]
+Update the character's visual state based ONLY on the provided text.
+
+CHARACTER: {{character_name}}
+IDENTITY: {{identity_anchor}}
+
+RULES:
+1. Only update a slot if the text explicitly describes a change.
+2. If an item is put on or modified: [Item] | [Modifier]
+3. If an item is explicitly REMOVED: None | None
+4. If a slot is UNMENTIONED or UNCHANGED: KEEP | KEEP
+5. EMOTION: Provide one adjective describing their mood and physical expression. Use KEEP if unchanged.
+6. DO NOT OUTPUT JSON.
+
+FORMAT:
+Outerwear: [Item] | [Modifier]
+Top: [Item] | [Modifier]
+Bottom: [Item] | [Modifier]
+Accessories: [Item] | [Modifier]
+Emotion: [Adjective]
+
+TEXT:
+{{message}}
+
+RESULT:`;
+
+/** Identity Anchor Scan for new characters. */
+export const ANCHOR_SCAN_PROMPT =
+`[SYSTEM: TASK — CHARACTER ARCHIVIST]
+Analyze the transcript to identify a character's permanent physical appearance.
+
+{{character_focus}}
+TRANSCRIPT:
+{{context}}
+
+INSTRUCTIONS:
+1. Extract only permanent physical features: face, hair, eye colour, build, marks.
+2. Do NOT include clothing or current mood.
+3. Output ONLY the Name and Identity Anchor.
+
+FORMAT:
+Name: [Exact name]
+Identity Anchor: [2-3 sentences for an image generator]`;
+
+/** Outfit Generator for the Workshop Studio. */
+export const OUTFIT_GENERATOR_PROMPT =
+`[SYSTEM: TASK — OUTFIT DESIGNER]
+Design a specific clothing item description based on keywords.
+
+KEYWORD: {{keyword}}
+
+FORMAT:
+[Item] | [Visual Details/Materials/Colors]`;

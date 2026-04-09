@@ -44,6 +44,32 @@ function spaceIdToUrl(spaceId) {
 }
 
 /**
+ * Extracts an image URL from a PiAPI task output object.
+ * Checks known field paths first, then falls back to a recursive scan
+ * for the first http string value in the object tree.
+ * @param {object} output
+ * @returns {string|null}
+ */
+function extractPiapiImageUrl(output) {
+    if (!output || typeof output !== 'object') return null;
+    // Known paths in priority order
+    if (typeof output.image_url === 'string' && output.image_url.startsWith('http')) return output.image_url;
+    if (Array.isArray(output.image_urls) && typeof output.image_urls[0] === 'string') return output.image_urls[0];
+    if (Array.isArray(output.images) && output.images[0]?.url) return output.images[0].url;
+    if (typeof output.image === 'string' && output.image.startsWith('http')) return output.image;
+    if (typeof output.url === 'string' && output.url.startsWith('http')) return output.url;
+    // Recursive fallback: first http string found anywhere in the output tree
+    for (const val of Object.values(output)) {
+        if (typeof val === 'string' && val.startsWith('http')) return val;
+        if (val && typeof val === 'object') {
+            const found = extractPiapiImageUrl(val);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+/**
  * Reads a Gradio SSE stream to completion, returns the outputs array.
  * @param {Response} sseResponse
  * @returns {Promise<any[]>}
@@ -354,8 +380,8 @@ export async function init(router) {
             }
 
             // Step 2: Poll until done. Adaptive intervals: 1s → 1.5s → 2.25s → cap 3s.
-            // Total budget ~55s so the full round-trip stays under 60s.
-            const POLL_BUDGET_MS = 55000;
+            // Total budget ~2m to accommodate slower models.
+            const POLL_BUDGET_MS = 120000;
             const deadline = Date.now() + POLL_BUDGET_MS;
             let pollDelay = 1000;
             let imageUrl = null;
@@ -385,7 +411,7 @@ export async function init(router) {
                 // PiAPI uses 'completed' or 'success' (case-insensitive) for done tasks
                 if (/^(completed|success)$/i.test(lastStatus)) {
                     const output = taskPayload.output;
-                    imageUrl = output?.image_url || output?.image_urls?.[0];
+                    imageUrl = extractPiapiImageUrl(output);
                     if (!imageUrl) {
                         return res.status(500).json({
                             error: `PiAPI task "${taskId}" completed but returned no image URL. Output: ${JSON.stringify(output).slice(0, 200)}`,

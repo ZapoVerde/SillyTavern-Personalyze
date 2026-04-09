@@ -1,18 +1,18 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/importExport.js
- * @stamp {"utc":"2026-04-07T13:10:00.000Z"}
+ * @stamp {"utc":"2026-04-10T16:20:00.000Z"}
  * @architectural-role Stateful Controller
  * @description
- * Bridges the Global Library and the active Chat DNA.
+ * Bridges the Global Library and the active Chat DNA for the Layered State architecture.
+ * Handles cloning of character identities and ensembles (layer snapshots).
  * 
- * Handles the cloning of character definitions between the chat log and 
- * the extension settings. All imports are written to the chat log as DNA 
- * events to ensure branch safety and chat portability.
+ * Includes logic to migrate legacy monolithic library templates into the 
+ * 5-slot layered format during import.
  *
  * @api-declaration
- * handleImportToChat(characterId)  — Clones a library template into chat DNA.
- * handleExportToLibrary(characterId) — Snapshots active chat DNA to global settings.
- * handleSyncRoster(characterId, enable) — Updates the local roster and DNA chain.
+ * handleImportToChat(characterId)
+ * handleExportToLibrary(characterId)
+ * handleSyncRoster(characterId, enable)
  *
  * @contract
  *   assertions:
@@ -25,93 +25,93 @@ import { getContext } from '../../../../extensions.js';
 import { 
     state, 
     upsertChatCharacterDef, 
-    upsertChatOutfitDef, 
-    upsertChatExpressionDef,
+    upsertChatEnsemble,
     setActiveRoster
 } from '../state.js';
 import { getLibraryCharacter, saveToLibrary } from '../library.js';
 import { 
     lockedWriteCharacterDef, 
-    lockedWriteOutfitDef, 
-    lockedWriteExpressionDef,
+    lockedWriteEnsemble,
     lockedWriteRoster
 } from '../io/dnaWriter.js';
 import { log, error } from '../utils/logger.js';
 
 /**
- * Imports a character from the Global Library into the current chat's DNA.
- * Writes the full identity and wardrobe as a chain of events on the last turn.
- * 
+ * Imports a character and their ensembles from the Library into chat DNA.
  * @param {string} characterId 
  */
 export async function handleImportToChat(characterId) {
     const template = getLibraryCharacter(characterId);
     if (!template) {
-        error('Import', `Attempted to import unknown character: ${characterId}`);
+        error('Import', `Unknown library character: ${characterId}`);
         return;
     }
 
     const context = getContext();
     const lastMsgId = Math.max(0, context.chat.length - 1);
-
-    log('Import', `Importing "${characterId}" to chat DNA at turn ${lastMsgId}...`);
+    log('Import', `Importing "${characterId}" to DNA...`);
 
     try {
-        // 1. Write Identity & Seed
-        await lockedWriteCharacterDef(lastMsgId, characterId, template.identityAnchor, template.seed);
-        upsertChatCharacterDef(characterId, template.identityAnchor, template.seed);
+        // 1. Identity
+        const anchor = template.identityAnchor || template.identity_anchor || '';
+        const seed = template.seed ?? 1;
+        await lockedWriteCharacterDef(lastMsgId, characterId, anchor, seed);
+        upsertChatCharacterDef(characterId, anchor, seed);
 
-        // 2. Write all Outfits
-        for (const [key, outfit] of Object.entries(template.outfits ?? {})) {
-            await lockedWriteOutfitDef(lastMsgId, characterId, key, outfit.label, outfit.description, outfit.provider);
-            upsertChatOutfitDef(characterId, key, outfit.label, outfit.description, outfit.provider);
+        // 2. Ensembles (New Format)
+        const ensembles = template.ensembles || {};
+        for (const [key, data] of Object.entries(ensembles)) {
+            await lockedWriteEnsemble(lastMsgId, characterId, key, data.label, data.layers);
+            upsertChatEnsemble(characterId, key, data.label, data.layers);
         }
 
-        // 3. Write all Expressions
-        for (const [key, expr] of Object.entries(template.expressions ?? {})) {
-            await lockedWriteExpressionDef(lastMsgId, characterId, key, expr.label, expr.description);
-            upsertChatExpressionDef(characterId, key, expr.label, expr.description);
+        // 3. Migration: Handle legacy outfits if found in the template
+        if (template.outfits) {
+            log('Import', 'Migrating legacy outfits to ensembles...');
+            for (const [key, outfit] of Object.entries(template.outfits)) {
+                const migratedLayers = {
+                    outerwear: null,
+                    top: { item: outfit.description || outfit.label, modifier: null },
+                    bottom: null,
+                    accessories: null,
+                    emotion: 'neutral'
+                };
+                await lockedWriteEnsemble(lastMsgId, characterId, key, outfit.label, migratedLayers);
+                upsertChatEnsemble(characterId, key, outfit.label, migratedLayers);
+            }
         }
 
-        // 4. Auto-enable in roster if not already there
+        // 4. Roster Update
         if (!state.activeRoster.includes(characterId)) {
             const newRoster = [...state.activeRoster, characterId];
             await lockedWriteRoster(lastMsgId, newRoster);
             setActiveRoster(newRoster);
         }
 
-        if (window.toastr) window.toastr.success(`"${characterId}" imported to chat DNA.`, 'Personalyze');
+        if (window.toastr) window.toastr.success(`"${characterId}" imported to DNA.`, 'Personalyze');
     } catch (err) {
-        error('Import', 'Failed to commit import to DNA:', err);
+        error('Import', 'Failed to commit import:', err);
     }
 }
 
 /**
- * Snapshots the current chat-specific character definition back to the Global Library.
- * Used to "save" changes made during a specific roleplay for future use in other chats.
- * 
+ * Snapshots the current chat-specific character and ensembles back to the Library.
  * @param {string} characterId 
  */
 export async function handleExportToLibrary(characterId) {
     const activeData = state.chatCharacters[characterId];
     if (!activeData) {
-        error('Export', `No local DNA found for character: ${characterId}`);
+        error('Export', `No local DNA found for: ${characterId}`);
         return;
     }
 
-    log('Export', `Exporting chat DNA for "${characterId}" to Global Library...`);
-    
+    log('Export', `Exporting "${characterId}" to Library...`);
     saveToLibrary(characterId, activeData);
-    
-    if (window.toastr) window.toastr.success(`"${characterId}" saved to Global Library.`, 'Personalyze');
+    if (window.toastr) window.toastr.success(`"${characterId}" saved to Library.`, 'Personalyze');
 }
 
 /**
- * Toggles a character's presence in the active roster for this chat.
- * Persists the change to the DNA chain.
- * 
- * @param {string} characterId 
- * @param {boolean} enable 
+ * Toggles a character's presence in the active roster.
  */
 export async function handleSyncRoster(characterId, enable) {
     const context = getContext();
@@ -124,13 +124,11 @@ export async function handleSyncRoster(characterId, enable) {
         newRoster = state.activeRoster.filter(id => id !== characterId);
     }
 
-    log('Roster', `Updating roster in DNA: ${enable ? '+' : '-'}${characterId}`);
-
     try {
         await lockedWriteRoster(lastMsgId, newRoster);
         setActiveRoster(newRoster);
         document.dispatchEvent(new CustomEvent('plz:roster-changed'));
     } catch (err) {
-        error('Roster', 'Failed to update roster in DNA:', err);
+        error('Roster', 'Failed to update roster:', err);
     }
 }

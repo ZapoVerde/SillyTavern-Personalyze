@@ -1,33 +1,27 @@
 /**
  * @file data/default-user/extensions/personalyze/reconstruction.js
- * @stamp {"utc":"2026-04-07T12:05:00.000Z"}
+ * @stamp {"utc":"2026-04-10T11:20:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
- * Derives PersonaLyze runtime state from a single forward pass over the chat log.
- * Reads the Array Pattern DNA records written by dnaWriter.js.
+ * Derives PersonaLyze runtime state from a single forward pass over the chat DNA.
+ * Reconstructs character definitions, saved ensembles, and the layered visual state.
  *
- * Builds three major outputs:
- *   1. chatCharacters — the active local wardrobe and definitions for this specific chat.
- *   2. characterChain — the last-known visual state per character (branch safe).
- *   3. Derived "active" pointers — the globally last-active visual state used to 
- *      restore the portrait on chat load.
- *
- * Handles legacy V1 flat-object pointer arrays seamlessly during the scan.
+ * Built to handle the transition from monolithic outfit keys to the new
+ * 5-slot (outerwear, top, bottom, accessories, emotion) state object.
  *
  * @api-declaration
  * reconstruct(chat) → {
- *   chatCharacters:      { [characterId]: { identityAnchor, seed, outfits, expressions } },
- *   characterChain:      { [characterId]: { outfit, expression, image } },
+ *   chatCharacters:      { [characterId]: { identityAnchor, seed, ensembles } },
+ *   characterChain:      { [characterId]: { layers, image } },
  *   activeRoster:        string[],
  *   activeCharacterId:   string|null,
- *   activeOutfitKey:     string|null,
- *   activeExpressionKey: string|null,
+ *   activeLayers:        object,
  *   activeImageFile:     string|null,
  * }
  *
  * @contract
  *   assertions:
- *     purity: pure
+ *     purity: Pure Function
  *     state_ownership: []
  *     external_io: []
  */
@@ -35,23 +29,26 @@
 /**
  * Reads all PLZ DNA records from the chat array and builds the runtime state.
  *
- * @param {object[]} chat The full context.chat array.
+ * @param {object[]} chat - The full context.chat array.
  * @returns {object} Derived state bundle.
  */
 export function reconstruct(chat) {
     const chatCharacters = {};
     const characterChain = {};
 
-    let activeRoster        = [];
-    let activeCharacterId   = null;
-    let activeOutfitKey     = null;
-    let activeExpressionKey = null;
-    let activeImageFile     = null;
+    let activeRoster      = [];
+    let activeCharacterId = null;
+    let activeImageFile   = null;
+    
+    // Default empty state for the active layers
+    let activeLayers = {
+        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral'
+    };
 
-    /** Helper to guarantee a valid character structure exists during the scan. */
+    /** Helper to guarantee a valid character structure exists. */
     const ensureChar = (id) => {
         if (!chatCharacters[id]) {
-            chatCharacters[id] = { identityAnchor: '', seed: 1, outfits: {}, expressions: {} };
+            chatCharacters[id] = { identityAnchor: '', seed: 1, ensembles: {} };
         }
         return chatCharacters[id];
     };
@@ -60,65 +57,31 @@ export function reconstruct(chat) {
         const plzData = message.extra?.personalyze;
         if (!plzData) continue;
 
-        // Normalize to array to handle both legacy V1 and new DNA Pattern
-        let records = [];
-        if (Array.isArray(plzData)) {
-            records = plzData;
-        } else if (typeof plzData === 'object') {
-            if (plzData.roster !== undefined) {
-                records.push({ type: 'roster', roster: plzData.roster });
-            }
-            if (plzData.characterId) {
-                records.push({
-                    type: 'visual_state',
-                    characterId: plzData.characterId,
-                    outfit: plzData.outfit,
-                    expression: plzData.expression,
-                    image: plzData.image ?? null
-                });
-            }
-        }
+        // DNA Pattern is always an array of event objects
+        const records = Array.isArray(plzData) ? plzData : [];
 
         for (const rec of records) {
             if (!rec || typeof rec !== 'object') continue;
 
             switch (rec.type) {
                 case 'roster':
-                    activeRoster = Array.isArray(rec.roster) ? rec.roster : [];
+                    activeRoster = Array.isArray(rec.roster) ? [...rec.roster] : [];
                     break;
 
                 case 'character_def': {
                     if (!rec.characterId) break;
                     const char = ensureChar(rec.characterId);
                     if (rec.anchor !== undefined) char.identityAnchor = rec.anchor;
-                    if (rec.seed !== undefined) char.seed = rec.seed;
+                    if (rec.seed !== undefined)   char.seed = rec.seed;
                     break;
                 }
 
-                case 'outfit_def': {
+                case 'ensemble_def': {
                     if (!rec.characterId || !rec.key) break;
                     const char = ensureChar(rec.characterId);
-                    char.outfits[rec.key] = {
-                        label: rec.label,
-                        description: rec.description,
-                        provider: rec.provider || 'pollinations'
-                    };
-                    break;
-                }
-
-                case 'outfit_delete': {
-                    if (!rec.characterId || !rec.key) break;
-                    const char = ensureChar(rec.characterId);
-                    delete char.outfits[rec.key];
-                    break;
-                }
-
-                case 'expression_def': {
-                    if (!rec.characterId || !rec.key) break;
-                    const char = ensureChar(rec.characterId);
-                    char.expressions[rec.key] = {
-                        label: rec.label,
-                        description: rec.description
+                    char.ensembles[rec.key] = {
+                        label:  rec.label,
+                        layers: structuredClone(rec.layers ?? {})
                     };
                     break;
                 }
@@ -127,18 +90,32 @@ export function reconstruct(chat) {
                     const id = rec.characterId;
                     if (!id) break;
 
-                    const prior = characterChain[id] ?? {};
+                    // Support new layered format, with legacy fallback
+                    let layers;
+                    if (rec.layers) {
+                        layers = structuredClone(rec.layers);
+                    } else if (rec.outfit) {
+                        // Migration fallback: map monolithic outfit to 'top' slot
+                        layers = {
+                            outerwear: null,
+                            top: { item: rec.outfit, modifier: null },
+                            bottom: null,
+                            accessories: null,
+                            emotion: rec.expression ?? 'neutral'
+                        };
+                    } else {
+                        layers = structuredClone(activeLayers);
+                    }
+
                     characterChain[id] = {
-                        outfit:     rec.outfit     ?? prior.outfit     ?? null,
-                        expression: rec.expression ?? prior.expression ?? null,
-                        image:      rec.image      ?? prior.image      ?? null,
+                        layers: layers,
+                        image:  rec.image ?? null
                     };
 
                     // Track globally last-active
-                    activeCharacterId   = id;
-                    activeOutfitKey     = characterChain[id].outfit;
-                    activeExpressionKey = characterChain[id].expression;
-                    activeImageFile     = characterChain[id].image;
+                    activeCharacterId = id;
+                    activeLayers      = layers;
+                    activeImageFile   = rec.image ?? null;
                     break;
                 }
             }
@@ -150,8 +127,7 @@ export function reconstruct(chat) {
         characterChain,
         activeRoster,
         activeCharacterId,
-        activeOutfitKey,
-        activeExpressionKey,
+        activeLayers,
         activeImageFile,
     };
 }

@@ -1,54 +1,47 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-10T17:00:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
- *
- * Implements the CNZ-style "Active State" architecture:
- * - 'activeState' is the current working copy (the "Working Table").
- * - 'profiles' is a dictionary of saved snapshots (the "Bookshelf").
- * - Character data remains global in registry.js and is NOT part of profiles.
- *
- * Updated to include Hugging Face model configuration, HF Space settings,
- * and the user-configurable test prompt for engine validation.
+ * Implements the "Working Table" architecture for the Layered State Pipeline.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
- * getMetaSettings()         — Returns the root object (profiles, currentProfileName).
- * updateSetting(key, value) — Updates the working copy and debounces save.
+ * getMetaSettings()         — Returns root metadata.
+ * updateSetting(key, value) — Updates working copy and debounces save.
  * initSettings()            — Handles migration and default population.
+ * 
+ * @contract
+ *   assertions:
+ *     purity: Stateful Owner
+ *     state_ownership: [extension_settings.personalyze]
+ *     external_io: [saveSettingsDebounced]
  */
 
 import { saveSettingsDebounced } from '../../../../script.js';
 import { extension_settings } from '../../../extensions.js';
 import { warn, log } from './utils/logger.js';
 import {
+    PHASE_1_SUBJECT_PROMPT,
+    PHASE_2_CHANGE_PROMPT,
+    PHASE_3_LAYERED_PROMPT,
+    ANCHOR_SCAN_PROMPT,
+    OUTFIT_GENERATOR_PROMPT
+} from './logic/prompts.js';
+import {
     DEFAULT_IMAGE_MODEL,
-    DEFAULT_HF_IMAGE_MODEL,
-    DEFAULT_HF_PROVIDER,
-    DEFAULT_HF_ENGINE,
-    DEFAULT_HF_SPACE_ID,
-    DEFAULT_HF_SAVED_SPACES,
+    DEFAULT_FAST_PROFILE_ID,
+    DEFAULT_SMART_PROFILE_ID,
     DEFAULT_VN_STYLE_SUFFIX,
-    DEFAULT_SUBJECT_MATCH_PROMPT,
-    DEFAULT_SUBJECT_LIST_PROMPT,
-    DEFAULT_CHANGE_CHECK_PROMPT,
-    DEFAULT_COMBINED_CLASSIFIER_PROMPT,
-    DEFAULT_ANCHOR_SCAN_PROMPT,
-    DEFAULT_OUTFIT_DESCRIBER_PROMPT,
-    DEFAULT_EXPRESSION_DESCRIBER_PROMPT,
     DEFAULT_DETECTION_HISTORY,
     DEFAULT_DESCRIBER_HISTORY,
     DEFAULT_DEV_MODE,
     DEFAULT_VERBOSE_LOGGING,
-    DEFAULT_EXPRESSION_LABELS,
     DEFAULT_PLZ_VN_SPLIT,
     DEFAULT_TEST_PROMPT,
     DEFAULT_FAL_MODEL,
     DEFAULT_PIAPI_MODEL,
-    DEFAULT_OUTFIT_GENERATOR_PROMPT,
-    DEFAULT_OUTFIT_GENERATOR_SCAN_PROMPT,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
@@ -60,91 +53,79 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     plzVnMode:              false,
     plzVnSplitPercent:      DEFAULT_PLZ_VN_SPLIT,
     imageModel:             DEFAULT_IMAGE_MODEL,
-    hfProvider:             DEFAULT_HF_PROVIDER,
-    hfImageModel:           DEFAULT_HF_IMAGE_MODEL,
-    hfEngine:               DEFAULT_HF_ENGINE,
-    hfSpaceId:              DEFAULT_HF_SPACE_ID,
-    hfSavedSpaces:          DEFAULT_HF_SAVED_SPACES,
+    falModel:               DEFAULT_FAL_MODEL,
+    piapiModel:             DEFAULT_PIAPI_MODEL,
     vnStyleSuffix:          DEFAULT_VN_STYLE_SUFFIX,
     devMode:                DEFAULT_DEV_MODE,
     verboseLogging:         DEFAULT_VERBOSE_LOGGING,
-    booleanProfileId:       null,
-    classifierProfileId:    null,
-    describerProfileId:     null,
+    
+    // Dual-Model Routing
+    fastProfileId:          DEFAULT_FAST_PROFILE_ID,
+    smartProfileId:         DEFAULT_SMART_PROFILE_ID,
+    
     detectionHistory:       DEFAULT_DETECTION_HISTORY,
     describerHistory:       DEFAULT_DESCRIBER_HISTORY,
-    expressionLabels:       DEFAULT_EXPRESSION_LABELS,
-    anchorScanPrompt:           DEFAULT_ANCHOR_SCAN_PROMPT,
-    subjectMatchPrompt:         DEFAULT_SUBJECT_MATCH_PROMPT,
-    subjectListPrompt:          DEFAULT_SUBJECT_LIST_PROMPT,
-    changeCheckPrompt:          DEFAULT_CHANGE_CHECK_PROMPT,
-    combinedClassifierPrompt:   DEFAULT_COMBINED_CLASSIFIER_PROMPT,
-    outfitDescriberPrompt:      DEFAULT_OUTFIT_DESCRIBER_PROMPT,
-    expressionDescriberPrompt:  DEFAULT_EXPRESSION_DESCRIBER_PROMPT,
-    testPrompt:                 DEFAULT_TEST_PROMPT,
-    falModel:                   DEFAULT_FAL_MODEL,
-    piapiModel:                 DEFAULT_PIAPI_MODEL,
-    outfitGeneratorPrompt:      DEFAULT_OUTFIT_GENERATOR_PROMPT,
-    outfitGeneratorScanPrompt:  DEFAULT_OUTFIT_GENERATOR_SCAN_PROMPT,
-    engineEnablePollinations:   true,
-    engineEnableHuggingFace:    true,
-    engineEnableFal:            false, // Off by default until key is added
-    engineEnablePiAPI:          false, // Off by default until key is added
-    defaultEngine:              'pollinations',
+    
+    // Prompts
+    phase1SubjectPrompt:    PHASE_1_SUBJECT_PROMPT,
+    phase2ChangePrompt:     PHASE_2_CHANGE_PROMPT,
+    phase3LayeredPrompt:    PHASE_3_LAYERED_PROMPT,
+    anchorScanPrompt:       ANCHOR_SCAN_PROMPT,
+    outfitGeneratorPrompt:  OUTFIT_GENERATOR_PROMPT,
+    
+    testPrompt:             DEFAULT_TEST_PROMPT,
+    defaultEngine:          'pollinations',
+    engineEnablePollinations: true,
+    engineEnableFal:          false,
+    engineEnablePiAPI:        false,
+    engineEnableHuggingFace:  true,
 });
 
-/**
- * Returns the "Working Table" settings.
- * @returns {object}
- */
+/** Returns the active working copy. */
 export function getSettings() {
     return extension_settings[EXT_NAME].activeState;
 }
 
-/**
- * Returns the root metadata (profiles list and current name).
- * @returns {object}
- */
+/** Returns the root metadata. */
 export function getMetaSettings() {
     return extension_settings[EXT_NAME];
 }
 
-/**
- * Updates a single key in the activeState.
- */
+/** Updates a single key and saves. */
 export function updateSetting(key, value) {
     if (!Object.prototype.hasOwnProperty.call(SETTINGS_DEFAULTS, key)) {
-        warn('Settings', `Attempted to update unknown key: "${key}"`);
+        warn('Settings', `Unknown key: "${key}"`);
         return;
     }
     extension_settings[EXT_NAME].activeState[key] = value;
     saveSettingsDebounced();
 }
 
-/**
- * Initializes the settings structure. 
- * If old flat settings exist, it moves them into a 'Default' profile.
- */
+/** Initializes settings and handles key migration. */
 export function initSettings() {
     if (!extension_settings[EXT_NAME]) extension_settings[EXT_NAME] = {};
     const root = extension_settings[EXT_NAME];
 
-    // Migration logic: move old root.settings into profiles.Default
     if (!root.profiles) {
-        log('Settings', 'Migrating to profile-based architecture...');
-        
-        const legacyConfig = root.settings || {};
-        const defaultProfile = Object.assign({}, SETTINGS_DEFAULTS, legacyConfig);
-        
+        log('Settings', 'Initializing profile-based architecture...');
+        const defaultProfile = Object.assign({}, SETTINGS_DEFAULTS);
         root.profiles = { 'Default': defaultProfile };
         root.currentProfileName = 'Default';
         root.activeState = structuredClone(defaultProfile);
-        
-        // Clean up the old key
-        delete root.settings;
     } else {
-        // Ensure activeState has all keys from current defaults (safety for updates)
+        // Ensure activeState has all new keys from the Layered architecture
         root.activeState = Object.assign({}, SETTINGS_DEFAULTS, root.activeState);
+        
+        // Migration: Map old boolean/classifier/describer keys to new fast/smart keys if necessary
+        if (root.activeState.booleanProfileId && !root.activeState.fastProfileId) {
+            root.activeState.fastProfileId = root.activeState.booleanProfileId;
+        }
+        if (root.activeState.describerProfileId && !root.activeState.smartProfileId) {
+            root.activeState.smartProfileId = root.activeState.describerProfileId;
+        }
+        if (root.activeState.classifierProfileId && !root.activeState.smartProfileId) {
+            root.activeState.smartProfileId = root.activeState.classifierProfileId;
+        }
     }
 
     saveSettingsDebounced();

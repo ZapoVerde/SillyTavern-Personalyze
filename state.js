@@ -1,78 +1,82 @@
 /**
  * @file data/default-user/extensions/personalyze/state.js
- * @stamp {"utc":"2026-04-07T12:10:00.000Z"}
+ * @stamp {"utc":"2026-04-10T11:00:00.000Z"}
  * @architectural-role Stateful Owner (Runtime State)
  * @description
  * Single source of truth for all PersonaLyze in-memory runtime state.
- *
- * Tracks the active character, their current outfit and expression pointers,
- * and the local wardrobe definitions (DNA) derived from the chat history.
- *
- * STRICT CONTRACT:
- * 1. This module is the ONLY module permitted to mutate the 'state' object.
- * 2. External modules MUST use the provided Setter API for all updates.
- * 3. External modules may READ from the exported 'state' object directly.
- * 4. All objects passed into setters are structured-cloned to prevent reference leaks.
+ * 
+ * Tracks the active character, their current layered visual state (Outerwear, Top, 
+ * Bottom, Accessories, Emotion), and the local DNA derived from chat history.
  *
  * @api-declaration
  * state                                    — Read-only access to runtime data.
  * setWorkshopCharacter(characterId)        — Sets the character open in the Workshop.
  * resetState()                             — Restores state to factory defaults.
  * updateActiveCharacter(characterId)       — Sets the currently tracked character.
- * updateActivePointers(outfit, expression) — Updates the active outfit/expression keys.
- * updateChainEntry(characterId, outfit, expression, image) — Updates one character's chain slot.
+ * updateActiveLayers(layers)               — Sets the active 5-slot visual state.
+ * updateActiveImage(filename)              — Updates the resolved filename on disk.
+ * updateChainLayers(characterId, layers, image) — Updates one character's chain slot.
  * getChainEntry(characterId)               — Returns a character's last-known state or null.
  * bulkInitState(data)                      — Hydrates state from a reconstruction pass.
- * setFileIndex(files)                      — Overwrites the known image file set.
- * addToFileIndex(file)                     — Appends a single filename to the known set.
- * setActiveRoster(roster)                  — Replaces the active character roster for this chat.
+ * setFileIndex(files)                      ) Overwrites the known image file set.
+ * addToFileIndex(file)                     — Appends a filename to the set.
+ * removeFromFileIndex(filenames)           — Removes filenames from the set.
+ * setActiveRoster(roster)                  — Replaces the active roster for this chat.
  * upsertChatCharacterDef(id, anchor, seed) — Updates local DNA identity.
- * upsertChatOutfitDef(id, key, label, desc, provider) — Updates local DNA outfit.
- * upsertChatExpressionDef(id, key, label, desc) — Updates local DNA expression.
+ * upsertChatEnsemble(id, key, label, layers) — Updates local DNA ensemble (saved layers).
+ * deleteChatEnsemble(id, key)              — Removes an ensemble from local DNA.
+ * 
+ * @contract
+ *   assertions:
+ *     purity: Stateful Owner
+ *     state_ownership: [state]
+ *     external_io: []
  */
 
 export const state = {
     // Active character for the current chat turn
     activeCharacterId: null,
 
-    // Current visual pointers
-    activeOutfitKey:      null,
-    activeExpressionKey:  null,
-    activeImageFile:      null, // resolved filename on disk
+    // Current visual state (The Layered Snapshot)
+    activeLayers: {
+        outerwear:   null, // { item, modifier }
+        top:         null, // { item, modifier }
+        bottom:      null, // { item, modifier }
+        accessories: null, // { item, modifier }
+        emotion:     'neutral' // string (adjective)
+    },
+    
+    activeImageFile: null, // resolved filename on disk
 
-    // Local DNA definitions (The "Working Copy" of the character library for this chat)
+    // Local DNA definitions
     // Keyed by characterId.
-    chatCharacters: {}, // { [id]: { identityAnchor, seed, outfits: {}, expressions: {} } }
+    chatCharacters: {}, // { [id]: { identityAnchor, seed, ensembles: {} } }
 
-    // Per-chat roster — the set of character IDs enabled for the active chat.
+    // Per-chat roster
     activeRoster: [],
 
-    // Last-known visual pointers per character.
-    // Keyed by characterId. Rebuilt from DNA array on every chat load.
-    characterChain: {}, // { [characterId]: { outfit, expression, image } }
+    // Last-known visual state per character.
+    // Keyed by characterId. { layers, image }
+    characterChain: {},
 
-    // Filesystem cache — set of filenames confirmed present on the server
+    // Filesystem cache
     fileIndex: new Set(),
 
     // Workshop (Temporary UI State)
     _workshopCharacterId: null,
 };
 
-/**
- * Sets the character currently being edited in the Workshop.
- */
+/** Sets the character currently being edited in the Workshop. */
 export function setWorkshopCharacter(characterId) {
     state._workshopCharacterId = characterId ?? null;
 }
 
-/**
- * Restores the entire state to its initial null/empty values.
- * Called on chat change.
- */
+/** Restores the entire state to defaults. Called on chat change. */
 export function resetState() {
     state.activeCharacterId    = null;
-    state.activeOutfitKey      = null;
-    state.activeExpressionKey  = null;
+    state.activeLayers = {
+        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral'
+    };
     state.activeImageFile      = null;
     state.chatCharacters       = {};
     state.activeRoster         = [];
@@ -81,115 +85,90 @@ export function resetState() {
     state._workshopCharacterId = null;
 }
 
-/**
- * Sets the character currently being tracked for this chat turn.
- */
+/** Sets the character currently being tracked for this chat turn. */
 export function updateActiveCharacter(characterId) {
     state.activeCharacterId = characterId;
 }
 
-/**
- * Updates the active outfit and expression pointer keys.
- */
-export function updateActivePointers(outfitKey, expressionKey) {
-    state.activeOutfitKey     = outfitKey;
-    state.activeExpressionKey = expressionKey;
+/** Updates the active 5-slot visual state. */
+export function updateActiveLayers(layers) {
+    state.activeLayers = structuredClone(layers);
 }
 
-/**
- * Updates the filename of the currently displayed portrait image.
- */
+/** Updates the filename of the currently displayed portrait image. */
 export function updateActiveImage(filename) {
     state.activeImageFile = filename;
 }
 
-/**
- * Updates a single character's DNA chain slot with their latest visual state.
- * Called by the pipeline after each resolved turn.
- */
-export function updateChainEntry(characterId, outfit, expression, image) {
-    state.characterChain[characterId] = { outfit, expression, image };
+/** Updates a single character's DNA chain slot with their latest visual state. */
+export function updateChainLayers(characterId, layers, image) {
+    state.characterChain[characterId] = { 
+        layers: structuredClone(layers), 
+        image 
+    };
 }
 
-/**
- * Returns the last-known visual state for a character, or null if unseen.
- */
+/** Returns the last-known visual state for a character, or null if unseen. */
 export function getChainEntry(characterId) {
     return state.characterChain[characterId] ?? null;
 }
 
-/**
- * Performs a bulk hydration of state from a reconstruction pass.
- */
-export function bulkInitState({ chatCharacters, characterChain, activeRoster, activeCharacterId, activeOutfitKey, activeExpressionKey, activeImageFile }) {
+/** Performs a bulk hydration of state from a reconstruction pass. */
+export function bulkInitState({ chatCharacters, characterChain, activeRoster, activeCharacterId, activeLayers, activeImageFile }) {
     state.chatCharacters      = structuredClone(chatCharacters ?? {});
     state.characterChain      = structuredClone(characterChain ?? {});
     state.activeRoster        = Array.isArray(activeRoster) ? [...activeRoster] : [];
     state.activeCharacterId   = activeCharacterId   ?? null;
-    state.activeOutfitKey     = activeOutfitKey     ?? null;
-    state.activeExpressionKey = activeExpressionKey ?? null;
+    state.activeLayers        = structuredClone(activeLayers ?? {
+        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral'
+    });
     state.activeImageFile     = activeImageFile     ?? null;
 }
 
-/**
- * Replaces the active character roster for this chat.
- */
+/** Replaces the active character roster for this chat. */
 export function setActiveRoster(roster) {
     state.activeRoster = Array.isArray(roster) ? [...roster] : [];
 }
 
-/**
- * Overwrites the file index with a fresh list from the server.
- */
+/** Overwrites the file index. */
 export function setFileIndex(files) {
     state.fileIndex = new Set(files);
 }
 
-/**
- * Appends a single confirmed filename to the file index.
- */
+/** Appends a confirmed filename. */
 export function addToFileIndex(filename) {
     state.fileIndex.add(filename);
 }
 
-/**
- * Removes a list of filenames from the in-memory file index.
- */
+/** Removes filenames from the in-memory index. */
 export function removeFromFileIndex(filenames) {
     for (const f of filenames) state.fileIndex.delete(f);
 }
 
 // ─── Local DNA Setters ───────────────────────────────────────────────────────
 
-/** Internal helper to ensure a character structure exists in the chat DNA. */
 function _ensureChatChar(id) {
     if (!state.chatCharacters[id]) {
-        state.chatCharacters[id] = { identityAnchor: '', seed: 1, outfits: {}, expressions: {} };
+        state.chatCharacters[id] = { identityAnchor: '', seed: 1, ensembles: {} };
     }
     return state.chatCharacters[id];
 }
 
-/** Updates identity anchor and seed for a character in the local DNA. */
+/** Updates identity anchor and seed for a character in local DNA. */
 export function upsertChatCharacterDef(id, anchor, seed) {
     const char = _ensureChatChar(id);
     char.identityAnchor = anchor;
     char.seed = seed;
 }
 
-/** Adds or updates an outfit for a character in the local DNA. */
-export function upsertChatOutfitDef(id, key, label, description, provider) {
+/** Adds or updates an ensemble (saved layer snapshot) for a character. */
+export function upsertChatEnsemble(id, key, label, layers) {
     const char = _ensureChatChar(id);
-    char.outfits[key] = { label, description, provider };
+    char.ensembles[key] = { label, layers: structuredClone(layers) };
 }
 
-/** Removes an outfit from a character in the local DNA. */
-export function deleteChatOutfitDef(id, key) {
+/** Removes an ensemble from a character in the local DNA. */
+export function deleteChatEnsemble(id, key) {
     const char = _ensureChatChar(id);
-    delete char.outfits[key];
-}
-
-/** Adds or updates an expression for a character in the local DNA. */
-export function upsertChatExpressionDef(id, key, label, description) {
-    const char = _ensureChatChar(id);
-    char.expressions[key] = { label, description };
+    delete char.ensembles[key];
 }

@@ -1,21 +1,18 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/badge.js
- * @stamp {"utc":"2026-04-07T15:10:00.000Z"}
+ * @stamp {"utc":"2026-04-10T15:20:00.000Z"}
  * @architectural-role UI (Per-Message Badge)
  * @description
  * Injects a state indicator badge into the .mes_buttons bar of AI messages.
+ * Resolves the 5-slot layered state (Emotion + Top Layer) from chat DNA.
  * 
- * Updated to use the DNA Chain architecture: resolves labels using 
- * state.chatCharacters (Local DNA) and handles the Array Pattern 
- * in message metadata.
- *
  * @api-declaration
  * injectMessageBadge(messageId)  — Resolves DNA for messageId and stamps badge.
  * reinjectAllBadges()            — Refreshes all badges in the chat.
  *
  * @contract
  *   assertions:
- *     purity: IO
+ *     purity: IO Executor
  *     state_ownership: []
  *     external_io: [DOM (.mes_buttons), state.js, getContext()]
  */
@@ -30,18 +27,22 @@ const BADGE_CLASS = 'plz-msg-badge';
  * Builds and attaches the badge into .mes_buttons for a message element.
  * 
  * @param {jQuery} $mes
- * @param {object} visualState { characterId, outfit, expression }
+ * @param {object} visualState { characterId, layers: { outerwear, top, ... emotion } }
  */
 function renderBadge($mes, visualState) {
     $mes.find(`.${BADGE_CLASS}`).remove();
 
-    const charId       = visualState.characterId;
-    const character    = state.chatCharacters[charId];
+    const charId    = visualState.characterId;
+    const character = state.chatCharacters[charId];
+    const layers    = visualState.layers || {};
     
-    // Resolve labels from local DNA definitions
-    const outfitLabel  = character?.outfits[visualState.outfit]?.label     ?? visualState.outfit     ?? '—';
-    const exprLabel    = character?.expressions[visualState.expression]?.label ?? visualState.expression ?? '—';
-    const charLabel    = charId.replace(/_/g, ' ');
+    // Logic: Identify a representative clothing item to show in the small badge
+    const outerwear = layers.outerwear?.item;
+    const top       = layers.top?.item;
+    const clothes   = outerwear || top || '—';
+    const emotion   = layers.emotion || 'neutral';
+
+    const charLabel = charId.replace(/_/g, ' ');
 
     const $badge = $(`
         <div class="${BADGE_CLASS}"
@@ -66,9 +67,9 @@ function renderBadge($mes, visualState) {
                 <i class="fa-solid fa-user" style="font-size:0.85em;"></i>
                 <span>${escapeHtml(charLabel)}</span>
                 <span style="opacity:0.4;">|</span>
-                <span>${escapeHtml(outfitLabel)}</span>
+                <span title="Emotion">${escapeHtml(emotion)}</span>
                 <span style="opacity:0.4;">|</span>
-                <span>${escapeHtml(exprLabel)}</span>
+                <span title="Top Layer">${escapeHtml(clothes)}</span>
             </span>
         </div>
     `);
@@ -87,21 +88,10 @@ export function injectMessageBadge(messageId) {
     if (!message || message.is_user) return;
 
     const plzData = message.extra?.personalyze;
-    if (!plzData) return;
+    if (!plzData || !Array.isArray(plzData)) return;
 
-    // Resolve the latest visual state record from the DNA array (or handle legacy object)
-    let latestState = null;
-    if (Array.isArray(plzData)) {
-        for (let i = plzData.length - 1; i >= 0; i--) {
-            if (plzData[i].type === 'visual_state') {
-                latestState = plzData[i];
-                break;
-            }
-        }
-    } else if (plzData.characterId) {
-        latestState = plzData;
-    }
-
+    // Resolve the latest visual state record from the DNA array
+    const latestState = plzData.findLast(rec => rec.type === 'visual_state');
     if (!latestState) return;
 
     const $mes = $(`.mes[mesid="${messageId}"]`);

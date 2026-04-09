@@ -1,16 +1,20 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/libraryTemplates.js
- * @stamp {"utc":"2026-04-07T14:10:00.000Z"}
+ * @stamp {"utc":"2026-04-10T18:00:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Generates the HTML strings for the Personalyze Workshop Library view.
+ * Updated to display Ensembles (saved layered snapshots) instead of monolithic outfits.
  * 
- * Handles the display of the Global Portfolio (Template Gallery) and 
- * the "Import to Chat" interface.
- *
  * @api-declaration
  * getLibraryListHTML(libraryCharacters, dnaIds) — Library tab list
  * getLibraryEmptyHTML() — Library placeholder
+ * 
+ * @contract
+ *   assertions:
+ *     purity: Pure Function
+ *     state_ownership: []
+ *     external_io: []
  */
 
 import { escapeHtml } from '../../utils/history.js';
@@ -28,7 +32,7 @@ export function getLibraryListHTML(characters, dnaIds = []) {
         return getLibraryEmptyHTML();
     }
 
-    // Sort: Characters NOT in the chat first
+    // Sort: Characters NOT in the chat first to encourage discovery
     const sorted = [...entries].sort(([aId], [bId]) => {
         const aInDna = dnaIds.includes(aId);
         const bInDna = dnaIds.includes(bId);
@@ -40,9 +44,14 @@ export function getLibraryListHTML(characters, dnaIds = []) {
         const inDna = dnaIds.includes(id);
         const label = id.replace(/_/g, ' ');
 
+        // Import icon: Checkmark if already present, Import arrow if not
         const importIcon = inDna
             ? `<i class="fa-solid fa-check-double" title="Already in Chat DNA" style="opacity:0.4; cursor:default;"></i>`
             : `<i class="fa-solid fa-file-import plz-lib-import" title="Import to Chat DNA" style="color:var(--SmartThemeQuoteColor); cursor:pointer;"></i>`;
+
+        // Support for both legacy 'identity_anchor' and new 'identityAnchor' keys
+        const anchor = char.identityAnchor || char.identity_anchor || '—';
+        const ensembleCount = Object.keys(char.ensembles ?? {}).length;
 
         return `
         <div class="plz-roster-item" data-id="${escapeHtml(id)}" style="${inDna ? 'opacity:0.5;' : ''}">
@@ -51,10 +60,11 @@ export function getLibraryListHTML(characters, dnaIds = []) {
                     ${escapeHtml(label)}
                     ${inDna ? '<span style="font-size:0.7em; font-weight:normal; opacity:0.6;">(Active DNA)</span>' : ''}
                 </strong>
-                <small>${escapeHtml(char.identityAnchor || '—')}</small>
+                <small style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                    ${escapeHtml(anchor)}
+                </small>
                 <div style="font-size:0.72em; opacity:0.5; margin-top:2px;">
-                    ${Object.keys(char.outfits ?? {}).length} Outfits · 
-                    ${Object.keys(char.expressions ?? {}).length} Expressions
+                    ${ensembleCount} Saved Ensemble(s)
                 </div>
             </div>
             <div class="plz-roster-actions">
@@ -65,11 +75,11 @@ export function getLibraryListHTML(characters, dnaIds = []) {
     }).join('');
 
     return `
-    <div style="display:flex; flex-direction:column; gap:12px;">
+    <div style="display:flex; flex-direction:column; gap:12px; height: 100%;">
         <p style="margin-top:0; opacity:0.7; font-size:0.9em; flex-shrink:0;">
-            Browse your Global Library templates. Import a character to add their identity and wardrobe to this chat's DNA.
+            Global Library: Character templates and wardrobes. Import to add them to this chat's DNA.
         </p>
-        <div class="plz-library-list">
+        <div class="plz-library-list" style="flex: 1; overflow-y: auto;">
             ${rows}
         </div>
     </div>`;

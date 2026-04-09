@@ -1,15 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/templates.js
- * @stamp {"utc":"2026-04-07T14:40:00.000Z"}
+ * @stamp {"utc":"2026-04-09T00:00:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Pure functions for generating the Personalyze settings panel HTML.
- * 
- * Provides the structural foundation for the settings panel, including 
- * profile management, pipeline configuration, and engine links.
+ * Updated for the 3-Phase Layered State architecture and Dual-Model routing.
  *
  * @api-declaration
  * buildPanelHTML(settings, meta, profileNames) -> string (HTML)
+ * buildLogModalHTML(pipelineLogs, workshopLogs) -> string (HTML)
  *
  * @contract
  *   assertions:
@@ -21,77 +20,111 @@
 import { escapeHtml } from '../../utils/history.js';
 
 /**
- * Renders the call log modal HTML from pipeline and workshop turn records.
- * @param {object[]} pipelineLogs
- * @param {object[]} workshopLogs
+ * Renders the call log modal HTML.
+ * - All timestamps shown in UTC.
+ * - Two sections: Pipeline (last 2 turns) and Settings / Modal (last 3).
+ * - Every prompt and response has a Copy button.
+ * - Image generation calls show the prompt only (no response block).
  */
 export function buildLogModalHTML(pipelineLogs, workshopLogs) {
+    let _copyId = 0;
+
+    /** Formats a ms-epoch timestamp as "YYYY-MM-DD HH:MM:SS UTC". */
+    function utcTime(ts) {
+        return new Date(ts).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+    }
+
+    /**
+     * Renders a labelled text block (prompt or response) with a Copy button.
+     * Uses an element ID so the button can read textContent directly (avoids
+     * re-encoding / decoding issues with special characters).
+     */
+    function copyBlock(rawText, sectionLabel) {
+        if (!rawText) return '';
+        const id = `plz-log-copy-${_copyId++}`;
+        const escaped = escapeHtml(rawText);
+        const onclickJs = `(function(){`
+            + `var el=document.getElementById('${id}');`
+            + `navigator.clipboard.writeText(el.textContent).then(function(){`
+            + `el.style.outline='1px solid #4caf50';`
+            + `setTimeout(function(){el.style.outline='';},900);`
+            + `});`
+            + `})();event.stopPropagation();`;
+        return `
+        <div style="margin-top:6px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.78em;opacity:0.65;margin-bottom:2px;">
+                <span>${sectionLabel}</span>
+                <button onclick="${onclickJs}"
+                    class="menu_button"
+                    style="font-size:0.72em;padding:1px 7px;line-height:1.6;opacity:0.75;cursor:pointer;"
+                    title="Copy to clipboard">
+                    <i class="fa-regular fa-copy"></i> Copy
+                </button>
+            </div>
+            <pre id="${id}" style="font-size:0.75em;white-space:pre-wrap;word-break:break-word;max-height:150px;overflow-y:auto;margin:0;padding:6px;background:rgba(0,0,0,0.25);border-radius:4px;">${escaped}</pre>
+        </div>`;
+    }
+
     function renderTurns(turns) {
         if (!turns.length) return `<p style="opacity:0.5;font-size:0.88em;">No entries yet.</p>`;
         return [...turns].reverse().map(turn => {
-            const time = new Date(turn.timestamp).toLocaleTimeString();
+            const turnTime = utcTime(turn.timestamp);
             const calls = turn.calls.map(c => {
+                const callTime = utcTime(c.timestamp);
                 const status = c.error
-                    ? `<span style="color:var(--SmartThemeQuoteColor);">✗ ${escapeHtml(c.error)}</span>`
-                    : `<span style="opacity:0.6;">✓</span>`;
+                    ? `<span style="color:var(--SmartThemeErrorColor);">✗ ${escapeHtml(c.error)}</span>`
+                    : `<span style="opacity:0.55;">✓</span>`;
+                // Image generation calls have response=null and error=null by design.
+                const isImageCall = !c.response && !c.error;
                 return `
                 <div style="margin-top:8px;border-left:2px solid rgba(255,255,255,0.1);padding-left:8px;">
-                    <div style="display:flex;justify-content:space-between;font-size:0.8em;margin-bottom:3px;">
-                        <strong>${escapeHtml(c.label)}</strong>${status}
+                    <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.8em;margin-bottom:3px;">
+                        <strong>${escapeHtml(c.label)}</strong>
+                        <span style="display:flex;gap:8px;align-items:center;">
+                            <span style="font-size:0.85em;opacity:0.4;">${callTime}</span>
+                            ${status}
+                        </span>
                     </div>
-                    <details>
-                        <summary style="font-size:0.78em;opacity:0.6;cursor:pointer;">Prompt</summary>
-                        <pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-word;max-height:120px;overflow-y:auto;margin:4px 0 0;">${escapeHtml(c.prompt)}</pre>
-                    </details>
-                    ${c.response ? `<details><summary style="font-size:0.78em;opacity:0.6;cursor:pointer;">Response</summary><pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-word;max-height:80px;overflow-y:auto;margin:4px 0 0;">${escapeHtml(c.response)}</pre></details>` : ''}
+                    ${copyBlock(c.prompt, 'Prompt')}
+                    ${c.response ? copyBlock(c.response, 'Response') : ''}
+                    ${isImageCall ? `<div style="font-size:0.72em;opacity:0.35;margin-top:3px;font-style:italic;">image generation — no text response</div>` : ''}
+                    ${c.error ? `<div style="font-size:0.75em;color:var(--SmartThemeErrorColor);margin-top:4px;">${escapeHtml(c.error)}</div>` : ''}
                 </div>`;
             }).join('');
             return `
             <div style="margin-bottom:14px;padding:10px;background:rgba(255,255,255,0.04);border-radius:6px;">
-                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                     <strong style="font-size:0.88em;">${escapeHtml(turn.label)}</strong>
-                    <span style="font-size:0.78em;opacity:0.45;">${time}</span>
+                    <span style="font-size:0.78em;opacity:0.4;">${turnTime}</span>
                 </div>
-                ${calls || '<span style="font-size:0.8em;opacity:0.5;">No calls recorded.</span>'}
+                ${calls || '<span style="font-size:0.8em;opacity:0.5;">No calls.</span>'}
             </div>`;
         }).join('');
     }
 
     return `
     <h3 style="margin-top:0;">Call Logs</h3>
-    <div style="margin-bottom:6px;"><strong style="font-size:0.9em;">Pipeline</strong></div>
+    <div style="margin-bottom:6px;"><strong style="font-size:0.9em;">Pipeline</strong> <span style="font-size:0.8em;opacity:0.5;">(last 2 turns)</span></div>
     ${renderTurns(pipelineLogs)}
     <hr style="margin:16px 0;opacity:0.2;">
-    <div style="margin-bottom:6px;"><strong style="font-size:0.9em;">Workshop</strong></div>
+    <div style="margin-bottom:6px;"><strong style="font-size:0.9em;">Settings / Modal</strong> <span style="font-size:0.8em;opacity:0.5;">(last 3)</span></div>
     ${renderTurns(workshopLogs)}`;
 }
 
-/**
- * Generates a styled informational icon with a hover tooltip.
- * @param {string} text 
- */
+/** Utility for help tooltips. */
 function tip(text) {
     return `<span class="plz-info-icon" title="${text}" style="cursor:help; opacity:0.6; margin-left:4px;"><i class="fa-solid fa-circle-info"></i></span>`;
 }
 
-/**
- * Builds a single pipeline call row with its labels and control IDs.
- */
-function buildCallRow(id, label, promptKey, profileKey, historyKey, description, extraButtons = '') {
+/** Builds a pipeline stage row. */
+function buildCallRow(id, label, profileKey, historyKey, description, extraButtons = '') {
     const historyRow = historyKey ? `
-        <div class="plz-settings-inline-row" style="margin-top:10px; display:flex; align-items:center; gap:8px;">
+        <div style="margin-top:10px; display:flex; align-items:center; gap:8px;">
             <label style="font-size:0.85em; opacity:0.75; white-space:nowrap;">History Window:</label>
-            <div style="display:flex; align-items:center; gap:4px;">
-                <input id="plz-history-${id}" type="number" min="0" step="1"
-                       class="text_pole plz-history-input" data-history-key="${historyKey}"
-                       style="width:60px;" />
-                <span style="font-size:0.83em; opacity:0.6;">pairs</span>
-            </div>
+            <input id="plz-history-${id}" type="number" min="0" step="1" class="text_pole plz-history-input" 
+                   data-history-key="${historyKey}" style="width:60px;" />
+            <span style="font-size:0.83em; opacity:0.6;">pairs</span>
         </div>` : '';
-
-    const editBtn = promptKey
-        ? `<button class="menu_button plz-open-prompt" data-prompt-key="${promptKey}">Edit Prompt</button>`
-        : '';
 
     return `
     <div class="plz-call-row" style="margin-bottom:14px; padding:12px; border:1px solid var(--SmartThemeBorderColor,#555); border-radius:6px;">
@@ -100,29 +133,20 @@ function buildCallRow(id, label, promptKey, profileKey, historyKey, description,
                 <strong style="font-size:0.9em;">${label}</strong>
                 ${tip(description)}
             </div>
-            <div style="display:flex; gap:6px;">${editBtn}${extraButtons}</div>
+            <div style="display:flex; gap:6px;">${extraButtons}</div>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
             <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:80px;">Connection:</label>
-            <select id="plz-profile-${id}" class="text_pole" style="flex:1;"
-                    data-profile-key="${profileKey}"></select>
+            <select id="plz-profile-${id}" class="text_pole" style="flex:1;" data-profile-key="${profileKey}"></select>
         </div>
         ${historyRow}
     </div>`;
 }
 
-/**
- * Main Settings Panel template.
- * @param {object} settings       The activeState (working copy).
- * @param {object} meta           The root metadata (currentProfileName).
- * @param {string[]} profileNames List of all saved profile keys.
- */
+/** Main Settings Panel template. */
 export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
     const s = settings;
-    
-    const profileOptions = profileNames
-        .map(n => `<option value="${n}"${n === meta.currentProfileName ? ' selected' : ''}>${n}</option>`)
-        .join('');
+    const profileOptions = profileNames.map(n => `<option value="${n}"${n === meta.currentProfileName ? ' selected' : ''}>${n}</option>`).join('');
 
     return `
     <div id="plz-settings" class="extension_settings">
@@ -133,123 +157,45 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
             </div>
             <div class="inline-drawer-content">
 
-                <!-- ── Profile Management Bar ── -->
-                <div class="plz-settings-row cnz-profile-bar" style="display:flex; align-items:center; gap:6px; margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <select id="plz-profile-select" class="text_pole plz-profile-select" style="width:100%;" title="Active settings profile">
-                            ${profileOptions}
-                        </select>
-                        ${tip("Switch between different configurations. Adding a new profile clones your current settings table.")}
-                    </div>
-                    <button id="plz-profile-save"   class="menu_button" title="Save current settings to this profile" style="padding: 5px 12px;">💾</button>
-                    <button id="plz-profile-add"    class="menu_button" title="Save as new profile (clones current table)" style="padding: 5px 12px;">➕</button>
-                    <button id="plz-profile-rename" class="menu_button" title="Rename this profile" style="padding: 5px 12px;">✏️</button>
-                    <button id="plz-profile-delete" class="menu_button" title="Delete this profile" style="padding: 5px 12px; background:rgba(224, 85, 85, 0.15); color:#e05555; border-color:rgba(224, 85, 85, 0.3);">🗑️</button>
+                <!-- Profile Management -->
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
+                    <select id="plz-profile-select" class="text_pole" style="flex:1;">${profileOptions}</select>
+                    <button id="plz-profile-save" class="menu_button">💾</button>
+                    <button id="plz-profile-add" class="menu_button">➕</button>
+                    <button id="plz-profile-delete" class="menu_button" style="color:#e05555;">🗑️</button>
                 </div>
 
-                <!-- Global Enable -->
-                <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
-                    <label class="checkbox_label" style="font-size:0.9em; cursor:pointer;">
-                        <input type="checkbox" id="plz-enabled" ${s.enabled ? 'checked' : ''} />
-                        <span>Enable Personalyze</span>
-                    </label>
-                    ${tip("Globally activates or deactivates the Personalyze character detection pipeline.")}
+                <div style="margin-bottom:14px;">
+                    <label class="checkbox_label"><input type="checkbox" id="plz-enabled" ${s.enabled ? 'checked' : ''} /><span>Enable PersonaLyze</span></label>
                 </div>
 
-                <!-- Portrait Position -->
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                <!-- Pipeline Stages -->
+                ${buildCallRow('fast', 'Fast Model (Phase 1 & 2)', 'fastProfileId', 'detectionHistory', 
+                    "Used for Subject Detection and the Change Gate. Recommended: Mistral Small.", `
+                    <button class="menu_button plz-open-prompt" data-prompt-key="phase1SubjectPrompt">Subject?</button>
+                    <button class="menu_button plz-open-prompt" data-prompt-key="phase2ChangePrompt">Changed?</button>`)}
+                
+                ${buildCallRow('smart', 'Smart Model (Phase 3)', 'smartProfileId', 'describerHistory', 
+                    "Used for high-accuracy State Extraction. Recommended: Gemini Flash Lite or Claude Haiku.", `
+                    <button class="menu_button plz-open-prompt" data-prompt-key="phase3LayeredPrompt">Extract</button>`)}
+
+                <!-- Workshop & Utils -->
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
                     <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:110px;">Portrait Position</label>
                     <select id="plz-portrait-position" class="text_pole" style="flex:1;">
                         <option value="bottom-right" ${s.portraitPosition === 'bottom-right' ? 'selected' : ''}>Bottom Right</option>
                         <option value="center-left" ${s.portraitPosition === 'center-left' ? 'selected' : ''}>Center Left</option>
                     </select>
-                    ${tip("Controls where the floating character portrait appears in the chat view.")}
                 </div>
 
-                <!-- Split-Screen Character View -->
                 <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
-                    <label class="checkbox_label" style="font-size:0.9em; cursor:pointer; margin-bottom:6px;">
-                        <input type="checkbox" id="plz-vn-mode" ${s.plzVnMode ? 'checked' : ''} />
-                        <span>Split-Screen Character View</span>
-                    </label>
-                    ${tip("Shows the portrait in a dedicated panel above the chat. Drag the handle to resize.")}
-                    <p style="font-size:0.8em; opacity:0.6; margin:0 0 0 22px;">
-                        Overrides the floating portrait above. Drag handle to resize.
-                    </p>
+                    <button class="menu_button" id="plz-open-engines" style="width:100%;"><i class="fa-solid fa-gear"></i> Configure Engines</button>
                 </div>
 
-                <!-- Pipeline Steps -->
-                ${buildCallRow('boolean', 'Boolean — Subject / Changed', null, 'booleanProfileId', 'detectionHistory', 
-                    "Cheap YES/NO checks. 'Subject?' confirms if the active character is the focus. 'Changed?' checks if their outfit/expression has altered.", `
-                    <button class="menu_button plz-open-prompt" data-prompt-key="subjectMatchPrompt">Subject?</button>
-                    <button class="menu_button plz-open-prompt" data-prompt-key="changeCheckPrompt">Changed?</button>`)}
-                
-                ${buildCallRow('classifier', 'Classifier — Who / Visual State', null, 'classifierProfileId', null, 
-                    "Identifies which character is acting from your roster and classifies their current visual state.", `
-                    <button class="menu_button plz-open-prompt" data-prompt-key="subjectListPrompt">Who?</button>
-                    <button class="menu_button plz-open-prompt" data-prompt-key="combinedClassifierPrompt">Classify</button>`)}
-                
-                ${buildCallRow('describer', 'Describer — Extraction', 'outfitDescriberPrompt', 'describerProfileId', 'describerHistory',
-                    "Extracts visual descriptions for new outfits found in chat. Also used for the Workshop outfit generator.", `
-                    <button class="menu_button plz-open-prompt" data-prompt-key="outfitGeneratorPrompt" style="font-size:0.8em;">Gen</button>
-                    <button class="menu_button plz-open-prompt" data-prompt-key="outfitGeneratorScanPrompt" style="font-size:0.8em;">Gen+Scan</button>`)}
-
-                <!-- Image Generation -->
-                <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--SmartThemeBorderColor,#444);">
-                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-                        <strong style="font-size:0.95em;">Image Generation</strong>
-                        ${tip("Configure image generation engines, API keys, models, and HuggingFace Spaces.")}
-                    </div>
-                    
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                        <button class="menu_button" id="plz-open-engines" style="flex:1;">
-                            <i class="fa-solid fa-gear"></i> Configure Engines
-                        </button>
-                    </div>
-
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:60px;">Prompt:</label>
-                        <button class="menu_button plz-open-prompt" data-prompt-key="vnStyleSuffix" style="flex:1;">Edit Portrait Prompt Template</button>
-                        ${tip("The foundation of your image prompt. Supports {{character}}, {{outfit}}, and {{expression}} variables.")}
-                    </div>
-
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                        <label class="checkbox_label" style="font-size:0.85em; cursor:pointer;">
-                            <input type="checkbox" id="plz-dev-mode" ${s.devMode ? 'checked' : ''} />
-                            <span>Dev mode (low resolution)</span>
-                        </label>
-                        ${tip("Generates smaller images to save bandwidth and credits during testing.")}
-                    </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="menu_button" id="plz-open-workshop" style="flex:1;"><i class="fa-solid fa-dna"></i> Workshop</button>
+                    <button class="menu_button" id="plz-view-logs" style="flex:1;"><i class="fa-solid fa-list"></i> Logs</button>
                 </div>
-
-                <!-- Developer Settings -->
-                <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--SmartThemeBorderColor,#444);">
-                    <div style="display:flex; align-items:center; margin-bottom:10px;">
-                        <strong style="font-size:0.95em;">Developer Settings</strong>
-                        ${tip("Technical controls for troubleshooting.")}
-                    </div>
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                        <label class="checkbox_label" style="font-size:0.85em; cursor:pointer;">
-                            <input type="checkbox" id="plz-verbose-logging" ${s.verboseLogging ? 'checked' : ''} />
-                            <span>Verbose logging (browser console)</span>
-                        </label>
-                        ${tip("Enables detailed debug logs in the browser's developer console.")}
-                    </div>
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <button class="menu_button" id="plz-view-logs" style="font-size:0.85em; padding:4px 10px;">
-                            <i class="fa-solid fa-list"></i> View Logs
-                        </button>
-                        ${tip("Inspect the last few turns of AI call logs.")}
-                    </div>
-                </div>
-
-                <!-- Footer Actions -->
-                <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--SmartThemeBorderColor,#444); display:flex; gap:8px;">
-                    <button class="menu_button" id="plz-open-workshop" style="flex:1;">
-                        <i class="fa-solid fa-user"></i> Workshop
-                    </button>
-                </div>
-
             </div>
         </div>
     </div>`;

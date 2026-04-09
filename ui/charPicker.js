@@ -1,190 +1,185 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-10T15:00:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
- * Cascading character/outfit/expression picker. Opened by clicking the portrait
- * (floating overlay or VN panel). Lets the user manually set the active visual
- * state for the current turn.
+ * Cascading layered state picker. Lets the user manually set the active 
+ * visual state for the current turn using the 5-slot architecture.
  *
- * Flow:
- *   1. Character   — populated from state.activeRoster (enabled chars only)
- *   2. Outfit      — populated from the selected character's registry entry
- *   3. Expression  — populated from the global expression label palette
- *
- * On confirm: if the outfit × expression image exists in the file index, it is
- * applied immediately. If missing, it is generated first then applied.
- *
- * Always writes the result to the last AI message via lockedWritePointer.
+ * Provides a "Quick Load" dropdown for Ensembles (saved snapshots).
  *
  * @api-declaration
  * openCharPicker() → Promise<void>
  *
  * @contract
  *   assertions:
- *     purity: IO
- *     state_ownership: []
- *     external_io: [callPopup, lockedWritePointer, generate, setPortrait, DOM]
+ *     purity: IO Executor
+ *     state_ownership: [state (via setters)]
+ *     external_io: [callPopup, dnaWriter.js, promptCompiler.js, imageCache.js, portrait.js]
  */
 
 import { callPopup } from '../../../../../script.js';
 import { getContext } from '../../../../extensions.js';
 import {
-    state,
-    updateActiveCharacter,
-    updateActivePointers,
-    updateActiveImage,
-    addToFileIndex,
-    updateChainEntry,
+    state, updateActiveCharacter, updateActiveLayers, updateActiveImage,
+    addToFileIndex, updateChainLayers,
 } from '../state.js';
-import { getSettings } from '../settings.js';
-import { openWorkshop } from './workshop/core.js';
+import { compilePrompt } from '../logic/promptCompiler.js';
 import { buildFilenamePrefix, findCachedImage, generate } from '../imageCache.js';
 import { setPortrait } from '../portrait.js';
 import { lockedWriteVisualState, lockedPatchVisualStateImage } from '../io/dnaWriter.js';
-import { escapeHtml } from '../utils/history.js';
+import { escapeHtml, slugify } from '../utils/history.js';
 import { error } from '../utils/logger.js';
+import { smartResize } from '../utils/dom.js';
+import { getSettings } from '../settings.js';
+import { applyEnsemble } from '../logic/ensembleEngine.js';
 
 /**
- * Opens the character/outfit/expression picker popup.
- * Writes the confirmed selection to the last AI message and applies the portrait.
+ * Builds the HTML for the layered grid inside the picker.
+ */
+function buildGridHTML(layers) {
+    const slots = [
+        { label: 'Outerwear', key: 'outerwear' },
+        { label: 'Top', key: 'top' },
+        { label: 'Bottom', key: 'bottom' },
+        { label: 'Accessories', key: 'accessories' }
+    ];
+
+    const clothingHtml = slots.map(s => {
+        const item = layers[s.key]?.item ?? '';
+        const mod  = layers[s.key]?.modifier ?? '';
+        return `
+        <div style="margin-bottom:10px;">
+            <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">${s.label}</label>
+            <div style="display:flex; gap:4px;">
+                <input class="plz-cp-item text_pole" data-slot="${s.key}" type="text" placeholder="Item" value="${escapeHtml(item)}" style="flex:2;" />
+                <input class="plz-cp-mod text_pole" data-slot="${s.key}" type="text" placeholder="Mod" value="${escapeHtml(mod)}" style="flex:1;" />
+            </div>
+        </div>`;
+    }).join('');
+
+    return `
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+        ${clothingHtml}
+        <div style="grid-column: span 2;">
+            <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">Emotion</label>
+            <input id="plz-cp-emotion" class="text_pole" type="text" value="${escapeHtml(layers.emotion || 'neutral')}" style="width:100%;" />
+        </div>
+    </div>`;
+}
+
+/**
+ * Opens the manual character/layer picker.
  */
 export async function openCharPicker() {
     const context = getContext();
-    let lastAiIdx = -1;
-    for (let i = context.chat.length - 1; i >= 0; i--) {
-        if (!context.chat[i].is_user) { lastAiIdx = i; break; }
-    }
+    const lastAiIdx = context.chat.findLastIndex(m => !m.is_user);
     if (lastAiIdx === -1) {
-        if (window.toastr) window.toastr.info(
-            'No AI message yet — send a message first.',
-            'PersonaLyze'
-        );
+        if (window.toastr) window.toastr.info('No AI message yet.', 'PersonaLyze');
         return;
     }
 
-    const s          = getSettings();
-    const exprLabels = s.expressionLabels ?? [];
     const rosterChars = state.activeRoster.filter(id => state.chatCharacters[id]);
+    if (rosterChars.length === 0) return;
 
-    if (rosterChars.length === 0) {
-        const open = await callPopup(
-            'No characters are active in this chat yet.<br><br>Would you like to open the Workshop to add some?',
-            'confirm'
-        );
-        if (open) openWorkshop('library');
-        return;
-    }
+    const initId = (state.activeCharacterId && rosterChars.includes(state.activeCharacterId))
+        ? state.activeCharacterId : rosterChars[0];
 
-    const initCharId = (state.activeCharacterId && rosterChars.includes(state.activeCharacterId))
-        ? state.activeCharacterId
-        : rosterChars[0];
+    const currentLayers = state.characterChain[initId]?.layers || state.activeLayers;
 
-    function buildCharOptions(selectedId) {
-        return rosterChars.map(id => {
-            const label = id.replace(/_/g, ' ');
-            const sel   = id === selectedId ? 'selected' : '';
-            return `<option value="${escapeHtml(id)}" ${sel}>${escapeHtml(label)}</option>`;
-        }).join('');
-    }
+    const charOptions = rosterChars.map(id => 
+        `<option value="${escapeHtml(id)}"${id === initId ? ' selected' : ''}>${escapeHtml(id.replace(/_/g, ' '))}</option>`
+    ).join('');
 
-    function buildOutfitOptions(charId, selectedKey = null) {
-        const char    = state.chatCharacters[charId];
-        const entries = Object.entries(char?.outfits ?? {});
-        if (entries.length === 0) return '<option value="">— no outfits registered —</option>';
-        return entries.map(([key, outfit]) => {
-            const sel = key === selectedKey ? 'selected' : '';
-            return `<option value="${escapeHtml(key)}" ${sel}>${escapeHtml(outfit.label)}</option>`;
-        }).join('');
-    }
-
-    function buildExprOptions(selectedLabel = null) {
-        if (exprLabels.length === 0) return '<option value="">— no expressions configured —</option>';
-        return exprLabels.map(label => {
-            const sel = label === selectedLabel ? 'selected' : '';
-            return `<option value="${escapeHtml(label)}" ${sel}>${escapeHtml(label)}</option>`;
-        }).join('');
+    function buildEnsembleOptions(id) {
+        const ensembles = Object.entries(state.chatCharacters[id]?.ensembles ?? {});
+        if (!ensembles.length) return '<option value="">— No ensembles —</option>';
+        return '<option value="">— Quick Load Ensemble —</option>' + 
+            ensembles.map(([k, v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v.label)}</option>`).join('');
     }
 
     const popupPromise = callPopup(
-        `<h3 style="margin-top:0;margin-bottom:16px;">Change Character</h3>
-
-        <label style="display:block;margin:0 0 3px;font-size:0.88em;opacity:0.75;">Character</label>
-        <select id="plz-cp-char" class="text_pole" style="width:100%;margin-bottom:14px;">
-            ${buildCharOptions(initCharId)}
-        </select>
-
-        <label style="display:block;margin:0 0 3px;font-size:0.88em;opacity:0.75;">Outfit</label>
-        <select id="plz-cp-outfit" class="text_pole" style="width:100%;margin-bottom:14px;">
-            ${buildOutfitOptions(initCharId, state.activeOutfitKey)}
-        </select>
-
-        <label style="display:block;margin:0 0 3px;font-size:0.88em;opacity:0.75;">Expression</label>
-        <select id="plz-cp-expr" class="text_pole" style="width:100%;">
-            ${buildExprOptions(state.activeExpressionKey)}
-        </select>`,
+        `<h3 style="margin-top:0; margin-bottom:12px;">Change Appearance</h3>
+        <div style="margin-bottom:12px;">
+            <select id="plz-cp-char" class="text_pole" style="width:100%; margin-bottom:8px;">${charOptions}</select>
+            <select id="plz-cp-ensemble" class="text_pole" style="width:100%;">${buildEnsembleOptions(initId)}</select>
+        </div>
+        <div id="plz-cp-grid-container">${buildGridHTML(currentLayers)}</div>`,
         'confirm'
     );
 
-    // Repopulate outfits when character changes
-    $('#plz-cp-char').on('change', function () {
-        $('#plz-cp-outfit').html(buildOutfitOptions($(this).val()));
+    // Dynamic Roster Switching
+    $(document).on('change', '#plz-cp-char', function() {
+        const id = $(this).val();
+        $('#plz-cp-ensemble').html(buildEnsembleOptions(id));
+        const layers = state.characterChain[id]?.layers || state.activeLayers;
+        $('#plz-cp-grid-container').html(buildGridHTML(layers));
+    });
+
+    // Ensemble Quick Load
+    $(document).on('change', '#plz-cp-ensemble', function() {
+        const charId = $('#plz-cp-char').val();
+        const key = $(this).val();
+        if (!key) return;
+        const layers = applyEnsemble(state.activeLayers, state.chatCharacters[charId].ensembles[key].layers);
+        $('#plz-cp-emotion').val(layers.emotion);
+        Object.entries(layers).forEach(([slot, val]) => {
+            if (slot === 'emotion') return;
+            $(`.plz-cp-item[data-slot="${slot}"]`).val(val?.item || '');
+            $(`.plz-cp-mod[data-slot="${slot}"]`).val(val?.modifier || '');
+        });
     });
 
     const confirmed = await popupPromise;
+    $(document).off('change', '#plz-cp-char');
+    $(document).off('change', '#plz-cp-ensemble');
+
     if (!confirmed) return;
 
-    const characterId   = $('#plz-cp-char').val();
-    const outfitKey     = $('#plz-cp-outfit').val();
-    const expressionKey = $('#plz-cp-expr').val();
-
-    if (!characterId || !outfitKey || !expressionKey) {
-        if (window.toastr) window.toastr.warning('Select a character, outfit, and expression.', 'PersonaLyze');
-        return;
-    }
+    // Collect Layers
+    const characterId = $('#plz-cp-char').val();
+    const layers = { emotion: $('#plz-cp-emotion').val().trim() || 'neutral' };
+    $('.plz-cp-item').each(function() {
+        const slot = $(this).data('slot');
+        const item = $(this).val().trim();
+        const mod = $(`.plz-cp-mod[data-slot="${slot}"]`).val().trim();
+        layers[slot] = item ? { item, modifier: mod || null } : null;
+    });
 
     const character = state.chatCharacters[characterId];
-    if (!character) return;
+    const prompt = compilePrompt(character.identityAnchor, layers);
+    const prefix = buildFilenamePrefix(characterId, 'layered', slugify(layers.emotion));
+    let filename = findCachedImage(prefix, state.fileIndex);
 
-    // Check cache
-    const prefix   = buildFilenamePrefix(characterId, outfitKey, expressionKey);
-    let   filename = findCachedImage(prefix, state.fileIndex);
-
-    // Update runtime state immediately
     updateActiveCharacter(characterId);
-    updateActivePointers(outfitKey, expressionKey);
-    updateChainEntry(characterId, outfitKey, expressionKey, filename);
+    updateActiveLayers(layers);
+    updateChainLayers(characterId, layers, filename);
 
-    // Write visual state to the DNA chain (image may be null if not yet generated)
-    await lockedWriteVisualState(lastAiIdx, characterId, outfitKey, expressionKey, filename);
+    // Write 1
+    await lockedWriteVisualState(lastAiIdx, characterId, layers, filename);
 
     if (filename) {
         updateActiveImage(filename);
         setPortrait(filename);
-        if (window.toastr) window.toastr.success('Portrait applied.', 'PersonaLyze');
         return;
     }
 
-    // Not cached — generate, then patch
-    const outfitDef = character.outfits[outfitKey];
-    if (!outfitDef) return;
-
-    if (window.toastr) window.toastr.info('Generating portrait…', 'PersonaLyze');
+    if (window.toastr) window.toastr.info('Generating...', 'PersonaLyze');
 
     try {
         filename = await generate(
-            characterId, outfitKey, expressionKey,
-            outfitDef.description, expressionKey, character.identityAnchor,
-            character.seed, outfitDef.provider
+            characterId, 'layered', slugify(layers.emotion),
+            prompt, layers.emotion, character.identityAnchor, character.seed,
+            getSettings().defaultEngine || 'pollinations'
         );
         addToFileIndex(filename);
-        await lockedPatchVisualStateImage(lastAiIdx, characterId, filename);
         updateActiveImage(filename);
-        updateChainEntry(characterId, outfitKey, expressionKey, filename);
+        updateChainLayers(characterId, layers, filename);
+        await lockedPatchVisualStateImage(lastAiIdx, characterId, filename);
         setPortrait(filename);
-        if (window.toastr) window.toastr.success('Portrait generated and applied.', 'PersonaLyze');
     } catch (err) {
-        error('CharPicker', 'Generation failed:', err);
-        if (window.toastr) window.toastr.error(`Generation failed: ${err.message}`, 'PersonaLyze');
+        const reason = err.cause?.message || err.message;
+        if (window.toastr) window.toastr.warning(`Image generation failed — ${reason}`, 'PersonaLyze');
+        error('CharPicker', 'Gen failed:', err);
     }
 }

@@ -1,12 +1,10 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/panel.js
- * @stamp {"utc":"2026-04-07T15:00:00.000Z"}
+ * @stamp {"utc":"2026-04-10T17:20:00.000Z"}
  * @architectural-role UI Orchestrator (Settings)
  * @description
  * Main orchestrator for the Personalyze extensions settings panel.
- * 
- * Manages the lifecycle of the settings UI, coordinating profile 
- * management, AI connections, and prompt configuration.
+ * Coordinates profile management, Dual-Model routing, and the 3-Phase prompt editor.
  *
  * @api-declaration
  * injectSettingsPanel() — Main entry point to build and bind the panel.
@@ -18,7 +16,6 @@
  *     external_io: [DOM, settings.js, enginesModal.js, workshop/core.js]
  */
 
-import { callPopup } from '../../../../../../script.js';
 import { getSettings, getMetaSettings, updateSetting } from '../../settings.js';
 import { setPortraitPosition } from '../../portrait.js';
 import { setVnPanelEnabled } from '../vnPanel.js';
@@ -27,7 +24,7 @@ import { log, setVerbose } from '../../utils/logger.js';
 import { getLogs, getWorkshopLogs } from '../../utils/callLog.js';
 
 // Sub-system imports
-import { buildPanelHTML } from './templates.js';
+import { buildPanelHTML, buildLogModalHTML } from './templates.js';
 import { openPromptModal } from './prompts.js';
 import { bindProfileHandlers, refreshProfileDropdown, updateDirtyIndicator } from '../panel/profiles.js';
 import { refreshConnectionDropdowns } from '../panel/connection.js';
@@ -35,38 +32,33 @@ import { refreshModelDropdown } from '../panel/models.js';
 import { openEnginesModal, injectEnginesModal } from '../enginesModal.js';
 
 import {
-    DEFAULT_SUBJECT_MATCH_PROMPT,
-    DEFAULT_SUBJECT_LIST_PROMPT,
-    DEFAULT_CHANGE_CHECK_PROMPT,
-    DEFAULT_COMBINED_CLASSIFIER_PROMPT,
-    DEFAULT_OUTFIT_DESCRIBER_PROMPT,
-    DEFAULT_VN_STYLE_SUFFIX,
-    DEFAULT_OUTFIT_GENERATOR_PROMPT,
-    DEFAULT_OUTFIT_GENERATOR_SCAN_PROMPT,
-} from '../../defaults.js';
+    PHASE_1_SUBJECT_PROMPT,
+    PHASE_2_CHANGE_PROMPT,
+    PHASE_3_LAYERED_PROMPT,
+    ANCHOR_SCAN_PROMPT,
+    OUTFIT_GENERATOR_PROMPT
+} from '../../logic/prompts.js';
+import { DEFAULT_VN_STYLE_SUFFIX } from '../../defaults.js';
+import { callPopup } from '../../../../../../script.js';
 
 const PANEL_ID = 'plz-settings';
 
 const PROMPT_TITLES = {
-    subjectMatchPrompt:         'Step 1 — Subject Match (YES/NO)',
-    subjectListPrompt:          'Step 2 — Subject From List',
-    changeCheckPrompt:          'Step 2.9 — Change Check (YES/NO)',
-    combinedClassifierPrompt:   'Step 3 — Combined Classifier',
-    outfitDescriberPrompt:      'Describer — New Outfit Discovery',
-    vnStyleSuffix:              'Portrait Image Prompt Template',
-    outfitGeneratorPrompt:      'Outfit Generator — From Keyword',
-    outfitGeneratorScanPrompt:  'Outfit Generator — From Turn',
+    phase1SubjectPrompt:    'Phase 1 — Subject Identification',
+    phase2ChangePrompt:     'Phase 2 — Visual Change Gate',
+    phase3LayeredPrompt:    'Phase 3 — Layered State Extraction',
+    anchorScanPrompt:       'Character Identity Anchor Scan',
+    outfitGeneratorPrompt:  'Workshop Outfit Generator',
+    vnStyleSuffix:          'Portrait Style Template'
 };
 
 const PROMPT_DEFAULTS = {
-    subjectMatchPrompt:         DEFAULT_SUBJECT_MATCH_PROMPT,
-    subjectListPrompt:          DEFAULT_SUBJECT_LIST_PROMPT,
-    changeCheckPrompt:          DEFAULT_CHANGE_CHECK_PROMPT,
-    combinedClassifierPrompt:   DEFAULT_COMBINED_CLASSIFIER_PROMPT,
-    outfitDescriberPrompt:      DEFAULT_OUTFIT_DESCRIBER_PROMPT,
-    vnStyleSuffix:              DEFAULT_VN_STYLE_SUFFIX,
-    outfitGeneratorPrompt:      DEFAULT_OUTFIT_GENERATOR_PROMPT,
-    outfitGeneratorScanPrompt:  DEFAULT_OUTFIT_GENERATOR_SCAN_PROMPT,
+    phase1SubjectPrompt:    PHASE_1_SUBJECT_PROMPT,
+    phase2ChangePrompt:     PHASE_2_CHANGE_PROMPT,
+    phase3LayeredPrompt:    PHASE_3_LAYERED_PROMPT,
+    anchorScanPrompt:       ANCHOR_SCAN_PROMPT,
+    outfitGeneratorPrompt:  OUTFIT_GENERATOR_PROMPT,
+    vnStyleSuffix:          DEFAULT_VN_STYLE_SUFFIX
 };
 
 // ─── UI Refresh ───────────────────────────────────────────────────────────────
@@ -85,6 +77,7 @@ function refreshUI() {
         $(this).val(s[key] ?? 0);
     });
 
+    // Update connection dropdowns (Logic updated in next turn for connection.js)
     refreshConnectionDropdowns(() => updateDirtyIndicator());
     updateDirtyIndicator();
 
@@ -148,7 +141,6 @@ function bindHandlers() {
     $panel.on('click', '#plz-open-workshop', () => openWorkshop('dna'));
 
     $panel.on('click', '#plz-view-logs', async function () {
-        const { buildLogModalHTML } = await import('./templates.js'); // Assuming log builder moved here for LOC
         await callPopup(buildLogModalHTML(getLogs(), getWorkshopLogs()), 'text');
     });
 }

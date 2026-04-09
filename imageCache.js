@@ -1,27 +1,23 @@
 /**
  * @file data/default-user/extensions/personalyze/imageCache.js
- * @stamp {"utc":"2026-04-07T12:20:00.000Z"}
+ * @stamp {"utc":"2026-04-10T14:20:00.000Z"}
  * @architectural-role IO Executor (Image)
  * @description
- * Owns all image-related IO for Personalyze.
+ * Owns all image-related network and filesystem IO for Personalyze.
+ * Supports Multi-Engine architecture (Pollinations, HF, Fal, PiAPI).
  * 
- * Multi-Engine architecture supporting Pollinations, Hugging Face, and Fal AI. 
- * This module is a pure worker: it does not perform state lookups. It executes 
- * generation requests using the parameters provided by the controllers.
- *
  * @api-declaration
- * buildFilenamePrefix(characterId, outfitKey, expressionKey) → string
+ * buildFilenamePrefix(characterId, tag, emotion) → string
  * findCachedImage(prefix, fileIndex) → string|null
- * buildPortraitPrompt(anchor, outfitDesc, exprDesc, provider) → string
  * fetchFileIndex() → Promise<{ fileIndex: Set<string>, allImages: string[] }>
  * fetchPreviewBlob(prompt, characterId, provider, seed) → Promise<string>
- * generate(characterId, outfitKey, expressionKey, outfitDesc, exprDesc, anchor, seed, provider) → Promise<string>
- *
+ * generate(characterId, tag, emotion, subjectPrompt, emotionLabel, anchor, seed, provider) → Promise<string>
+ * 
  * @contract
  *   assertions:
- *     purity: IO
+ *     purity: IO Executor
  *     state_ownership: []
- *     external_io: [findSecret, Pollinations API, Personalyze Plugin (HF/Fal)]
+ *     external_io: [findSecret, Image APIs, Personalyze Plugin, fetch]
  */
 
 import { getRequestHeaders } from '../../../../script.js';
@@ -36,7 +32,7 @@ import {
     DEFAULT_VN_STYLE_SUFFIX,
 } from './defaults.js';
 import { getSettings } from './settings.js';
-import { log, warn } from './utils/logger.js';
+import { log, warn, error } from './utils/logger.js';
 import { logCall } from './utils/callLog.js';
 
 const SECRET_POLLINATIONS = 'api_key_pollinations';
@@ -49,8 +45,8 @@ export const PLZ_IMAGE_FOLDER = 'personalyze';
 
 // ─── Naming ───────────────────────────────────────────────────────────────────
 
-export function buildFilenamePrefix(characterId, outfitKey, expressionKey) {
-    return `${FILE_PREFIX}${characterId}_${outfitKey}_${expressionKey}_`;
+export function buildFilenamePrefix(characterId, tag, emotion) {
+    return `${FILE_PREFIX}${characterId}_${tag}_${emotion}_`;
 }
 
 export function findCachedImage(prefix, fileIndex) {
@@ -64,153 +60,37 @@ export function findCachedImage(prefix, fileIndex) {
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 async function getAuthKey(provider) {
-    let secretName;
-    switch (provider) {
-        case 'huggingface':
-        case 'hf-space':    secretName = SECRET_HUGGINGFACE; break;
-        case 'fal':         secretName = SECRET_FAL; break;
-        case 'piapi':       secretName = SECRET_PIAPI; break;
-        default:            secretName = SECRET_POLLINATIONS; break;
-    }
-
-    const key = await findSecret(secretName);
-    if (!key && provider !== 'pollinations') {
-        throw new Error(
-            `${provider.toUpperCase()} API key not found.\n` +
-            `Ensure it is set in PLZ settings / ST secrets.`
-        );
-    }
+    const map = { 
+        huggingface: SECRET_HUGGINGFACE, 'hf-space': SECRET_HUGGINGFACE, 
+        fal: SECRET_FAL, piapi: SECRET_PIAPI, pollinations: SECRET_POLLINATIONS 
+    };
+    const key = await findSecret(map[provider]);
+    if (!key && provider !== 'pollinations') throw new Error(`${provider.toUpperCase()} key missing.`);
     return key;
 }
 
-// ─── Prompt Builder ───────────────────────────────────────────────────────────
-
-export function buildPortraitPrompt(anchor, outfitDescription, expressionDescription, provider = 'pollinations') {
-    const s = getSettings();
-    const suffix = s.vnStyleSuffix ?? DEFAULT_VN_STYLE_SUFFIX;
-
-    let processedOutfit = outfitDescription ?? '';
-
-    if (provider !== 'pollinations') {
-        processedOutfit = processedOutfit.replace(/[<>]/g, '');
-    } else {
-        processedOutfit = processedOutfit.replace(/<[^>]+>/g, '');
-    }
-
-    const hasVars = /\{\{(character|outfit|expression)\}\}/.test(suffix);
-    let fullPrompt;
-
-    if (hasVars) {
-        fullPrompt = suffix
-            .replace(/\{\{character\}\}/g,  anchor              ?? '')
-            .replace(/\{\{outfit\}\}/g,     processedOutfit     ?? '')
-            .replace(/\{\{expression\}\}/g, expressionDescription ?? '')
-            .replace(/(,\s*)+,/g, ',')
-            .replace(/^[,\s]+|[,\s]+$/g, '')
-            .trim();
-    } else {
-        fullPrompt = [anchor, processedOutfit, expressionDescription, suffix]
-            .filter(Boolean)
-            .join(', ');
-    }
-
-    return fullPrompt;
-}
-
-// ─── Network IO ───────────────────────────────────────────────────────────────
-
-async function fetchPollinationsWithRetry(url, key, maxRetries = 3) {
-    const headers = key ? { 'Authorization': `Bearer ${key}` } : {};
-    let lastResponse;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-            const response = await fetch(url, { headers });
-            if (response.status < 500) return response;
-            lastResponse = response;
-        } catch (err) {
-            if (attempt === maxRetries) throw err;
-        }
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-    }
-    return lastResponse;
-}
-
-async function fetchSpaceWithRetry(prompt, maxRetries = 3) {
-    const s = getSettings();
-    const spaceId = s.hfSpaceId;
-    if (!spaceId) throw new Error('No HuggingFace Space ID configured.');
-
-    const body = JSON.stringify({ spaceId, prompt, width: DEFAULT_IMAGE_WIDTH, height: DEFAULT_IMAGE_HEIGHT });
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        const response = await fetch('/api/plugins/personalyze/space-generate', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body,
-        });
-        if (response.ok) return response;
-        if (response.status === 503) {
-            const data = await response.json().catch(() => ({}));
-            const waitTime = (data.estimated_time || 15) * 1000;
-            warn('ImageCache', `Space loading. Waiting ${waitTime}ms`);
-            await new Promise(r => setTimeout(r, Math.min(waitTime, 30000)));
-            continue;
-        }
-        throw new Error(`Space API Error (${response.status})`);
-    }
-    throw new Error('HuggingFace Space failed to respond.');
-}
-
-async function fetchHuggingFaceWithRetry(prompt, maxRetries = 5) {
-    const s = getSettings();
-    const body = JSON.stringify({ provider: s.hfProvider, model: s.hfImageModel, prompt, width: DEFAULT_IMAGE_WIDTH, height: DEFAULT_IMAGE_HEIGHT });
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        const response = await fetch('/api/plugins/personalyze/hf-generate', { method: 'POST', headers: getRequestHeaders(), body });
-        if (response.ok) return response;
-        if (response.status === 503) {
-            const data = await response.json();
-            const waitTime = (data.estimated_time || 10) * 1000;
-            warn('ImageCache', `HF Model loading. Waiting ${waitTime}ms`);
-            await new Promise(r => setTimeout(r, Math.min(waitTime, 20000)));
-            continue;
-        }
-        throw new Error(`HF API Error (${response.status})`);
-    }
-    throw new Error('HF model failed to load.');
-}
-
-async function fetchPiAPIWithRetry(prompt) {
-    const s = getSettings();
-    const response = await fetch('/api/plugins/personalyze/piapi-generate', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify({ model: s.piapiModel, prompt, width: DEFAULT_IMAGE_WIDTH, height: DEFAULT_IMAGE_HEIGHT }),
-    });
-    if (response.ok) return response;
-    const errData = await response.json().catch(() => null);
-    throw new Error(errData?.error ?? `PiAPI Error (HTTP ${response.status})`);
-}
-
-async function fetchFalWithRetry(prompt, maxRetries = 3) {
-    const s = getSettings();
-    const body = JSON.stringify({ model: s.falModel, prompt, width: DEFAULT_IMAGE_WIDTH, height: DEFAULT_IMAGE_HEIGHT });
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        const response = await fetch('/api/plugins/personalyze/fal-generate', { method: 'POST', headers: getRequestHeaders(), body });
-        if (response.ok) return response;
-        if (response.status < 500) throw new Error(`Fal AI Error (${response.status})`);
-        if (attempt < maxRetries) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-    }
-    throw new Error('Fal AI failed to respond.');
-}
+// ─── Networking ───────────────────────────────────────────────────────────────
 
 async function validateImageResponse(response) {
     if (!response.ok) {
         const text = await response.text();
-        throw new Error(`Image API Error (${response.status}): ${text}`);
+        throw new Error(`Image API Error (${response.status}): ${text.slice(0,100)}`);
     }
-    const contentType = response.headers.get('Content-Type');
-    if (!contentType || !contentType.startsWith('image/')) throw new Error(`Expected image, but received ${contentType}`);
+    const contentType = response.headers.get('Content-Type') ?? '';
+    // Reject only clearly wrong types (error pages, JSON blobs).
+    // Allow image/*, application/octet-stream, and missing content-type (some CDNs omit it).
+    if (contentType.startsWith('text/') || contentType.startsWith('application/json')) {
+        throw new Error(`Received ${contentType || 'unknown content-type'} instead of image.`);
+    }
+}
+
+/** Wraps the subject prompt with global style tags from settings. */
+function finalizePrompt(subjectPrompt) {
+    const s = getSettings();
+    const style = s.vnStyleSuffix || '';
+    // If the style suffix uses variables, we assume they were already resolved 
+    // in promptCompiler or we just append the style.
+    return `${subjectPrompt}, ${style}`.replace(/(,\s*)+/g, ', ').trim();
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -222,88 +102,74 @@ export async function fetchFileIndex() {
         body: JSON.stringify({ folder: PLZ_IMAGE_FOLDER }),
     });
     const allImages = await res.json();
-    const fileIndex = new Set(allImages.filter(f => f.startsWith(FILE_PREFIX)));
-    return { fileIndex, allImages };
+    return { fileIndex: new Set(allImages.filter(f => f.startsWith(FILE_PREFIX))), allImages };
 }
 
 export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinations', seed = 1) {
-    const logTag = `[${provider.toUpperCase()}]`;
-    log('ImageCache', `${logTag} Preview Prompt:`, prompt);
-    logCall('ImagePreview', `${logTag} ${prompt}`, null, null);
+    const fullPrompt = finalizePrompt(prompt);
+    log('ImageCache', `Preview [${provider}]: ${fullPrompt}`);
 
     let res;
-    if (provider === 'piapi') {
-        res = await fetchPiAPIWithRetry(prompt);
-        const taskId = res.headers.get('X-PiAPI-Task-ID');
-        if (taskId) logCall('PiAPI Task', prompt, `task_id: ${taskId}`, null);
-    } else if (provider === 'fal') res = await fetchFalWithRetry(prompt);
-    else if (provider === 'hf-space') res = await fetchSpaceWithRetry(prompt);
-    else if (provider === 'huggingface') res = await fetchHuggingFaceWithRetry(prompt);
-    else {
+    if (provider === 'fal') {
+        res = await fetch('/api/plugins/personalyze/fal-generate', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ model: getSettings().falModel, prompt: fullPrompt, width: DEV_IMAGE_WIDTH, height: DEV_IMAGE_HEIGHT }),
+        });
+    } else if (provider === 'huggingface') {
+        res = await fetch('/api/plugins/personalyze/hf-generate', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ provider: getSettings().hfProvider, model: getSettings().hfImageModel, prompt: fullPrompt, width: DEV_IMAGE_WIDTH, height: DEV_IMAGE_HEIGHT }),
+        });
+    } else {
         const s = getSettings();
         const key = await getAuthKey('pollinations');
-        const params = new URLSearchParams({
-            width: String(DEV_IMAGE_WIDTH),
-            height: String(DEV_IMAGE_HEIGHT),
-            model: s.imageModel ?? DEFAULT_IMAGE_MODEL,
-            nologo: 'true',
-            seed: String(seed),
-        });
-        res = await fetchPollinationsWithRetry(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(prompt)}?${params.toString()}`, key);
+        const params = new URLSearchParams({ width: String(DEV_IMAGE_WIDTH), height: String(DEV_IMAGE_HEIGHT), model: s.imageModel ?? DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed) });
+        res = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`, { headers: key ? { 'Authorization': `Bearer ${key}` } : {} });
     }
+
     await validateImageResponse(res);
     return URL.createObjectURL(await res.blob());
 }
 
-export async function generate(characterId, outfitKey, expressionKey, outfitDescription, expressionLabel, anchor, seed = 1, providerInput = 'pollinations') {
-    let provider = providerInput;
-    if (provider === 'huggingface') {
-        provider = getSettings().hfEngine === 'space' ? 'hf-space' : 'huggingface';
-    }
-
-    const logTag = `[${provider.toUpperCase()}]`;
-    const prompt = buildPortraitPrompt(anchor, outfitDescription, expressionLabel, provider);
-    logCall('PortraitGenerate', `${logTag} ${prompt}`, null, null);
+export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, anchor, seed = 1, provider = 'pollinations') {
+    const fullPrompt = finalizePrompt(subjectPrompt);
+    logCall('PortraitGenerate', `[${provider}] ${fullPrompt}`, null, null);
     
     let imgRes;
-    if (provider === 'piapi') {
-        imgRes = await fetchPiAPIWithRetry(prompt);
-        const taskId = imgRes.headers.get('X-PiAPI-Task-ID');
-        if (taskId) logCall('PiAPI Task', prompt, `task_id: ${taskId}`, null);
-    } else if (provider === 'fal') imgRes = await fetchFalWithRetry(prompt);
-    else if (provider === 'hf-space') imgRes = await fetchSpaceWithRetry(prompt);
-    else if (provider === 'huggingface') imgRes = await fetchHuggingFaceWithRetry(prompt);
-    else {
-        const s = getSettings();
-        const key = await getAuthKey('pollinations');
-        const devMode = s.devMode ?? false;
-        const params = new URLSearchParams({
-            width: String(devMode ? DEV_IMAGE_WIDTH : DEFAULT_IMAGE_WIDTH),
-            height: String(devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT),
-            model: s.imageModel ?? DEFAULT_IMAGE_MODEL,
-            nologo: 'true',
-            seed: String(seed),
-            safe: 'false',
+    const s = getSettings();
+    const w = s.devMode ? DEV_IMAGE_WIDTH : DEFAULT_IMAGE_WIDTH;
+    const h = s.devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
+
+    if (provider === 'fal') {
+        imgRes = await fetch('/api/plugins/personalyze/fal-generate', {
+            method: 'POST', headers: getRequestHeaders(),
+            body: JSON.stringify({ model: s.falModel, prompt: fullPrompt, width: w, height: h }),
         });
-        imgRes = await fetchPollinationsWithRetry(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(prompt)}?${params.toString()}`, key);
+    } else if (provider === 'piapi') {
+        imgRes = await fetch('/api/plugins/personalyze/piapi-generate', {
+            method: 'POST', headers: getRequestHeaders(),
+            body: JSON.stringify({ model: s.piapiModel, prompt: fullPrompt, width: w, height: h }),
+        });
+    } else {
+        const key = await getAuthKey('pollinations');
+        const params = new URLSearchParams({ width: String(w), height: String(h), model: s.imageModel ?? DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed), safe: 'false' });
+        imgRes = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`, { headers: key ? { 'Authorization': `Bearer ${key}` } : {} });
     }
 
     await validateImageResponse(imgRes);
 
-    const filename = `${buildFilenamePrefix(characterId, outfitKey, expressionKey)}${Date.now()}.png`;
+    const filename = `${buildFilenamePrefix(characterId, tag, emotion)}${Date.now()}.png`;
     const blob = await imgRes.blob();
-    const base64 = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.readAsDataURL(blob);
+    const base64 = await new Promise(r => {
+        const fr = new FileReader(); fr.onload = () => r(fr.result.split(',')[1]); fr.readAsDataURL(blob);
     });
 
-    const uploadRes = await fetch('/api/images/upload', {
-        method: 'POST',
-        headers: getRequestHeaders(),
+    await fetch('/api/images/upload', {
+        method: 'POST', headers: getRequestHeaders(),
         body: JSON.stringify({ image: base64, format: 'png', filename, ch_name: PLZ_IMAGE_FOLDER }),
     });
-    if (!uploadRes.ok) throw new Error(`Portrait upload failed: ${uploadRes.status}`);
 
     return filename;
 }
@@ -314,8 +180,7 @@ export async function flushCharacterImages(characterId) {
     const toDelete = [...fileIndex].filter(f => f.startsWith(prefix));
     await Promise.all(toDelete.map(f =>
         fetch('/api/images/delete', {
-            method: 'POST',
-            headers: getRequestHeaders(),
+            method: 'POST', headers: getRequestHeaders(),
             body: JSON.stringify({ path: `user/images/${PLZ_IMAGE_FOLDER}/${f}` }),
         })
     ));
