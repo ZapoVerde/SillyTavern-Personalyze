@@ -22,7 +22,7 @@
  *     external_io: [HuggingFace API, Fal AI API, PiAPI, SillyTavern Secrets]
  */
 
-import { readSecret } from '../../src/endpoints/secrets.js';
+import { readSecret } from '../src/endpoints/secrets.js';
 
 export const info = {
     id: 'personalyze',

@@ -19,6 +19,10 @@
  * DEFAULT_SMART_PROFILE_ID
  * DEFAULT_VN_STYLE_SUFFIX
  * DEFAULT_TEST_PROMPT
+ * FAL_MODELS
+ * DEFAULT_FAL_MODEL
+ * PIAPI_MODELS
+ * DEFAULT_PIAPI_MODEL
  */
 
 /** Primary API gateway for Pollinations. */
@@ -78,6 +82,29 @@ export const DEFAULT_SMART_PROFILE_ID = null; // Phase 3 (Gemini 3.1 Flash Lite)
 
 /** Default test prompt for engine validation. */
 export const DEFAULT_TEST_PROMPT = 'a simple illustration of a blue bird, white background';
+
+/** Fal AI models. */
+export const FAL_MODELS = [
+    'fal-ai/flux/schnell',
+    'fal-ai/flux/dev',
+    'fal-ai/flux-pro',
+    'fal-ai/stable-diffusion-v35-large',
+    'fal-ai/z-image/turbo',
+];
+
+/** Default Fal AI model. */
+export const DEFAULT_FAL_MODEL = 'fal-ai/z-image/turbo';
+
+/** PiAPI models. */
+export const PIAPI_MODELS = [
+    'Qubico/z-image',
+];
+
+/** Default PiAPI model. */
+export const DEFAULT_PIAPI_MODEL = 'Qubico/z-image';
+
+/** HuggingFace inference provider → model list map. */
+export const HF_PROVIDER_MODELS = {};
 
 /** 
  * Visual Style Suffix.
