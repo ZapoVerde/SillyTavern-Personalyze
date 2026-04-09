@@ -106,6 +106,13 @@ export function reconstruct(chat) {
                     break;
                 }
 
+                case 'outfit_delete': {
+                    if (!rec.characterId || !rec.key) break;
+                    const char = ensureChar(rec.characterId);
+                    delete char.outfits[rec.key];
+                    break;
+                }
+
                 case 'expression_def': {
                     if (!rec.characterId || !rec.key) break;
                     const char = ensureChar(rec.characterId);

@@ -189,8 +189,10 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
                     <button class="menu_button plz-open-prompt" data-prompt-key="subjectListPrompt">Who?</button>
                     <button class="menu_button plz-open-prompt" data-prompt-key="combinedClassifierPrompt">Classify</button>`)}
                 
-                ${buildCallRow('describer', 'Describer — Extraction', 'outfitDescriberPrompt', 'describerProfileId', 'describerHistory', 
-                    "Extracts visual descriptions for new outfits found in chat.")}
+                ${buildCallRow('describer', 'Describer — Extraction', 'outfitDescriberPrompt', 'describerProfileId', 'describerHistory',
+                    "Extracts visual descriptions for new outfits found in chat. Also used for the Workshop outfit generator.", `
+                    <button class="menu_button plz-open-prompt" data-prompt-key="outfitGeneratorPrompt" style="font-size:0.8em;">Gen</button>
+                    <button class="menu_button plz-open-prompt" data-prompt-key="outfitGeneratorScanPrompt" style="font-size:0.8em;">Gen+Scan</button>`)}
 
                 <!-- Image Generation -->
                 <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--SmartThemeBorderColor,#444);">

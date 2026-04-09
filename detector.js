@@ -259,6 +259,56 @@ export async function detectOutfitDescriber(context, characterName, anchor, prom
     return parseDescriberResponse(raw);
 }
 
+// ─── Outfit Generator (Workshop) ─────────────────────────────────────────────
+
+/**
+ * Generates an outfit description from keyword(s) alone.
+ * @param {string}      keyword
+ * @param {string}      promptTemplate
+ * @param {string|null} profileId
+ * @returns {Promise<string|null>}
+ */
+export async function detectOutfitGenerator(keyword, promptTemplate, profileId) {
+    const prompt = promptTemplate
+        .replace('{{keyword}}', keyword ?? '');
+
+    const raw = await dispatch(prompt, profileId, 'OutfitGenerator', { temperature: 0.5 });
+    return parseDescriptionLine(raw);
+}
+
+/**
+ * Extracts an outfit description from the current turn, using optional keyword guidance.
+ * @param {string}      charName
+ * @param {string}      turn       Formatted user+AI turn text.
+ * @param {string}      keyword    Optional steering keyword(s).
+ * @param {string}      promptTemplate
+ * @param {string|null} profileId
+ * @returns {Promise<string|null>}
+ */
+export async function detectOutfitGeneratorScan(charName, turn, keyword, promptTemplate, profileId) {
+    const keywordGuidance = keyword
+        ? `KEYWORD GUIDANCE: ${keyword}\n`
+        : '';
+
+    const prompt = promptTemplate
+        .replaceAll('{{char_name}}',     charName        ?? 'Unknown')
+        .replace('{{keyword_guidance}}', keywordGuidance)
+        .replace('{{turn}}',             turn            ?? '');
+
+    const raw = await dispatch(prompt, profileId, 'OutfitGeneratorScan', { temperature: 0.5 });
+    return parseDescriptionLine(raw);
+}
+
+function parseDescriptionLine(raw) {
+    const text = String(raw ?? '');
+    const match = text.match(/\*?\*?Description\*?\*?:\s*([\s\S]+?)(?=\n\*?\*?[A-Z]|$)/i);
+    if (!match) {
+        warn('OutfitGenerator', 'Could not extract Description from response. Using raw text.');
+        return text.trim() || null;
+    }
+    return match[1].trim().replace(/^\*+|\*+$/g, '');
+}
+
 function parseDescriberResponse(raw) {
     const text = String(raw ?? '');
     const labelMatch = text.match(/\*?\*?Label\*?\*?:\s*(.+)/i);

@@ -154,6 +154,31 @@ export async function lockedWriteExpressionDef(messageId, characterId, key, labe
 }
 
 /**
+ * Writes an outfit deletion to the DNA chain.
+ * @param {number} messageId
+ * @param {string} characterId
+ * @param {string} key
+ */
+export async function lockedWriteOutfitDelete(messageId, characterId, key) {
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (message) {
+            ensureArray(message);
+            message.extra.personalyze.push({
+                type: 'outfit_delete',
+                characterId,
+                key
+            });
+            await saveChatConditional();
+        }
+    } finally {
+        writeLock.release();
+    }
+}
+
+/**
  * Writes a visual state transition to the DNA chain.
  * Indicates that the character is now wearing a specific outfit and showing an expression.
  * Uses the Two-Write pattern (image is initially null).

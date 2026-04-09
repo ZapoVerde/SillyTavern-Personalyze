@@ -38,6 +38,7 @@ import {
     upsertChatCharacterDef,
     upsertChatOutfitDef,
     upsertChatExpressionDef,
+    deleteChatOutfitDef,
     addToFileIndex,
     removeFromFileIndex,
     updateChainEntry
@@ -47,11 +48,12 @@ import { slugify, buildDescriberContext } from '../../utils/history.js';
 import {
     lockedWriteCharacterDef,
     lockedWriteOutfitDef,
+    lockedWriteOutfitDelete,
     lockedWriteExpressionDef,
     lockedWriteRoster,
     lockedPatchVisualStateImage
 } from '../../io/dnaWriter.js';
-import { detectAnchorScan } from '../../detector.js';
+import { detectAnchorScan, detectOutfitGenerator, detectOutfitGeneratorScan } from '../../detector.js';
 import { handleSyncRoster, handleExportToLibrary } from '../../logic/importExport.js';
 import { buildPortraitPrompt, fetchPreviewBlob, generate, flushCharacterImages } from '../../imageCache.js';
 import { getDnaRosterHTML, getStudioHTML, getStudioEmptyHTML } from './dnaTemplates.js';
@@ -226,6 +228,77 @@ export function bindDNAHandlers() {
         const { callPopup } = await import('../../../../../../script.js');
         const label = dimension === 'outfit' ? 'Outfit' : 'Expression';
 
+        const generatorSection = dimension === 'outfit' ? `
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--SmartThemeBorderColor,#444);">
+                <label style="display:block;margin-bottom:6px;font-size:0.88em;opacity:0.75;">Generate Description</label>
+                <input type="text" id="plz-gen-keyword" class="text_pole" placeholder="e.g. summer dress, knight armor..." style="width:100%;margin-bottom:8px;" />
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                    <label class="checkbox_label" style="font-size:0.85em;cursor:pointer;">
+                        <input type="checkbox" id="plz-gen-scan-turn" />
+                        <span>Scan current turn</span>
+                    </label>
+                </div>
+                <button id="plz-outfit-gen-btn" class="menu_button" style="width:100%;font-size:0.85em;">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Description
+                </button>
+            </div>` : '';
+
+        if (dimension === 'outfit') {
+            $(document).on('click.plz-outfit-gen', '#plz-outfit-gen-btn', async function () {
+                const $btn  = $(this);
+                const $icon = $btn.find('i');
+                const keyword   = $('#plz-gen-keyword').val().trim();
+                const scanTurn  = $('#plz-gen-scan-turn').prop('checked');
+
+                $icon.removeClass('fa-wand-magic-sparkles').addClass('fa-spinner fa-spin');
+                $btn.prop('disabled', true);
+
+                try {
+                    const s = getSettings();
+                    let description = null;
+
+                    if (scanTurn) {
+                        const context = getContext();
+                        const chat    = context?.chat ?? [];
+                        let aiMsg = null, userMsg = null;
+                        for (let i = chat.length - 1; i >= 0; i--) {
+                            if (!aiMsg && !chat[i].is_user) { aiMsg = chat[i]; continue; }
+                            if (aiMsg && chat[i].is_user)  { userMsg = chat[i]; break; }
+                        }
+                        const turnText = [
+                            userMsg ? `${userMsg.name ?? 'User'}: ${userMsg.mes}` : '',
+                            aiMsg   ? `${aiMsg.name ?? 'AI'}: ${aiMsg.mes}`       : '',
+                        ].filter(Boolean).join('\n\n');
+                        const charName = id.replace(/_/g, ' ');
+
+                        startWorkshopTurn('Outfit Generator (Scan)');
+                        description = await detectOutfitGeneratorScan(charName, turnText, keyword, s.outfitGeneratorScanPrompt, s.describerProfileId);
+                    } else {
+                        if (!keyword) {
+                            if (window.toastr) window.toastr.warning('Enter a keyword to generate from.', 'Personalyze');
+                            return;
+                        }
+                        startWorkshopTurn('Outfit Generator');
+                        description = await detectOutfitGenerator(keyword, s.outfitGeneratorPrompt, s.describerProfileId);
+                    }
+
+                    if (description) {
+                        const $desc = $('#plz-add-entry-desc');
+                        $desc.val(description).trigger('input');
+                        smartResize($desc[0]);
+                    } else {
+                        if (window.toastr) window.toastr.warning('Could not generate a description.', 'Personalyze');
+                    }
+                } catch (err) {
+                    error('Workshop', 'Outfit generation failed:', err);
+                    if (window.toastr) window.toastr.error(`Generation failed: ${err.message}`, 'Personalyze');
+                } finally {
+                    $icon.removeClass('fa-spinner fa-spin').addClass('fa-wand-magic-sparkles');
+                    $btn.prop('disabled', false);
+                }
+            });
+        }
+
         const confirmed = await callPopup(
             `<h3 style="margin-top:0;">Add ${label}</h3>
             <label style="display:block;margin:8px 0 3px;font-size:0.88em;opacity:0.75;">Label</label>
@@ -233,9 +306,15 @@ export function bindDNAHandlers() {
             <label style="display:block;margin:8px 0 3px;font-size:0.88em;opacity:0.75;">Key (auto-generated)</label>
             <input type="text" id="plz-add-entry-key" class="text_pole" readonly style="width:100%;opacity:0.6;cursor:not-allowed;" />
             <label style="display:block;margin:8px 0 3px;font-size:0.88em;opacity:0.75;">Description</label>
-            <textarea id="plz-add-entry-desc" class="text_pole plz-auto-textarea" rows="3" style="width:100%;font-family:monospace;font-size:0.9em;overflow:hidden;resize:none;"></textarea>`,
+            <textarea id="plz-add-entry-desc" class="text_pole plz-auto-textarea" rows="3" style="width:100%;font-family:monospace;font-size:0.9em;overflow:hidden;resize:none;"></textarea>
+            ${generatorSection}`,
             'confirm'
         );
+
+        if (dimension === 'outfit') {
+            $(document).off('click.plz-outfit-gen');
+        }
+
         if (!confirmed) return;
 
         const entryLabel = $('#plz-add-entry-label').val().trim();
@@ -259,6 +338,25 @@ export function bindDNAHandlers() {
 
         renderStudioView();
         if (window.toastr) window.toastr.success(`${label} "${entryLabel}" added to DNA.`, 'Personalyze');
+    });
+
+    // ─── Delete Outfit ───────────────────────────────────────────────────────
+
+    $overlay.on('click', '.plz-entry-delete-btn', async function() {
+        const id  = state._workshopCharacterId;
+        const key = $(this).data('key');
+        if (!id || !key) return;
+
+        const outfitLabel = state.chatCharacters[id]?.outfits[key]?.label ?? key;
+        if (!confirm(`Delete outfit "${outfitLabel}" from DNA?\n\nThis cannot be undone.`)) return;
+
+        const context   = getContext();
+        const lastMsgId = Math.max(0, context.chat.length - 1);
+        await lockedWriteOutfitDelete(lastMsgId, id, key);
+        deleteChatOutfitDef(id, key);
+
+        renderStudioView();
+        if (window.toastr) window.toastr.success(`Outfit "${outfitLabel}" removed from DNA.`, 'Personalyze');
     });
 
     // ─── Flush Images ────────────────────────────────────────────────────────

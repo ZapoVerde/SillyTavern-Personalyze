@@ -173,6 +173,7 @@ function getEntryListHTML(characterId, entries, dimension, fileIndex, exprLabels
             <textarea class="text_pole plz-auto-textarea plz-entry-description" data-key="${escapeHtml(key)}" data-dimension="${dimension}" style="width:100%;font-family:monospace;font-size:0.85em;overflow:hidden;resize:none;">${escapeHtml(entry.description)}</textarea>
             <div style="display:flex;gap:6px;margin-top:4px;">
                 <button class="menu_button plz-entry-save-btn" data-key="${escapeHtml(key)}" data-dimension="${dimension}" style="font-size:0.78em;padding:2px 8px;">Commit to DNA</button>
+                ${dimension === 'outfit' ? `<button class="menu_button plz-entry-delete-btn" data-key="${escapeHtml(key)}" data-dimension="${dimension}" style="font-size:0.78em;padding:2px 8px;color:#c0392b;" title="Delete outfit"><i class="fa-solid fa-trash-can"></i></button>` : ''}
             </div>
             ${dimension === 'outfit' ? getOutfitPortraitSectionHTML(characterId, key, fileIndex, exprLabels, lastExpr) : ''}
         </div>`;

@@ -41,6 +41,8 @@ import {
     DEFAULT_COMBINED_CLASSIFIER_PROMPT,
     DEFAULT_OUTFIT_DESCRIBER_PROMPT,
     DEFAULT_VN_STYLE_SUFFIX,
+    DEFAULT_OUTFIT_GENERATOR_PROMPT,
+    DEFAULT_OUTFIT_GENERATOR_SCAN_PROMPT,
 } from '../../defaults.js';
 
 const PANEL_ID = 'plz-settings';
@@ -52,6 +54,8 @@ const PROMPT_TITLES = {
     combinedClassifierPrompt:   'Step 3 — Combined Classifier',
     outfitDescriberPrompt:      'Describer — New Outfit Discovery',
     vnStyleSuffix:              'Portrait Image Prompt Template',
+    outfitGeneratorPrompt:      'Outfit Generator — From Keyword',
+    outfitGeneratorScanPrompt:  'Outfit Generator — From Turn',
 };
 
 const PROMPT_DEFAULTS = {
@@ -61,6 +65,8 @@ const PROMPT_DEFAULTS = {
     combinedClassifierPrompt:   DEFAULT_COMBINED_CLASSIFIER_PROMPT,
     outfitDescriberPrompt:      DEFAULT_OUTFIT_DESCRIBER_PROMPT,
     vnStyleSuffix:              DEFAULT_VN_STYLE_SUFFIX,
+    outfitGeneratorPrompt:      DEFAULT_OUTFIT_GENERATOR_PROMPT,
+    outfitGeneratorScanPrompt:  DEFAULT_OUTFIT_GENERATOR_SCAN_PROMPT,
 };
 
 // ─── UI Refresh ───────────────────────────────────────────────────────────────

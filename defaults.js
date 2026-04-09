@@ -354,3 +354,34 @@ INSTRUCTIONS:
 ### OUTPUT FORMAT:
 Label: [Short display name, e.g. "Tearful Smile"]
 Description: [1-2 sentences of visual detail for an image generator]`;
+
+export const DEFAULT_OUTFIT_GENERATOR_PROMPT =
+`[SYSTEM: TASK — OUTFIT DESIGNER]
+Design a visual outfit description suitable for an image generator.
+
+KEYWORD(S): {{keyword}}
+
+INSTRUCTIONS:
+1. Create a concise visual outfit description inspired by the keyword(s).
+2. Focus on garment type, colors, materials, and notable accessories.
+3. Do not describe the character's face, body, or expression.
+
+### OUTPUT FORMAT:
+Description: [2-3 sentences of visual detail for an image generator]`;
+
+export const DEFAULT_OUTFIT_GENERATOR_SCAN_PROMPT =
+`[SYSTEM: TASK — OUTFIT EXTRACTOR]
+Extract a visual outfit description for a character from the roleplay turn provided.
+
+CHARACTER: {{char_name}}
+{{keyword_guidance}}TURN:
+{{turn}}
+
+INSTRUCTIONS:
+1. Identify what {{char_name}} is wearing in this turn.
+2. Provide a concise visual description suitable for an image generator.
+3. Focus on garment type, colors, materials, and notable accessories.
+4. Do not describe the character's face, body, or expression.
+
+### OUTPUT FORMAT:
+Description: [2-3 sentences of visual detail for an image generator]`;

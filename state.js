@@ -182,6 +182,12 @@ export function upsertChatOutfitDef(id, key, label, description, provider) {
     char.outfits[key] = { label, description, provider };
 }
 
+/** Removes an outfit from a character in the local DNA. */
+export function deleteChatOutfitDef(id, key) {
+    const char = _ensureChatChar(id);
+    delete char.outfits[key];
+}
+
 /** Adds or updates an expression for a character in the local DNA. */
 export function upsertChatExpressionDef(id, key, label, description) {
     const char = _ensureChatChar(id);

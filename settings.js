@@ -47,6 +47,8 @@ import {
     DEFAULT_TEST_PROMPT,
     DEFAULT_FAL_MODEL,
     DEFAULT_PIAPI_MODEL,
+    DEFAULT_OUTFIT_GENERATOR_PROMPT,
+    DEFAULT_OUTFIT_GENERATOR_SCAN_PROMPT,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
@@ -82,6 +84,8 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     testPrompt:                 DEFAULT_TEST_PROMPT,
     falModel:                   DEFAULT_FAL_MODEL,
     piapiModel:                 DEFAULT_PIAPI_MODEL,
+    outfitGeneratorPrompt:      DEFAULT_OUTFIT_GENERATOR_PROMPT,
+    outfitGeneratorScanPrompt:  DEFAULT_OUTFIT_GENERATOR_SCAN_PROMPT,
     engineEnablePollinations:   true,
     engineEnableHuggingFace:    true,
     engineEnableFal:            false, // Off by default until key is added
