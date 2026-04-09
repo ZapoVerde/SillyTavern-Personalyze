@@ -1,21 +1,19 @@
 /**
- * @file data/default-user/extensions/personalyze/detector.js
- * @stamp {"utc":"2026-04-10T12:20:00.000Z"}
+ * @file data/default-user/extensions/personalyze/io/llm/subject.js
+ * @stamp {"utc":"2026-04-10T20:00:00.000Z"}
  * @architectural-role IO Executor (LLM)
  * @description
- * Wraps all LLM calls for the 3-Phase Layered State pipeline.
- * Implements Dual-Model routing via ST Connection Manager profiles.
+ * Primary LLM interface for the 3-Phase standard pipeline.
  *
  * Phases:
- * 1. Subject Detection (Fast Model)
- * 2. Change Gate (Fast Model)
- * 3. State Extraction (Smart Model)
+ * 1. Subject Identification (includes AKA alias awareness)
+ * 2. Visual Change Gating
+ * 3. Layered State Extraction
  *
  * @api-declaration
- * detectSubject(message, roster, profileId) -> Promise<string|null>
+ * detectSubject(message, rosterIds, chatCharacters, profileId) -> Promise<string|null>
  * detectChange(message, charName, layers, profileId) -> Promise<boolean>
  * detectLayers(message, charName, anchor, profileId) -> Promise<string>
- * detectAnchorScan(context, charName, profileId) -> Promise<object|null>
  * 
  * @contract
  *   assertions:
@@ -24,17 +22,15 @@
  *     external_io: [ConnectionManagerRequestService, prompts.js, logger.js, callLog.js]
  */
 
-import { ConnectionManagerRequestService } from '../../shared.js';
-import { log, warn, error } from './utils/logger.js';
-import { logCall } from './utils/callLog.js';
+import { ConnectionManagerRequestService } from '../../../../../shared.js';
+import { log, warn, error } from '../../utils/logger.js';
+import { logCall } from '../../utils/callLog.js';
 import { 
     PHASE_1_SUBJECT_PROMPT, 
     PHASE_2_CHANGE_PROMPT, 
-    PHASE_3_LAYERED_PROMPT,
-    ANCHOR_SCAN_PROMPT,
-    OUTFIT_GENERATOR_PROMPT 
-} from './logic/prompts.js';
-import { parsePhase1, parsePhase2 } from './logic/parsers.js';
+    PHASE_3_LAYERED_PROMPT 
+} from '../../logic/prompts.js';
+import { parsePhase1, parsePhase2 } from '../../logic/parsers.js';
 
 // ─── Internal Dispatcher ──────────────────────────────────────────────────────
 
@@ -55,8 +51,9 @@ async function dispatch(prompt, profileId, label, extraOptions = {}) {
         logCall(label, prompt, text, null);
         return text;
     } catch (err) {
-        error(label, 'LLM Request failed:', err);
-        logCall(label, prompt, null, err.message);
+        const msg = err.cause?.message || err.message;
+        error(label, 'LLM Request failed:', msg);
+        logCall(label, prompt, null, msg);
         throw err;
     }
 }
@@ -64,12 +61,26 @@ async function dispatch(prompt, profileId, label, extraOptions = {}) {
 // ─── Phase 1: Subject Detection ───────────────────────────────────────────────
 
 /**
- * Identifies which character from the roster is the main subject.
+ * Identifies which character is the subject.
+ * Formats roster with AKAs so the LLM knows nicknames.
+ * 
+ * @param {string} message - The latest AI message text.
+ * @param {string[]} rosterIds - Canonical IDs in the roster.
+ * @param {object} chatCharacters - The state.chatCharacters map.
+ * @param {string} profileId - ST Connection Profile ID.
  */
-export async function detectSubject(message, roster, profileId) {
-    const rosterList = roster.join(', ') || 'None';
+export async function detectSubject(message, rosterIds, chatCharacters, profileId) {
+    const formattedRoster = rosterIds.map(id => {
+        const char = chatCharacters[id];
+        const label = id.replace(/_/g, ' ');
+        if (char?.aka && char.aka.length > 0) {
+            return `${label} (AKA: ${char.aka.join(', ')})`;
+        }
+        return label;
+    }).join('\n');
+
     const prompt = PHASE_1_SUBJECT_PROMPT
-        .replace('{{active_roster}}', rosterList)
+        .replace('{{active_roster}}', formattedRoster || 'None')
         .replace('{{message}}', message);
 
     const raw = await dispatch(prompt, profileId, 'SubjectDetect', { temperature: 0.1 });
@@ -104,7 +115,6 @@ export async function detectChange(message, charName, layers, profileId) {
 
 /**
  * Extracts the specific layer updates from the text.
- * Note: Uses the Smart Profile.
  */
 export async function detectLayers(message, charName, anchor, profileId) {
     const prompt = PHASE_3_LAYERED_PROMPT
@@ -113,37 +123,4 @@ export async function detectLayers(message, charName, anchor, profileId) {
         .replace('{{message}}', message);
 
     return await dispatch(prompt, profileId, 'Extraction', { temperature: 0.3 });
-}
-
-// ─── Utilities ────────────────────────────────────────────────────────────────
-
-/**
- * Scans chat for permanent physical identity.
- */
-export async function detectAnchorScan(context, charName, profileId) {
-    const charFocus = charName ? `CHARACTER FOCUS: ${charName}\n` : '';
-    const prompt = ANCHOR_SCAN_PROMPT
-        .replace('{{character_focus}}', charFocus)
-        .replace('{{context}}', context);
-
-    const raw = await dispatch(prompt, profileId, 'AnchorScan', { temperature: 0.3 });
-    
-    // Inline parser for Anchor Scan
-    const nameMatch   = raw.match(/Name:\s*(.+)/i);
-    const anchorMatch = raw.match(/Identity\s+Anchor:\s*([\s\S]+)/i);
-
-    if (!nameMatch || !anchorMatch) return null;
-    return {
-        name:   nameMatch[1].trim(),
-        anchor: anchorMatch[1].trim()
-    };
-}
-
-/**
- * Generates an outfit description from a keyword.
- */
-export async function detectOutfitGenerator(keyword, profileId) {
-    const prompt = OUTFIT_GENERATOR_PROMPT.replace('{{keyword}}', keyword);
-    const raw = await dispatch(prompt, profileId, 'OutfitGen', { temperature: 0.5 });
-    return raw.replace(/^\[|\]$/g, '').trim();
 }

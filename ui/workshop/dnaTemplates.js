@@ -1,10 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaTemplates.js
- * @stamp {"utc":"2026-04-10T13:20:00.000Z"}
+ * @stamp {"utc":"2026-04-10T23:20:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Generates the HTML for the Character Workshop Dashboard.
- * Implements the Layered Grid for slot-based visual editing.
+ * 
+ * Updated for the 5-slot architecture with:
+ * 1. Default Ensemble (Everyday Wear) star toggle.
+ * 2. DataList support for quick-selection dropdowns in the layer grid.
  * 
  * @api-declaration
  * getBaseWorkshopHTML()
@@ -46,6 +49,28 @@ export function getBaseWorkshopHTML() {
                 <div id="plz-tab-add"     class="plz-tab-panel plz-hidden"></div>
             </div>
         </div>
+
+        <!-- Global Datalists for quick item/mod selection -->
+        <datalist id="plz-items-list">
+            <option value="Shirt">
+            <option value="Pants">
+            <option value="Dress">
+            <option value="Armor">
+            <option value="Coat">
+            <option value="Boots">
+            <option value="Hat">
+            <option value="Cape">
+        </datalist>
+        <datalist id="plz-mods-list">
+            <option value="Red">
+            <option value="Black">
+            <option value="White">
+            <option value="Leather">
+            <option value="Silk">
+            <option value="Dirty">
+            <option value="Torn">
+            <option value="Glowing">
+        </datalist>
     </div>`;
 }
 
@@ -86,7 +111,6 @@ export function getStudioHTML(characterId, character, layers) {
         <button class="menu_button plz-save-ensemble-btn" style="font-size:0.8em;">Save as Ensemble</button>
     </div>
 
-    <!-- Identity Section -->
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;">
         <label class="plz-studio-label">Identity Anchor</label>
         <button class="menu_button plz-anchor-scan" data-mode="studio" style="font-size:0.75em;padding:2px 8px;">Scan Chat</button>
@@ -94,8 +118,8 @@ export function getStudioHTML(characterId, character, layers) {
     <textarea id="plz-studio-anchor" class="text_pole plz-auto-textarea" rows="2" 
               style="width:100%;margin-bottom:12px;font-size:0.88em;">${escapeHtml(character.identityAnchor)}</textarea>
 
-    <!-- Layer Grid -->
-    <div style="display:grid;grid-template-columns: 1fr 1fr;gap:10px;margin-bottom:20px;">
+    <!-- Layer Grid with Keyword Hint / Force Scan -->
+    <div style="display:grid;grid-template-columns: 1fr 1fr;gap:10px;margin-bottom:12px;">
         ${getLayerInputHTML('Outerwear', 'outerwear', layers.outerwear)}
         ${getLayerInputHTML('Top', 'top', layers.top)}
         ${getLayerInputHTML('Bottom', 'bottom', layers.bottom)}
@@ -105,12 +129,15 @@ export function getStudioHTML(characterId, character, layers) {
         </div>
     </div>
 
-    <button id="plz-studio-layers-save" class="menu_button" style="width:100%;margin-bottom:20px;">Apply Changes to Turn</button>
+    <div style="display:flex; gap:6px; margin-bottom:20px;">
+        <input id="plz-studio-hint" type="text" class="text_pole" placeholder="Hint (e.g. 'Formal')" style="flex:1; font-size:0.85em;" />
+        <button id="plz-studio-force-costume" class="menu_button" style="font-size:0.85em;">Scan Current Turn</button>
+        <button id="plz-studio-layers-save" class="menu_button" style="flex:1;">Apply to Turn</button>
+    </div>
 
-    <!-- Saved Ensembles Section -->
-    <div style="margin-bottom:8px;"><strong>Saved Ensembles</strong></div>
+    <div style="margin-bottom:8px;"><strong>Saved Ensembles</strong> <small style="opacity:0.5; font-weight:normal;">(★ = Everyday Wear)</small></div>
     <div id="plz-studio-ensembles">
-        ${getEnsembleListHTML(character.ensembles)}
+        ${getEnsembleListHTML(character.ensembles, character.defaultEnsemble)}
     </div>`;
 }
 
@@ -121,8 +148,8 @@ function getLayerInputHTML(label, key, val) {
     <div class="plz-layer-input">
         <label style="font-size:0.75em;opacity:0.6;display:block;margin-bottom:2px;">${label}</label>
         <div style="display:flex;gap:4px;">
-            <input class="plz-layer-item text_pole" data-slot="${key}" type="text" placeholder="Item" value="${escapeHtml(item)}" style="flex:2;" />
-            <input class="plz-layer-mod text_pole" data-slot="${key}" type="text" placeholder="Mod" value="${escapeHtml(mod)}" style="flex:1;" />
+            <input class="plz-layer-item text_pole" data-slot="${key}" type="text" placeholder="Item" list="plz-items-list" value="${escapeHtml(item)}" style="flex:2;" />
+            <input class="plz-layer-mod text_pole" data-slot="${key}" type="text" placeholder="Mod" list="plz-mods-list" value="${escapeHtml(mod)}" style="flex:1;" />
         </div>
     </div>`;
 }
@@ -131,22 +158,29 @@ function getEmotionInputHTML(val) {
     return `
     <div class="plz-layer-input">
         <label style="font-size:0.75em;opacity:0.6;display:block;margin-bottom:2px;">Emotion & Body Language</label>
-        <input id="plz-layer-emotion" class="text_pole" type="text" placeholder="One-word mood or adjective" value="${escapeHtml(val || '')}" style="width:100%;" />
+        <input id="plz-layer-emotion" class="text_pole" type="text" placeholder="Mood/Adjective" value="${escapeHtml(val || '')}" style="width:100%;" />
     </div>`;
 }
 
-function getEnsembleListHTML(ensembles) {
+function getEnsembleListHTML(ensembles, defaultKey) {
     const entries = Object.entries(ensembles);
     if (entries.length === 0) return `<p style="opacity:0.4;font-size:0.85em;">No saved ensembles.</p>`;
     
-    return entries.map(([key, data]) => `
-    <div class="plz-ensemble-item" data-key="${escapeHtml(key)}" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
-        <span style="font-size:0.9em;">${escapeHtml(data.label)}</span>
-        <div style="display:flex;gap:8px;">
-            <button class="menu_button plz-ensemble-load" style="padding:1px 8px;font-size:0.75em;">Load</button>
-            <button class="menu_button plz-ensemble-delete" style="padding:1px 8px;font-size:0.75em;color:#e05555;">✕</button>
-        </div>
-    </div>`).join('');
+    return entries.map(([key, data]) => {
+        const isDefault = key === defaultKey;
+        return `
+        <div class="plz-ensemble-item" data-key="${escapeHtml(key)}" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <i class="fa-solid fa-star plz-ensemble-star" title="Set as Everyday Wear" 
+                   style="cursor:pointer; color:${isDefault ? '#ffc107' : 'rgba(255,255,255,0.1)'};"></i>
+                <span style="font-size:0.9em;">${escapeHtml(data.label)}</span>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button class="menu_button plz-ensemble-load" style="padding:1px 8px;font-size:0.75em;">Load</button>
+                <button class="menu_button plz-ensemble-delete" style="padding:1px 8px;font-size:0.75em;color:#e05555;">✕</button>
+            </div>
+        </div>`;
+    }).join('');
 }
 
 export function getStudioEmptyHTML() {

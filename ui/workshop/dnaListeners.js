@@ -1,10 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaListeners.js
- * @stamp {"utc":"2026-04-10T18:20:00.000Z"}
+ * @stamp {"utc":"2026-04-10T23:40:00.000Z"}
  * @architectural-role UI Controller (Workshop DNA)
  * @description
  * Manages event listeners and rendering for the DNA, Studio, and Add tabs.
- * Implements the logic for the Layered Grid and Ensemble management.
+ * Implements the logic for the Layered Grid, Ensemble management, and 
+ * Targeted Manual Extraction (Force Scan).
  * 
  * @api-declaration
  * renderDNAView()
@@ -15,7 +16,7 @@
  *   assertions:
  *     purity: IO / Stateful UI
  *     state_ownership: [state (mutates via setters)]
- *     external_io: [dnaWriter.js, promptCompiler.js, imageCache.js, detector.js, DOM]
+ *     external_io: [dnaWriter.js, promptCompiler.js, imageCache.js, llm/workshop.js, DOM]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -23,16 +24,17 @@ import { callPopup } from '../../../../../../script.js';
 import { 
     state, setWorkshopCharacter, updateActiveCharacter, updateActiveLayers, 
     updateActiveImage, addToFileIndex, updateChainLayers, setActiveRoster,
-    upsertChatCharacterDef, upsertChatEnsemble
+    upsertChatCharacterDef, upsertChatEnsemble, upsertChatDefaultEnsemble, deleteChatEnsemble
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
 import { slugify, buildDescriberContext } from '../../utils/history.js';
 import { 
-    lockedWriteCharacterDef, lockedWriteEnsemble, lockedWriteVisualState, 
-    lockedPatchVisualStateImage, lockedWriteRoster 
+    lockedWriteCharacterDef, lockedWriteEnsemble, lockedWriteVisualState,
+    lockedPatchVisualStateImage, lockedWriteRoster, lockedWriteDefaultEnsemble, lockedDeleteEnsemble
 } from '../../io/dnaWriter.js';
-import { detectAnchorScan } from '../../detector.js';
+import { detectAnchorScan, detectForceCostume } from '../../io/llm/workshop.js';
 import { compilePrompt as compile } from '../../logic/promptCompiler.js';
+import { parsePhase3 } from '../../logic/parsers.js';
 import { generate } from '../../imageCache.js';
 import { setPortrait } from '../../portrait.js';
 import { getDnaRosterHTML, getStudioHTML, getStudioEmptyHTML } from './dnaTemplates.js';
@@ -134,6 +136,36 @@ export function bindDNAHandlers() {
         } catch (err) { console.error(err); }
     });
 
+    // ─── Studio Tab: Force Scan (Costume) ───
+    $overlay.on('click', '#plz-studio-force-costume', async function() {
+        const id = state._workshopCharacterId;
+        if (!id) return;
+        const s = getSettings();
+        const hint = $('#plz-studio-hint').val().trim();
+        const lastIdx = Math.max(0, getContext().chat.length - 1);
+        const context = buildDescriberContext(getContext().chat, lastIdx, 0); // Current turn only
+
+        const $btn = $(this);
+        $btn.prop('disabled', true).text('Scanning...');
+
+        try {
+            const raw = await detectForceCostume(context, id.replace(/_/g, ' '), hint, s.smartProfileId);
+            const layers = parsePhase3(raw);
+            
+            // Populate the UI inputs
+            $('#plz-layer-emotion').val(layers.emotion || 'neutral');
+            Object.entries(layers).forEach(([slot, val]) => {
+                if (slot === 'emotion') return;
+                $(`.plz-layer-item[data-slot="${slot}"]`).val(val?.item || '');
+                $(`.plz-layer-mod[data-slot="${slot}"]`).val(val?.modifier || '');
+            });
+        } catch (err) {
+            if (window.toastr) window.toastr.error('Force scan failed.');
+        } finally {
+            $btn.prop('disabled', false).text('Scan Current Turn');
+        }
+    });
+
     // ─── Ensembles ───
     $overlay.on('click', '.plz-save-ensemble-btn', async function() {
         const id = state._workshopCharacterId;
@@ -160,13 +192,38 @@ export function bindDNAHandlers() {
         });
     });
 
+    // ─── Ensemble Delete ───
+    $overlay.on('click', '.plz-ensemble-delete', async function() {
+        const id = state._workshopCharacterId;
+        const key = $(this).closest('.plz-ensemble-item').data('key');
+        if (!id || !key) return;
+        const lastMsgId = Math.max(0, getContext().chat.length - 1);
+        await lockedDeleteEnsemble(lastMsgId, id, key);
+        deleteChatEnsemble(id, key);
+        renderStudioView();
+    });
+
+    // ─── Default (Everyday Wear) Star ───
+    $overlay.on('click', '.plz-ensemble-star', async function() {
+        const id = state._workshopCharacterId;
+        const key = $(this).closest('.plz-ensemble-item').data('key');
+        if (!id || !key) return;
+
+        const lastMsgId = Math.max(0, getContext().chat.length - 1);
+        await lockedWriteDefaultEnsemble(lastMsgId, id, key);
+        upsertChatDefaultEnsemble(id, key);
+        renderStudioView();
+    });
+
     // ─── Identity Scanning ───
     $overlay.on('click', '.plz-anchor-scan', async function() {
         const mode = $(this).data('mode');
         const s = getSettings();
         const lastIdx = Math.max(0, getContext().chat.length - 1);
         const context = buildDescriberContext(getContext().chat, lastIdx, s.describerHistory);
-        const focus = mode === 'studio' ? state._workshopCharacterId : $('#plz-add-name').val().trim();
+        
+        // Force focus if a name is present in the input
+        const focus = mode === 'add' ? $('#plz-add-name').val().trim() : state._workshopCharacterId;
         
         const result = await detectAnchorScan(context, focus, s.smartProfileId);
         if (result) {

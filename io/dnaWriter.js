@@ -1,20 +1,23 @@
 /**
  * @file data/default-user/extensions/personalyze/io/dnaWriter.js
- * @stamp {"utc":"2026-04-10T13:00:00.000Z"}
+ * @stamp {"utc":"2026-04-10T19:00:00.000Z"}
  * @architectural-role IO Executor / DNA Chain Writer
  * @description
  * Handles all writes to message.extra.personalyze with integrated concurrency 
  * locking. Implements the Array Pattern for the Layered State Pipeline.
  * 
- * Supports writing character identities, ensemble snapshots, and 5-slot 
- * visual transitions (outerwear, top, bottom, accessories, emotion).
+ * Updated to support AKA alias updates, default ensemble (everyday wear) settings,
+ * and ensemble deletion tombstones.
  *
  * @api-declaration
  * lockedWriteCharacterDef(messageId, characterId, anchor, seed)
  * lockedWriteEnsemble(messageId, characterId, key, label, layers)
- * lockedWriteVisualState(messageId, characterId, layers, image)
- * lockedPatchVisualStateImage(messageId, characterId, filename)
+ * lockedWriteVisualState(messageId, characterId, layers, image)       → recordId (string)
+ * lockedPatchVisualStateImage(messageId, characterId, filename, recordId?)
  * lockedWriteRoster(messageId, roster)
+ * lockedWriteAka(messageId, characterId, akaList)
+ * lockedDeleteEnsemble(messageId, characterId, key)
+ * lockedWriteDefaultEnsemble(messageId, characterId, ensembleKey)
  *
  * @contract
  *   assertions:
@@ -35,29 +38,8 @@ const writeLock = new AsyncLock();
  */
 function ensureArray(message) {
     message.extra = message.extra ?? {};
-    const existing = message.extra.personalyze;
-
-    if (!existing) {
+    if (!message.extra.personalyze || !Array.isArray(message.extra.personalyze)) {
         message.extra.personalyze = [];
-    } else if (!Array.isArray(existing)) {
-        // Migration: Translate legacy flat pointer into new DNA array
-        const migrated = [];
-        if (existing.roster) migrated.push({ type: 'roster', roster: existing.roster });
-        if (existing.characterId) {
-            migrated.push({
-                type: 'visual_state',
-                characterId: existing.characterId,
-                layers: {
-                    outerwear: null,
-                    top: { item: existing.outfit || 'clothes', modifier: null },
-                    bottom: null,
-                    accessories: null,
-                    emotion: existing.expression || 'neutral'
-                },
-                image: existing.image ?? null
-            });
-        }
-        message.extra.personalyze = migrated;
     }
 }
 
@@ -110,9 +92,10 @@ export async function lockedWriteEnsemble(messageId, characterId, key, label, la
 
 /**
  * Writes a layered visual state transition to the DNA chain.
- * Indicates the character's full 5-slot appearance at this turn.
+ * Returns the generated record ID so the caller can patch the exact record later.
  */
 export async function lockedWriteVisualState(messageId, characterId, layers, image = null) {
+    const recordId = `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await writeLock.acquire();
     try {
         const context = getContext();
@@ -121,6 +104,7 @@ export async function lockedWriteVisualState(messageId, characterId, layers, ima
             ensureArray(message);
             message.extra.personalyze.push({
                 type: 'visual_state',
+                _id: recordId,
                 characterId,
                 layers: structuredClone(layers),
                 image
@@ -130,12 +114,15 @@ export async function lockedWriteVisualState(messageId, characterId, layers, ima
     } finally {
         writeLock.release();
     }
+    return recordId;
 }
 
 /**
  * Patches the image field of an existing visual state record.
+ * If recordId is provided, targets that exact record. Otherwise falls back
+ * to the last visual_state for the given characterId (for workshop manual saves).
  */
-export async function lockedPatchVisualStateImage(messageId, characterId, filename) {
+export async function lockedPatchVisualStateImage(messageId, characterId, filename, recordId = null) {
     await writeLock.acquire();
     try {
         const context = getContext();
@@ -144,11 +131,12 @@ export async function lockedPatchVisualStateImage(messageId, characterId, filena
             ensureArray(message);
             const records = message.extra.personalyze;
             for (let i = records.length - 1; i >= 0; i--) {
-                if (records[i].type === 'visual_state' && records[i].characterId === characterId) {
-                    records[i].image = filename;
-                    await saveChatConditional();
-                    break;
-                }
+                const rec = records[i];
+                if (rec.type !== 'visual_state' || rec.characterId !== characterId) continue;
+                if (recordId && rec._id !== recordId) continue;
+                rec.image = filename;
+                await saveChatConditional();
+                break;
             }
         }
     } finally {
@@ -169,6 +157,72 @@ export async function lockedWriteRoster(messageId, roster) {
             message.extra.personalyze.push({
                 type: 'roster',
                 roster: [...roster]
+            });
+            await saveChatConditional();
+        }
+    } finally {
+        writeLock.release();
+    }
+}
+
+/**
+ * Writes a character's alias (AKA) list to the DNA chain.
+ */
+export async function lockedWriteAka(messageId, characterId, akaList) {
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (message) {
+            ensureArray(message);
+            message.extra.personalyze.push({
+                type: 'aka_update',
+                characterId,
+                aka: [...akaList]
+            });
+            await saveChatConditional();
+        }
+    } finally {
+        writeLock.release();
+    }
+}
+
+/**
+ * Writes an ensemble deletion tombstone to the DNA chain.
+ */
+export async function lockedDeleteEnsemble(messageId, characterId, key) {
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (message) {
+            ensureArray(message);
+            message.extra.personalyze.push({
+                type: 'ensemble_delete',
+                characterId,
+                key
+            });
+            await saveChatConditional();
+        }
+    } finally {
+        writeLock.release();
+    }
+}
+
+/**
+ * Marks a specific ensemble as the default (everyday wear) for a character.
+ */
+export async function lockedWriteDefaultEnsemble(messageId, characterId, ensembleKey) {
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (message) {
+            ensureArray(message);
+            message.extra.personalyze.push({
+                type: 'default_ensemble_set',
+                characterId,
+                key: ensembleKey
             });
             await saveChatConditional();
         }

@@ -18,13 +18,16 @@
  * updateChainLayers(characterId, layers, image) — Updates one character's chain slot.
  * getChainEntry(characterId)               — Returns a character's last-known state or null.
  * bulkInitState(data)                      — Hydrates state from a reconstruction pass.
- * setFileIndex(files)                      ) Overwrites the known image file set.
+ * setFileIndex(files)                      — Overwrites the known image file set.
  * addToFileIndex(file)                     — Appends a filename to the set.
  * removeFromFileIndex(filenames)           — Removes filenames from the set.
  * setActiveRoster(roster)                  — Replaces the active roster for this chat.
  * upsertChatCharacterDef(id, anchor, seed) — Updates local DNA identity.
  * upsertChatEnsemble(id, key, label, layers) — Updates local DNA ensemble (saved layers).
  * deleteChatEnsemble(id, key)              — Removes an ensemble from local DNA.
+ * upsertChatCharacterAka(id, akaList)      — Updates a character's AKA aliases.
+ * upsertChatDefaultEnsemble(id, key)       — Updates a character's designated default ensemble.
+ * resolveAliasToId(detectedName)           — Maps a raw name to a canonical character ID.
  * 
  * @contract
  *   assertions:
@@ -50,7 +53,7 @@ export const state = {
 
     // Local DNA definitions
     // Keyed by characterId.
-    chatCharacters: {}, // { [id]: { identityAnchor, seed, ensembles: {} } }
+    chatCharacters: {}, // { [id]: { identityAnchor, seed, ensembles: {}, aka: string[], defaultEnsemble: string|null } }
 
     // Per-chat roster
     activeRoster: [],
@@ -149,7 +152,7 @@ export function removeFromFileIndex(filenames) {
 
 function _ensureChatChar(id) {
     if (!state.chatCharacters[id]) {
-        state.chatCharacters[id] = { identityAnchor: '', seed: 1, ensembles: {} };
+        state.chatCharacters[id] = { identityAnchor: '', seed: 1, ensembles: {}, aka: [], defaultEnsemble: null };
     }
     return state.chatCharacters[id];
 }
@@ -171,4 +174,48 @@ export function upsertChatEnsemble(id, key, label, layers) {
 export function deleteChatEnsemble(id, key) {
     const char = _ensureChatChar(id);
     delete char.ensembles[key];
+    if (char.defaultEnsemble === key) {
+        char.defaultEnsemble = null;
+    }
+}
+
+/** Updates a character's AKA aliases. */
+export function upsertChatCharacterAka(id, akaList) {
+    const char = _ensureChatChar(id);
+    char.aka = Array.isArray(akaList) ? [...akaList] : [];
+}
+
+/** Updates a character's designated default ensemble key. */
+export function upsertChatDefaultEnsemble(id, key) {
+    const char = _ensureChatChar(id);
+    char.defaultEnsemble = key ?? null;
+}
+
+// ─── Reverse Lookup ──────────────────────────────────────────────────────────
+
+/**
+ * Maps a raw detected name back to a canonical character ID.
+ * Checks exact ID matches first, then checks alias arrays.
+ * 
+ * @param {string} detectedName - The raw name output by the LLM.
+ * @returns {string|null} - The canonical ID, or null if genuinely unknown.
+ */
+export function resolveAliasToId(detectedName) {
+    if (!detectedName) return null;
+    
+    const target = detectedName.trim().toLowerCase();
+    
+    for (const [id, char] of Object.entries(state.chatCharacters)) {
+        // Direct ID match (accounting for slugification differences like spaces vs underscores)
+        if (id.toLowerCase().replace(/_/g, ' ') === target.replace(/_/g, ' ')) {
+            return id;
+        }
+        
+        // Alias match
+        if (char.aka && char.aka.some(alias => alias.toLowerCase() === target)) {
+            return id;
+        }
+    }
+    
+    return null;
 }

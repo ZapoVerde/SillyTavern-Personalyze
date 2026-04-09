@@ -1,17 +1,17 @@
 /**
  * @file data/default-user/extensions/personalyze/reconstruction.js
- * @stamp {"utc":"2026-04-10T11:20:00.000Z"}
+ * @stamp {"utc":"2026-04-10T19:20:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Derives PersonaLyze runtime state from a single forward pass over the chat DNA.
  * Reconstructs character definitions, saved ensembles, and the layered visual state.
  *
- * Built to handle the transition from monolithic outfit keys to the new
- * 5-slot (outerwear, top, bottom, accessories, emotion) state object.
+ * Updated to handle AKA aliases, default ensemble (everyday wear) definitions,
+ * and ensemble deletion tombstones (ensemble_delete record type).
  *
  * @api-declaration
  * reconstruct(chat) → {
- *   chatCharacters:      { [characterId]: { identityAnchor, seed, ensembles } },
+ *   chatCharacters:      { [characterId]: { identityAnchor, seed, ensembles, aka, defaultEnsemble } },
  *   characterChain:      { [characterId]: { layers, image } },
  *   activeRoster:        string[],
  *   activeCharacterId:   string|null,
@@ -48,7 +48,13 @@ export function reconstruct(chat) {
     /** Helper to guarantee a valid character structure exists. */
     const ensureChar = (id) => {
         if (!chatCharacters[id]) {
-            chatCharacters[id] = { identityAnchor: '', seed: 1, ensembles: {} };
+            chatCharacters[id] = { 
+                identityAnchor: '', 
+                seed: 1, 
+                ensembles: {}, 
+                aka: [], 
+                defaultEnsemble: null 
+            };
         }
         return chatCharacters[id];
     };
@@ -76,6 +82,20 @@ export function reconstruct(chat) {
                     break;
                 }
 
+                case 'aka_update': {
+                    if (!rec.characterId || !rec.aka) break;
+                    const char = ensureChar(rec.characterId);
+                    char.aka = Array.isArray(rec.aka) ? [...rec.aka] : [];
+                    break;
+                }
+
+                case 'default_ensemble_set': {
+                    if (!rec.characterId) break;
+                    const char = ensureChar(rec.characterId);
+                    char.defaultEnsemble = rec.key ?? null;
+                    break;
+                }
+
                 case 'ensemble_def': {
                     if (!rec.characterId || !rec.key) break;
                     const char = ensureChar(rec.characterId);
@@ -86,11 +106,18 @@ export function reconstruct(chat) {
                     break;
                 }
 
+                case 'ensemble_delete': {
+                    if (!rec.characterId || !rec.key) break;
+                    const char = ensureChar(rec.characterId);
+                    delete char.ensembles[rec.key];
+                    if (char.defaultEnsemble === rec.key) char.defaultEnsemble = null;
+                    break;
+                }
+
                 case 'visual_state': {
                     const id = rec.characterId;
                     if (!id) break;
 
-                    // Support new layered format, with legacy fallback
                     let layers;
                     if (rec.layers) {
                         layers = structuredClone(rec.layers);
