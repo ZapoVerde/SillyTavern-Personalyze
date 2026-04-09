@@ -59,6 +59,39 @@ function _applyPosition() {
     log('Portrait', 'Position applied:', posClass);
 }
 
+const STATUS_PCT = { pending: 15, starting: 35, processing: 65, retry: 65, success: 100, failed: 100 };
+const STATUS_LABEL = { generating: 'generating…', pending: 'pending…', starting: 'starting…', processing: 'rendering…', retry: 'retrying…', success: 'done', failed: 'failed' };
+
+/**
+ * Updates the portrait status bar element.
+ * @param {string} selector  CSS selector for the .plz-portrait-status element.
+ * @param {{ status: string, poll?: number, max?: number, error?: string }} detail
+ */
+function _updateStatusBar(selector, { status, poll, max, error }) {
+    const $bar   = $(selector);
+    const $fill  = $bar.find('.plz-portrait-status-fill');
+    const $label = $bar.find('.plz-portrait-status-label');
+
+    $fill.removeClass('plz-status-indeterminate plz-status-failed');
+
+    if (status === 'generating') {
+        $fill.css('width', '').addClass('plz-status-indeterminate');
+    } else if (status === 'failed') {
+        $fill.css('width', '').addClass('plz-status-failed');
+        const msg = error ? error.slice(0, 50) : 'failed';
+        $label.text(msg);
+        $bar.show();
+        setTimeout(() => $bar.fadeOut(400), 4000);
+        return;
+    } else {
+        $fill.css('width', `${STATUS_PCT[status] ?? 20}%`);
+    }
+
+    const pollSuffix = (poll != null && max != null) ? ` (${poll}/${max})` : '';
+    $label.text((STATUS_LABEL[status] ?? status) + pollSuffix);
+    $bar.show();
+}
+
 /** Builds the portrait HTML and appends it to the body if not already present. */
 export function injectPortraitContainer() {
     if (document.getElementById(CONTAINER_ID)) return;
@@ -76,6 +109,12 @@ export function injectPortraitContainer() {
                     <i class="fa-solid fa-shuffle"></i>
                     Click to change
                 </div>
+                <div id="plz-portrait-status" class="plz-portrait-status" style="display:none;">
+                    <div class="plz-portrait-status-track">
+                        <div class="plz-portrait-status-fill"></div>
+                    </div>
+                    <span class="plz-portrait-status-label"></span>
+                </div>
             </div>
         </div>
     `);
@@ -90,6 +129,14 @@ export function injectPortraitContainer() {
 
     // Update hint text when the roster changes
     document.addEventListener('plz:roster-changed', _refreshEmptyHint);
+
+    // Portrait generation status bar
+    document.addEventListener('plz:portrait-status', ({ detail }) => {
+        _updateStatusBar('#plz-portrait-status', detail);
+    });
+    document.addEventListener('plz:portrait-set', () => {
+        $('#plz-portrait-status').fadeOut(200);
+    });
 
     // Watch for SillyTavern toggling waifuMode on/off
     const observer = new MutationObserver(() => _applyPosition());

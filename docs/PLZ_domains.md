@@ -33,6 +33,53 @@
 
 ---
 
+## External Connections
+
+### Why This Section Exists
+Image providers vary wildly in how much complexity they hide from you. This section documents what PLZ expects from each and the tradeoffs that drove each integration decision.
+
+### Pollinations
+Dead simple. A single GET request to a URL with the prompt in the path. Returns image bytes directly. No auth required (key is optional for higher rate limits). No polling, no task IDs, no CDN redirects. The whole pipeline is one `fetch()` call. Use as the default and baseline for comparison.
+
+### Fal AI
+One POST returning JSON with a CDN image URL, then a second GET to fetch the binary. Two requests, both short-lived. Sync mode (`sync_mode: true`) means no polling needed — the first call blocks until generation is done, typically 5–15s. Simple enough.
+
+### PiAPI
+Significantly more complex than the others. This complexity is why it gets its own section.
+
+**Architecture — three short-lived routes instead of one blocking connection:**
+
+The naive approach (submit → poll → fetch, all server-side, one request) causes 500 errors on Zero Trust tunnel setups because the server holds a connection open for 30–120s. Instead PLZ uses a split design:
+
+| Route | What it does | Typical duration |
+|---|---|---|
+| `POST /piapi-generate` | Submits task, returns `{task_id}` immediately | ~1s |
+| `GET /piapi-status/:task_id` | Single status check — call this on a timer | ~300ms |
+| `POST /piapi-fetch` | Downloads the completed image from the CDN | 1–5s |
+
+The client (`imageCache.js`) owns the polling loop: every 5 seconds, up to 24 polls (120s total), calling `/piapi-status`. When the status comes back `success` or `completed`, it calls `/piapi-fetch` with the `image_url` from the status response.
+
+**Why webhooks aren't used:** PiAPI supports push callbacks, but Zero Trust tunnels (Google, Cloudflare) block inbound connections from arbitrary external callers. Polling is the correct architecture here.
+
+**Status stages and what they mean:**
+
+| PiAPI status | Meaning | Bar fill |
+|---|---|---|
+| `pending` | In the queue | 15% |
+| `starting` | Worker picked it up | 35% |
+| `processing` | Actively rendering | 65% |
+| `retry` | PiAPI retrying CDN download of its own output — not our error | 65% (holds) |
+| `success` | Done, image URL available | 100% → bar fades |
+| `failed` | Generation failed | 100% red, auto-hides |
+
+**Concurrency limiter on `/piapi-fetch`:** CDN download is the step most likely to fail under load. `piapiAcquire`/`piapiRelease` (semaphore, max 2 concurrent) in `plugin/index.js` prevents pile-ups. Raise `MAX_PIAPI_CONCURRENT` if bandwidth allows; lower it if CDN errors appear under parallel generation.
+
+**Task metadata (`meta` field):** When a task succeeds, `/piapi-status` extracts a structured `meta` object from the task payload (`task_id`, `model`, `status`, timestamps, `points`, `image_url`). `imageCache.js` receives this via `statusData.meta` and passes it to `logPatchLast` for the call log display.
+
+**Future providers** should follow the same three-route pattern if they use an async task queue. Sync providers (like Fal with `sync_mode: true`) don't need splitting.
+
+---
+
 ## LLM Call Logging Principles
 
 ### What Gets Logged

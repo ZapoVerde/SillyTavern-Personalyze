@@ -250,6 +250,10 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
                     </select>
                 </div>
 
+                <div style="margin-bottom:10px;">
+                    <label class="checkbox_label"><input type="checkbox" id="plz-portrait-status" ${s.showPortraitStatus ? 'checked' : ''} /><span>Show generation progress bar on portrait</span></label>
+                </div>
+
                 <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
                     <button class="menu_button" id="plz-open-engines" style="width:100%;"><i class="fa-solid fa-gear"></i> Configure Engines</button>
                     <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">

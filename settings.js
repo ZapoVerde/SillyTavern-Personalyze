@@ -86,6 +86,7 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     engineEnableFal:          false,
     engineEnablePiAPI:        false,
     engineEnableHuggingFace:  true,
+    showPortraitStatus:       true,
 });
 
 /** Returns the active working copy. */

@@ -82,6 +82,7 @@ function refreshUI() {
     $(`#plz-dev-mode`).prop('checked', s.devMode);
     $(`#plz-verbose-logging`).prop('checked', s.verboseLogging);
     $(`#plz-portrait-position`).val(s.portraitPosition);
+    $(`#plz-portrait-status`).prop('checked', s.showPortraitStatus);
 
     $(`.plz-history-input`).each(function () {
         const key = $(this).data('history-key');
@@ -119,6 +120,11 @@ function bindHandlers() {
         const val = $(this).val();
         updateSetting('portraitPosition', val);
         setPortraitPosition(val);
+        updateDirtyIndicator();
+    });
+
+    $panel.on('change', '#plz-portrait-status', function () {
+        updateSetting('showPortraitStatus', $(this).prop('checked'));
         updateDirtyIndicator();
     });
 

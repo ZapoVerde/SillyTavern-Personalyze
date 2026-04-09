@@ -45,6 +45,35 @@ const SPLIT_PRESETS = [
 
 let _splitIndex = 1; // default: ½
 
+// ─── Status Bar ───────────────────────────────────────────────────────────────
+
+const STATUS_PCT   = { pending: 15, starting: 35, processing: 65, retry: 65, success: 100, failed: 100 };
+const STATUS_LABEL = { generating: 'generating…', pending: 'pending…', starting: 'starting…', processing: 'rendering…', retry: 'retrying…', success: 'done', failed: 'failed' };
+
+function _updateStatusBar(selector, { status, poll, max, error }) {
+    const $bar  = $(selector);
+    const $fill = $bar.find('.plz-portrait-status-fill');
+    const $label = $bar.find('.plz-portrait-status-label');
+
+    $fill.removeClass('plz-status-indeterminate plz-status-failed');
+
+    if (status === 'generating') {
+        $fill.css('width', '').addClass('plz-status-indeterminate');
+    } else if (status === 'failed') {
+        $fill.css('width', '').addClass('plz-status-failed');
+        $label.text(error ? error.slice(0, 50) : 'failed');
+        $bar.show();
+        setTimeout(() => $bar.fadeOut(400), 4000);
+        return;
+    } else {
+        $fill.css('width', `${STATUS_PCT[status] ?? 20}%`);
+    }
+
+    const pollSuffix = (poll != null && max != null) ? ` (${poll}/${max})` : '';
+    $label.text((STATUS_LABEL[status] ?? status) + pollSuffix);
+    $bar.show();
+}
+
 // ─── Injection ────────────────────────────────────────────────────────────────
 
 /**
@@ -66,6 +95,12 @@ export function injectVnPanel() {
                     <i class="fa-solid fa-shuffle"></i>
                     Click to change
                 </div>
+                <div id="plz-vn-portrait-status" class="plz-portrait-status" style="display:none;">
+                    <div class="plz-portrait-status-track">
+                        <div class="plz-portrait-status-fill"></div>
+                    </div>
+                    <span class="plz-portrait-status-label"></span>
+                </div>
             </div>
             <button id="${CYCLE_ID}" title="Cycle portrait size" type="button">½</button>
         </div>
@@ -77,6 +112,11 @@ export function injectVnPanel() {
         $('#plz-vn-change-hint').css('display', 'flex');
         $(`#${IMG_ID}`).attr('src', src).css('opacity', 0).show()
             .animate({ opacity: 1 }, 300);
+        $('#plz-vn-portrait-status').fadeOut(200);
+    });
+
+    document.addEventListener('plz:portrait-status', ({ detail }) => {
+        _updateStatusBar('#plz-vn-portrait-status', detail);
     });
 
     document.addEventListener('plz:portrait-cleared', () => {

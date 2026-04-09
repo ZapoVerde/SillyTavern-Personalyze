@@ -152,39 +152,86 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
     return URL.createObjectURL(await res.blob());
 }
 
+/**
+ * Dispatches a portrait generation status event if showPortraitStatus is enabled.
+ * Consumed by portrait.js and vnPanel.js to drive the per-character progress bar.
+ */
+function _dispatchPortraitStatus(characterId, detail) {
+    if (!getSettings().showPortraitStatus) return;
+    document.dispatchEvent(new CustomEvent('plz:portrait-status', { detail: { characterId, ...detail } }));
+}
+
 export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, anchor, seed = 1, provider = 'pollinations') {
     const fullPrompt = finalizePrompt(subjectPrompt, anchor, emotionLabel);
     logCall('PortraitGenerate', `[${provider}]\n${fullPrompt}`, null, null);
 
     try {
         let imgRes;
+        let piapiMeta = null;
         const s = getSettings();
         const w = s.devMode ? DEV_IMAGE_WIDTH : DEFAULT_IMAGE_WIDTH;
         const h = s.devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
 
         if (provider === 'fal') {
+            _dispatchPortraitStatus(characterId, { status: 'generating' });
             imgRes = await fetch('/api/plugins/personalyze/fal-generate', {
                 method: 'POST', headers: getRequestHeaders(),
                 body: JSON.stringify({ model: s.falModel, prompt: fullPrompt, width: w, height: h }),
             });
         } else if (provider === 'piapi') {
-            imgRes = await fetch('/api/plugins/personalyze/piapi-generate', {
+            // Step 1: Submit — returns {task_id} immediately
+            _dispatchPortraitStatus(characterId, { status: 'generating' });
+            const submitRes = await fetch('/api/plugins/personalyze/piapi-generate', {
                 method: 'POST', headers: getRequestHeaders(),
                 body: JSON.stringify({ model: s.piapiModel, prompt: fullPrompt, width: w, height: h, seed }),
             });
+            if (!submitRes.ok) {
+                const errData = await submitRes.json().catch(() => ({}));
+                throw new Error(errData.error || `PiAPI submit failed (${submitRes.status})`);
+            }
+            const { task_id } = await submitRes.json();
+            _dispatchPortraitStatus(characterId, { status: 'pending', poll: 0, max: 24 });
+
+            // Step 2: Poll every 5 seconds, up to 24 times (120s total)
+            const MAX_POLLS = 24;
+            let imageUrl = null;
+            for (let i = 0; i < MAX_POLLS; i++) {
+                await new Promise(r => setTimeout(r, 1500));
+                const statusRes = await fetch(`/api/plugins/personalyze/piapi-status/${task_id}`, {
+                    headers: getRequestHeaders(),
+                });
+                if (!statusRes.ok) {
+                    const errData = await statusRes.json().catch(() => ({}));
+                    throw new Error(errData.error || `PiAPI status check failed (${statusRes.status})`);
+                }
+                const statusData = await statusRes.json();
+                _dispatchPortraitStatus(characterId, { status: statusData.status, poll: i + 1, max: MAX_POLLS });
+                if (/^(completed|success)$/i.test(statusData.status)) {
+                    imageUrl = statusData.image_url;
+                    piapiMeta = statusData.meta ?? null;
+                    break;
+                }
+                if (/^failed$/i.test(statusData.status)) {
+                    throw new Error(`PiAPI task failed: ${statusData.error || 'unknown error'}`);
+                }
+            }
+            if (!imageUrl) {
+                throw new Error(`PiAPI task ${task_id} timed out after ${MAX_POLLS * 5}s`);
+            }
+
+            // Step 3: Fetch image binary through concurrency-limited proxy
+            imgRes = await fetch('/api/plugins/personalyze/piapi-fetch', {
+                method: 'POST', headers: getRequestHeaders(),
+                body: JSON.stringify({ image_url: imageUrl }),
+            });
         } else {
+            _dispatchPortraitStatus(characterId, { status: 'generating' });
             const key = await getAuthKey('pollinations');
             const params = new URLSearchParams({ width: String(w), height: String(h), model: s.imageModel ?? DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed), safe: 'false' });
             imgRes = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`, { headers: key ? { 'Authorization': `Bearer ${key}` } : {} });
         }
 
         await validateImageResponse(imgRes);
-
-        // Read PiAPI task metadata forwarded by the plugin (piapi provider only)
-        const piapiMetaHeader = imgRes.headers.get('X-PiAPI-Meta');
-        const piapiMeta = piapiMetaHeader ? (() => {
-            try { return JSON.parse(piapiMetaHeader); } catch { return null; }
-        })() : null;
 
         const filename = `${buildFilenamePrefix(characterId, tag, emotion)}${Date.now()}.png`;
         const blob = await imgRes.blob();
@@ -200,6 +247,7 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
         logPatchLast(filename, null, piapiMeta);
         return filename;
     } catch (err) {
+        _dispatchPortraitStatus(characterId, { status: 'failed', error: err.message });
         logPatchLast(null, err.message);
         throw err;
     }

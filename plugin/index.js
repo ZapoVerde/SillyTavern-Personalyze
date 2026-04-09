@@ -14,7 +14,9 @@
  * - /space-ping     : HF Space status check
  * - /fal-generate   : Fal AI generation proxy (JSON -> Image pipe)
  * - /fal-ping       : Fal AI API key validation
- * - /piapi-generate : PiAPI image generation proxy (async task polling -> Image pipe)
+ * - /piapi-generate : PiAPI task submission — returns {task_id} immediately
+ * - /piapi-status   : PiAPI single status check for a task_id
+ * - /piapi-fetch    : PiAPI image download for a completed task_id
  * - /piapi-ping     : PiAPI API key validation
  *
  * @contract
@@ -23,6 +25,24 @@
  */
 
 import { readSecret } from '../src/endpoints/secrets.js';
+
+// ─── PiAPI Concurrency Limiter ─────────────────────────────────────────────────
+// Max simultaneous image-fetch (CDN download) requests. Raise if your server
+// has ample outbound bandwidth; lower if you see connection errors under load.
+const MAX_PIAPI_CONCURRENT = 2;
+let _piapiActive = 0;
+const _piapiQueue = [];
+
+function piapiAcquire() {
+    return new Promise(resolve => {
+        if (_piapiActive < MAX_PIAPI_CONCURRENT) { _piapiActive++; resolve(); }
+        else { _piapiQueue.push(resolve); }
+    });
+}
+function piapiRelease() {
+    if (_piapiQueue.length > 0) { _piapiActive++; _piapiQueue.shift()(); }
+    else { _piapiActive--; }
+}
 
 export const info = {
     id: 'personalyze',
@@ -330,7 +350,7 @@ export async function init(router) {
         }
     });
 
-    // ── PiAPI: image generation ───────────────────────────────────────────────
+    // ── PiAPI: submit task, return task_id immediately ────────────────────────
     router.post('/piapi-generate', async (req, res) => {
         try {
             const { model, prompt, negative_prompt, width, height, seed, flow_shift, batch_size } = req.body;
@@ -341,12 +361,12 @@ export async function init(router) {
                 return res.status(401).json({ error: 'PiAPI key not configured.' });
             }
 
-            // Step 1: Submit the task
             const taskResponse = await fetch('https://api.piapi.ai/api/v1/task', {
                 method: 'POST',
                 headers: {
                     'X-API-Key': apiKey,
                     'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (compatible; PersonaLyze/1.0)',
                 },
                 body: JSON.stringify({
                     model: modelId,
@@ -354,9 +374,9 @@ export async function init(router) {
                     input: {
                         prompt,
                         negative_prompt,
-                        width: width ?? 1024,
-                        height: height ?? 1024,
-                        seed: seed ?? -1,
+                        width:      width      ?? 1024,
+                        height:     height     ?? 1024,
+                        seed:       seed       ?? -1,
                         flow_shift: flow_shift ?? 3,
                         batch_size: batch_size ?? 1,
                     },
@@ -366,109 +386,113 @@ export async function init(router) {
             if (!taskResponse.ok) {
                 const text = await taskResponse.text();
                 return res.status(taskResponse.status).json({
-                    error: `PiAPI task submission failed (HTTP ${taskResponse.status}) for model "${modelId}": ${text.slice(0, 300)}`,
+                    error: `PiAPI submit failed (HTTP ${taskResponse.status}) for model "${modelId}": ${text.slice(0, 300)}`,
                 });
             }
 
             const taskData = await taskResponse.json();
-            // PiAPI submit response may be wrapped in `data` or flat — handle both.
-            const taskPayloadInit = taskData.data ?? taskData;
-            const taskId = taskPayloadInit.task_id;
+            const taskPayload = taskData.data ?? taskData;
+            const taskId = taskPayload.task_id;
 
             if (!taskId) {
-                return res.status(500).json({ error: `PiAPI returned no task_id. Response: ${JSON.stringify(taskData).slice(0, 300)}` });
-            }
-
-            // Step 2: Poll until done. Adaptive intervals: 1s → 1.5s → 2.25s → cap 3s.
-            // Total budget ~2m to accommodate slower models.
-            const POLL_BUDGET_MS = 120000;
-            const deadline = Date.now() + POLL_BUDGET_MS;
-            let pollDelay = 1000;
-            let imageUrl = null;
-            let lastStatus = 'pending';
-
-            while (Date.now() < deadline) {
-                await new Promise(resolve => setTimeout(resolve, pollDelay));
-                pollDelay = Math.min(Math.round(pollDelay * 1.5), 3000);
-
-                const statusResponse = await fetch(`https://api.piapi.ai/api/v1/task/${taskId}`, {
-                    headers: { 'X-API-Key': apiKey },
-                });
-
-                if (!statusResponse.ok) {
-                    const text = await statusResponse.text();
-                    return res.status(statusResponse.status).json({
-                        error: `PiAPI status check failed (HTTP ${statusResponse.status}) for task "${taskId}": ${text.slice(0, 200)}`,
-                    });
-                }
-
-                const statusData = await statusResponse.json();
-                // PiAPI status polling returns a flat object (task_id, status, output at root),
-                // but some versions wrap it in a `data` envelope — handle both.
-                const taskPayload = statusData.data ?? statusData;
-                lastStatus = taskPayload.status ?? 'unknown';
-
-                // PiAPI uses 'completed' or 'success' (case-insensitive) for done tasks
-                if (/^(completed|success)$/i.test(lastStatus)) {
-                    const output = taskPayload.output;
-                    imageUrl = extractPiapiImageUrl(output);
-                    if (!imageUrl) {
-                        return res.status(500).json({
-                            error: `PiAPI task "${taskId}" completed but returned no image URL. Output: ${JSON.stringify(output).slice(0, 200)}`,
-                        });
-                    }
-                    // Stash the full final task payload for the client log
-                    res.locals.piapiMeta = {
-                        task_id:   taskPayload.task_id,
-                        model:     taskPayload.model,
-                        status:    taskPayload.status,
-                        created_at: taskPayload.meta?.created_at,
-                        started_at: taskPayload.meta?.started_at,
-                        ended_at:   taskPayload.meta?.ended_at,
-                        points:     taskPayload.meta?.usage?.consume,
-                        image_url:  imageUrl,
-                        error:      taskPayload.error?.message || taskPayload.error?.raw_message || null,
-                    };
-                    break;
-                }
-
-                if (/^failed$/i.test(lastStatus)) {
-                    const errDetail = taskPayload.error?.message
-                        || taskPayload.error?.raw_message
-                        || (taskPayload.error?.code ? `error code ${taskPayload.error.code}` : null)
-                        || JSON.stringify(taskPayload.error_reason ?? {});
-                    return res.status(500).json({
-                        error: `PiAPI task "${taskId}" failed (model: "${modelId}"): ${errDetail}`,
-                    });
-                }
-            }
-
-            if (!imageUrl) {
-                const elapsed = Math.round((Date.now() - (deadline - POLL_BUDGET_MS)) / 1000);
-                return res.status(504).json({
-                    error: `PiAPI task "${taskId}" timed out after ${elapsed}s — last status was "${lastStatus}" (model: "${modelId}"). The model may be overloaded.`,
+                return res.status(500).json({
+                    error: `PiAPI returned no task_id. Response: ${JSON.stringify(taskData).slice(0, 300)}`,
                 });
             }
 
-            // Step 3: Fetch the actual image binary
-            const imgRes = await fetch(imageUrl);
-            if (!imgRes.ok) {
-                return res.status(imgRes.status).json({
-                    error: `Failed to fetch generated image from PiAPI CDN (HTTP ${imgRes.status}). Task: "${taskId}"`,
-                });
-            }
-
-            const contentType = imgRes.headers.get('Content-Type') ?? 'image/png';
-            res.setHeader('Content-Type', contentType);
-            res.setHeader('X-PiAPI-Task-ID', taskId);
-            if (res.locals.piapiMeta) {
-                res.setHeader('X-PiAPI-Meta', JSON.stringify(res.locals.piapiMeta));
-            }
-            const buffer = await imgRes.arrayBuffer();
-            res.send(Buffer.from(buffer));
+            return res.json({ task_id: taskId });
 
         } catch (err) {
-            res.status(500).json({ error: err.message });
+            const cause = err.cause?.message || err.cause?.code || '';
+            res.status(500).json({ error: `${err.message}${cause ? ` (${cause})` : ''}` });
+        }
+    });
+
+    // ── PiAPI: single status check for a task_id ──────────────────────────────
+    router.get('/piapi-status/:task_id', async (req, res) => {
+        try {
+            const { task_id } = req.params;
+            const apiKey = readSecret(req.user.directories, 'api_key_piapi');
+
+            if (!apiKey) {
+                return res.status(401).json({ error: 'PiAPI key not configured.' });
+            }
+
+            const statusResponse = await fetch(`https://api.piapi.ai/api/v1/task/${task_id}`, {
+                headers: { 'X-API-Key': apiKey },
+            });
+
+            if (!statusResponse.ok) {
+                const text = await statusResponse.text();
+                return res.status(statusResponse.status).json({
+                    error: `PiAPI status check failed (HTTP ${statusResponse.status}): ${text.slice(0, 200)}`,
+                });
+            }
+
+            const statusData = await statusResponse.json();
+            const taskPayload = statusData.data ?? statusData;
+            const status = taskPayload.status ?? 'unknown';
+            const result = { task_id, status };
+
+            if (/^(completed|success)$/i.test(status)) {
+                const imageUrl = extractPiapiImageUrl(taskPayload.output);
+                if (!imageUrl) {
+                    return res.status(500).json({
+                        error: `PiAPI task "${task_id}" completed but returned no image URL. Output: ${JSON.stringify(taskPayload.output).slice(0, 200)}`,
+                    });
+                }
+                result.image_url = imageUrl;
+                result.meta = {
+                    task_id:    taskPayload.task_id,
+                    model:      taskPayload.model,
+                    status:     taskPayload.status,
+                    created_at: taskPayload.meta?.created_at,
+                    started_at: taskPayload.meta?.started_at,
+                    ended_at:   taskPayload.meta?.ended_at,
+                    points:     taskPayload.meta?.usage?.consume,
+                    image_url:  imageUrl,
+                    error:      taskPayload.error?.message || taskPayload.error?.raw_message || null,
+                };
+            } else if (/^failed$/i.test(status)) {
+                result.error = taskPayload.error?.message
+                    || taskPayload.error?.raw_message
+                    || (taskPayload.error?.code ? `error code ${taskPayload.error.code}` : null)
+                    || JSON.stringify(taskPayload.error_reason ?? {});
+            }
+
+            return res.json(result);
+
+        } catch (err) {
+            const cause = err.cause?.message || err.cause?.code || '';
+            res.status(500).json({ error: `${err.message}${cause ? ` (${cause})` : ''}` });
+        }
+    });
+
+    // ── PiAPI: fetch completed image binary (concurrency-limited CDN download) ─
+    router.post('/piapi-fetch', async (req, res) => {
+        const { image_url } = req.body;
+        if (!image_url || !image_url.startsWith('http')) {
+            return res.status(400).json({ error: 'Missing or invalid image_url.' });
+        }
+
+        await piapiAcquire();
+        try {
+            const imgRes = await fetch(image_url, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PersonaLyze/1.0)' },
+            });
+            if (!imgRes.ok) {
+                return res.status(imgRes.status).json({
+                    error: `CDN fetch failed (HTTP ${imgRes.status}) for ${image_url.slice(0, 80)}`,
+                });
+            }
+            const contentType = imgRes.headers.get('Content-Type') ?? 'image/png';
+            res.setHeader('Content-Type', contentType);
+            res.send(Buffer.from(await imgRes.arrayBuffer()));
+        } catch (err) {
+            const cause = err.cause?.message || err.cause?.code || '';
+            res.status(500).json({ error: `${err.message}${cause ? ` (${cause})` : ''}` });
+        } finally {
+            piapiRelease();
         }
     });
 
