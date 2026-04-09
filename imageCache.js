@@ -84,12 +84,31 @@ async function validateImageResponse(response) {
     }
 }
 
-/** Wraps the subject prompt with global style tags from settings. */
-function finalizePrompt(subjectPrompt) {
+/**
+ * Builds the final image generation prompt from the compiled subject and style template.
+ *
+ * If vnStyleSuffix contains {{variables}}, they are substituted and the result is
+ * used as the complete prompt. If it contains no variables, it is appended as a
+ * style suffix to the compiled subject prompt (legacy behaviour).
+ *
+ * @param {string} subjectPrompt - Compiled layers description from promptCompiler.
+ * @param {string} [anchor]      - Character's permanent identity anchor.
+ * @param {string} [emotion]     - Current emotion label.
+ */
+function finalizePrompt(subjectPrompt, anchor = '', emotion = '') {
     const s = getSettings();
     const style = s.vnStyleSuffix || '';
-    // If the style suffix uses variables, we assume they were already resolved 
-    // in promptCompiler or we just append the style.
+
+    if (style.includes('{{')) {
+        return style
+            .replace(/\{\{identity_anchor\}\}/g, anchor)
+            .replace(/\{\{layers_description\}\}/g, subjectPrompt)
+            .replace(/\{\{emotion\}\}/g, emotion)
+            .replace(/(,\s*)+/g, ', ')
+            .trim();
+    }
+
+    // Legacy: no variables — append as style suffix
     return `${subjectPrompt}, ${style}`.replace(/(,\s*)+/g, ', ').trim();
 }
 
@@ -134,7 +153,7 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
 }
 
 export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, anchor, seed = 1, provider = 'pollinations') {
-    const fullPrompt = finalizePrompt(subjectPrompt);
+    const fullPrompt = finalizePrompt(subjectPrompt, anchor, emotionLabel);
     logCall('PortraitGenerate', `[${provider}]\n${fullPrompt}`, null, null);
 
     try {

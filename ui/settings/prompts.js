@@ -70,7 +70,11 @@ const PROMPT_VARIABLES = {
     forceCostumeHintTemplate: [
         { v: '{{hint}}',           d: 'The raw keyword hint typed by the user in the Workshop' },
     ],
-    vnStyleSuffix: [],
+    vnStyleSuffix: [
+        { v: '{{identity_anchor}}',   d: 'Permanent physical description of the character' },
+        { v: '{{layers_description}}', d: 'Compiled outfit string built from the 5 visual slots' },
+        { v: '{{emotion}}',            d: 'Current emotion label (e.g. "curious", "tense")' },
+    ],
 };
 
 /**

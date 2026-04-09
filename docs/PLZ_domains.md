@@ -22,7 +22,7 @@
 ### Prompt Modals
 - Every prompt modal shows the title **left-justified** via `.plz-modal-title`.
 - Below the title, list every `{{variable}}` available in that template with a copy button and a one-line description. Use the `.plz-var-list` / `.plz-var-row` classes.
-- If a template has no variables, show a brief italic note (`plz-var-none`) rather than leaving blank space.
+- If a template genuinely has no variables, show a brief italic note (`plz-var-none`) rather than leaving blank space. Do not assume a template has no variables without checking the substitution code.
 - Copy buttons sit inline to the left of the variable name. The description wraps freely on narrow screens (`flex: 1; min-width: 0`).
 - The modal footer action row uses `.plz-modal-actions` (flex, wrap, nowrap buttons).
 
