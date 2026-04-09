@@ -11,9 +11,9 @@
  * 3. Redress Extraction (supports USE_DEFAULT)
  *
  * @api-declaration
- * detectSceneChange(currentLoc, history, message, profileId) -> Promise<boolean>
- * detectWardrobeValidity(scene, rosterItems, profileId) -> Promise<object>
- * detectRedress(charName, sceneText, profileId) -> Promise<string>
+ * detectSceneChange(currentLoc, history, currentTurn, profileId, template?) -> Promise<boolean>
+ * detectWardrobeValidity(history, currentTurn, rosterItems, profileId, template?) -> Promise<object>
+ * detectRedress(charName, history, currentTurn, profileId, template?) -> Promise<string>
  * 
  * @contract
  *   assertions:
@@ -60,11 +60,11 @@ async function dispatch(prompt, profileId, label, extraOptions = {}) {
  * Checks if the characters have exited the current location.
  * @returns {Promise<boolean>}
  */
-export async function detectSceneChange(currentLoc, history, message, profileId) {
-    const prompt = SCENE_CHANGE_PROMPT
+export async function detectSceneChange(currentLoc, history, currentTurn, profileId, template = SCENE_CHANGE_PROMPT) {
+    const prompt = template
         .replace('{{current_location}}', currentLoc || 'Unknown')
-        .replace('{{history}}', history)
-        .replace('{{message}}', message);
+        .replace('{{history}}', history || 'None')
+        .replace('{{current_turn}}', currentTurn);
 
     const raw = await dispatch(prompt, profileId, 'SceneDetect', { temperature: 0.1 });
     return /^yes(?:[^a-zA-Z]|$)/i.test(raw);
@@ -75,22 +75,36 @@ export async function detectSceneChange(currentLoc, history, message, profileId)
 /**
  * Batches a check for the entire active roster to see if their outfits
  * are still narratively valid for the new scene.
- * 
- * @param {string} scene - The new location/context description.
- * @param {Array<{name: string, clothes: string}>} rosterItems
+ *
+ * @param {string} history - Preceding turns for context.
+ * @param {string} currentTurn - The scene transition message.
+ * @param {Array<{name: string, layers: object}>} rosterItems
  * @returns {Promise<Record<string, boolean>>} Map of charName to validity (true = needs redress).
  */
-export async function detectWardrobeValidity(scene, rosterItems, profileId) {
-    const rosterBlock = rosterItems
-        .map(item => `- ${item.name} is wearing: ${item.clothes}`)
+export async function detectWardrobeValidity(history, currentTurn, rosterItems, profileId, template = WARDROBE_VALIDITY_PROMPT) {
+    const characterNames = rosterItems
+        .map(item => `- ${item.name}`)
         .join('\n');
 
-    const prompt = WARDROBE_VALIDITY_PROMPT
-        .replace('{{scene_context}}', scene)
-        .replace('{{roster_block}}', rosterBlock);
+    const currentLayers = rosterItems.map(item => {
+        const layerSummary = Object.entries(item.layers)
+            .map(([k, v]) => {
+                if (!v) return `${k}: None`;
+                if (typeof v === 'string') return `${k}: ${v}`;
+                return `${k}: ${v.item} | ${v.modifier || 'None'}`;
+            })
+            .join(', ');
+        return `${item.name}: ${layerSummary}`;
+    }).join('\n');
+
+    const prompt = template
+        .replace('{{character_names}}', characterNames)
+        .replace('{{current_layers}}', currentLayers)
+        .replace('{{history}}', history || 'None')
+        .replace('{{current_turn}}', currentTurn);
 
     const raw = await dispatch(prompt, profileId, 'WardrobeGate', { temperature: 0.1 });
-    
+
     // Parser for "Name: YES/NO" lines
     const results = {};
     raw.split('\n').forEach(line => {
@@ -110,10 +124,11 @@ export async function detectWardrobeValidity(scene, rosterItems, profileId) {
  * Extracts new clothing from a scene transition.
  * Returns the raw LLM response (5-slot list OR "USE_DEFAULT").
  */
-export async function detectRedress(charName, sceneText, profileId) {
-    const prompt = REDRESS_PROMPT
+export async function detectRedress(charName, history, currentTurn, profileId, template = REDRESS_PROMPT) {
+    const prompt = template
         .replace('{{character_name}}', charName)
-        .replace('{{scene_text}}', sceneText);
+        .replace('{{history}}', history || 'None')
+        .replace('{{current_turn}}', currentTurn);
 
     return await dispatch(prompt, profileId, 'RedressExtract', { temperature: 0.3 });
 }

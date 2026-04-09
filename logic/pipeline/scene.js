@@ -23,7 +23,7 @@
 import { getContext } from '../../../../../extensions.js';
 import { getSettings } from '../../settings.js';
 import { log, error } from '../../utils/logger.js';
-import { slugify } from '../../utils/history.js';
+import { slugify, buildHistoryText } from '../../utils/history.js';
 import {
     state,
     updateChainLayers,
@@ -70,11 +70,15 @@ export async function runScenePipeline(messageId) {
 
     try {
         // 2. Batched Wardrobe Validity Check (O(1) LLM Call)
-        const sceneContext = message.mes; // Use the transition message text
+        const currentTurn = message.mes;
+        const history = buildHistoryText(context.chat, messageId, s.detectionHistory ?? 4);
+
         const validityMap = await detectWardrobeValidity(
-            sceneContext, 
-            rosterItems, 
-            s.booleanProfileId || s.fastProfileId
+            history,
+            currentTurn,
+            rosterItems,
+            s.booleanProfileId || s.fastProfileId,
+            s.wardrobeValidityPrompt
         );
 
         // 3. Process each character that needs a change
@@ -86,9 +90,11 @@ export async function runScenePipeline(messageId) {
 
             // A. Extract Redress (Smart Model)
             const rawRedress = await detectRedress(
-                item.name, 
-                sceneContext, 
-                s.describerProfileId || s.smartProfileId
+                item.name,
+                history,
+                currentTurn,
+                s.describerProfileId || s.smartProfileId,
+                s.redressPrompt
             );
 
             let nextLayers;

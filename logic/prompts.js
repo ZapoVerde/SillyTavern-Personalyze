@@ -18,7 +18,6 @@
  * REDRESS_PROMPT
  * ANCHOR_SCAN_PROMPT
  * FORCE_COSTUME_PROMPT
- * OUTFIT_GENERATOR_PROMPT
  */
 
 // ─── Phase 1-3: Standard Pipeline ─────────────────────────────────────────────
@@ -26,15 +25,20 @@
 /** Phase 1: Identify the active character. Output: [Name] or None. */
 export const PHASE_1_SUBJECT_PROMPT =
 `[SYSTEM: TASK — SUBJECT IDENTIFICATION]
-Identify the primary character speaking or acting in the following text.
+Identify the primary character speaking or acting in the LATEST MESSAGE.
 
 ROSTER:
 {{active_roster}}
 
-TEXT:
+CONTEXT (Previous Turns):
+{{history}}
+
+LATEST MESSAGE:
 {{message}}
 
 INSTRUCTIONS:
+- Identify the primary character in the LATEST MESSAGE only.
+- Use the CONTEXT to resolve pronouns (e.g. "He", "She") to a specific Roster name.
 - Return ONLY the exact name from the roster if they are the main focus.
 - If the character is referred to by an alias (AKA), return their canonical Roster Name.
 - If it is a narrator, a group, or an unlisted character, return their name (e.g. RESULT: The Guard).
@@ -45,17 +49,20 @@ RESULT:`;
 /** Phase 2: YES/NO Gate for visual changes. Output: YES or NO. */
 export const PHASE_2_CHANGE_PROMPT =
 `[SYSTEM: TASK — VISUAL CHANGE GATE]
-Determine if the character's appearance or emotion has changed in the new text.
+Determine if the character's appearance or emotion has changed in the LATEST MESSAGE.
 
 CHARACTER: {{character_name}}
 CURRENT STATE:
 {{current_layers}}
 
-NEW TEXT:
+CONTEXT (Previous Turns):
+{{history}}
+
+LATEST MESSAGE:
 {{message}}
 
 QUESTION:
-In the New Text, does the character explicitly change clothes, put something on, take something off, or does an item get dirty/damaged? Has their emotion or body language significantly shifted?
+In the LATEST MESSAGE, does the character explicitly change clothes, put something on, take something off, or does an item get dirty/damaged? Has their emotion or body language significantly shifted?
 
 Reply ONLY with 'YES' or 'NO'.
 
@@ -64,15 +71,21 @@ RESULT:`;
 /** Phase 3: Structural Extraction. Output: Key-Value List. */
 export const PHASE_3_LAYERED_PROMPT =
 `[SYSTEM: TASK — VISUAL STATE EXTRACTION]
-Update the character's visual state based ONLY on the provided text.
+Update the character's visual state based ONLY on the LATEST MESSAGE.
 
 CHARACTER: {{character_name}}
 IDENTITY: {{identity_anchor}}
 
+CURRENT VISUAL STATE:
+{{current_state}}
+
+CONTEXT (Previous Turns):
+{{history}}
+
 RULES:
-1. Only update a slot if the text explicitly describes a change.
+1. Only update a slot if the LATEST MESSAGE explicitly describes a change or removal.
 2. If an item is put on or modified: [Item] | [Modifier]
-3. If an item is explicitly REMOVED: None | None
+3. If an item is explicitly REMOVED (e.g. "took off", "discarded"): None | None
 4. If a slot is UNMENTIONED or UNCHANGED: KEEP | KEEP
 5. EMOTION: Provide one adjective describing their mood and physical expression. Use KEEP if unchanged.
 6. DO NOT OUTPUT JSON.
@@ -84,7 +97,7 @@ Bottom: [Item] | [Modifier]
 Accessories: [Item] | [Modifier]
 Emotion: [Adjective]
 
-TEXT:
+LATEST MESSAGE:
 {{message}}
 
 RESULT:`;
@@ -98,10 +111,11 @@ Determine whether the scene has left the current known location.
 
 Current known location: {{current_location}}
 
+CONTEXT (Previous Turns):
 {{history}}
 
-Latest message:
-{{message}}
+LATEST MESSAGE:
+{{current_turn}}
 
 At the END of the latest message, has the scene clearly left the current known location?
 
@@ -120,11 +134,17 @@ export const WARDROBE_VALIDITY_PROMPT =
 `[SYSTEM: WARDROBE VALIDITY GATE]
 Determine if the character outfits are narratively valid for the new scene.
 
-NEW SCENE:
-{{scene_context}}
+CHARACTERS:
+{{character_names}}
 
 CURRENT OUTFITS:
-{{roster_block}}
+{{current_layers}}
+
+CONTEXT (Previous Turns):
+{{history}}
+
+LATEST MESSAGE:
+{{current_turn}}
 
 INSTRUCTIONS:
 Is it still logical for these characters to be wearing these specific clothes?
@@ -143,8 +163,12 @@ export const REDRESS_PROMPT =
 Determine the character's new visual state for this scene.
 
 CHARACTER: {{character_name}}
-SCENE CONTEXT:
-{{scene_text}}
+
+CONTEXT (Previous Turns):
+{{history}}
+
+LATEST MESSAGE:
+{{current_turn}}
 
 INSTRUCTIONS:
 1. Extract the specific new clothing described in the text.
@@ -183,13 +207,16 @@ Identity Anchor: [2-3 sentences for an image generator]`;
 /** Forces extraction from a specific turn snippet. */
 export const FORCE_COSTUME_PROMPT =
 `[SYSTEM: TASK — MANUAL COSTUME EXTRACTION]
-Extract visual clothing details from the provided text snippet.
+Extract visual clothing details from the provided text.
 
 CHARACTER: {{character_name}}
 {{hint_block}}
 
-TRANSCRIPT SNIPPET:
-{{context}}
+CONTEXT (Previous Turns):
+{{history}}
+
+LATEST MESSAGE:
+{{current_turn}}
 
 INSTRUCTIONS:
 - Identify what the character is wearing in this specific text.
@@ -203,12 +230,3 @@ Bottom: [Item] | [Modifier]
 Accessories: [Item] | [Modifier]
 Emotion: [Adjective]`;
 
-/** Outfit Generator for the Workshop Studio. */
-export const OUTFIT_GENERATOR_PROMPT =
-`[SYSTEM: TASK — OUTFIT DESIGNER]
-Design a specific clothing item description based on keywords.
-
-KEYWORD: {{keyword}}
-
-FORMAT:
-[Item] | [Visual Details/Materials/Colors]`;

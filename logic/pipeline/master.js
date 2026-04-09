@@ -63,7 +63,8 @@ export async function runPipeline(messageId) {
                 'Unknown',
                 history,
                 message.mes,
-                s.booleanProfileId || s.fastProfileId
+                s.booleanProfileId || s.fastProfileId,
+                s.sceneChangePrompt
             );
         }
 

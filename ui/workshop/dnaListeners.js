@@ -27,7 +27,7 @@ import {
     upsertChatCharacterDef, upsertChatEnsemble, upsertChatDefaultEnsemble, deleteChatEnsemble
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
-import { slugify, buildDescriberContext } from '../../utils/history.js';
+import { slugify, buildDescriberContext, buildHistoryText } from '../../utils/history.js';
 import { 
     lockedWriteCharacterDef, lockedWriteEnsemble, lockedWriteVisualState,
     lockedPatchVisualStateImage, lockedWriteRoster, lockedWriteDefaultEnsemble, lockedDeleteEnsemble
@@ -143,13 +143,15 @@ export function bindDNAHandlers() {
         const s = getSettings();
         const hint = $('#plz-studio-hint').val().trim();
         const lastIdx = Math.max(0, getContext().chat.length - 1);
-        const context = buildDescriberContext(getContext().chat, lastIdx, 0); // Current turn only
+        const chat = getContext().chat;
+        const currentTurn = buildDescriberContext(chat, lastIdx, 0);
+        const history = buildHistoryText(chat, lastIdx, s.detectionHistory ?? 4);
 
         const $btn = $(this);
         $btn.prop('disabled', true).text('Scanning...');
 
         try {
-            const raw = await detectForceCostume(context, id.replace(/_/g, ' '), hint, s.smartProfileId);
+            const raw = await detectForceCostume(history, currentTurn, id.replace(/_/g, ' '), hint, s.forceCostumeHintTemplate, s.smartProfileId, s.forceCostumePrompt);
             const layers = parsePhase3(raw);
             
             // Populate the UI inputs

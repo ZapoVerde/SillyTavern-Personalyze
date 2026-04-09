@@ -36,7 +36,10 @@ import {
     PHASE_2_CHANGE_PROMPT,
     PHASE_3_LAYERED_PROMPT,
     ANCHOR_SCAN_PROMPT,
-    OUTFIT_GENERATOR_PROMPT
+    SCENE_CHANGE_PROMPT,
+    WARDROBE_VALIDITY_PROMPT,
+    REDRESS_PROMPT,
+    FORCE_COSTUME_PROMPT,
 } from '../../logic/prompts.js';
 import { DEFAULT_VN_STYLE_SUFFIX } from '../../defaults.js';
 import { callPopup } from '../../../../../../script.js';
@@ -44,21 +47,29 @@ import { callPopup } from '../../../../../../script.js';
 const PANEL_ID = 'plz-settings';
 
 const PROMPT_TITLES = {
-    phase1SubjectPrompt:    'Phase 1 — Subject Identification',
-    phase2ChangePrompt:     'Phase 2 — Visual Change Gate',
-    phase3LayeredPrompt:    'Phase 3 — Layered State Extraction',
-    anchorScanPrompt:       'Character Identity Anchor Scan',
-    outfitGeneratorPrompt:  'Workshop Outfit Generator',
-    vnStyleSuffix:          'Portrait Style Template'
+    phase1SubjectPrompt:        'Phase 1 — Subject Identification',
+    phase2ChangePrompt:         'Phase 2 — Visual Change Gate',
+    phase3LayeredPrompt:        'Phase 3 — Layered State Extraction',
+    anchorScanPrompt:           'Character Identity Anchor Scan',
+    sceneChangePrompt:          'Scene — Location Change Detection',
+    wardrobeValidityPrompt:     'Scene — Wardrobe Validity Gate',
+    redressPrompt:              'Scene — Character Redress',
+    forceCostumePrompt:         'Workshop — Force Costume Extraction',
+    forceCostumeHintTemplate:   'Workshop — Force Costume Hint Template',
+    vnStyleSuffix:              'Portrait Style Template'
 };
 
 const PROMPT_DEFAULTS = {
-    phase1SubjectPrompt:    PHASE_1_SUBJECT_PROMPT,
-    phase2ChangePrompt:     PHASE_2_CHANGE_PROMPT,
-    phase3LayeredPrompt:    PHASE_3_LAYERED_PROMPT,
-    anchorScanPrompt:       ANCHOR_SCAN_PROMPT,
-    outfitGeneratorPrompt:  OUTFIT_GENERATOR_PROMPT,
-    vnStyleSuffix:          DEFAULT_VN_STYLE_SUFFIX
+    phase1SubjectPrompt:        PHASE_1_SUBJECT_PROMPT,
+    phase2ChangePrompt:         PHASE_2_CHANGE_PROMPT,
+    phase3LayeredPrompt:        PHASE_3_LAYERED_PROMPT,
+    anchorScanPrompt:           ANCHOR_SCAN_PROMPT,
+    sceneChangePrompt:          SCENE_CHANGE_PROMPT,
+    wardrobeValidityPrompt:     WARDROBE_VALIDITY_PROMPT,
+    redressPrompt:              REDRESS_PROMPT,
+    forceCostumePrompt:         FORCE_COSTUME_PROMPT,
+    forceCostumeHintTemplate:   'KEYWORD GUIDANCE: {{hint}}\nFocus specifically on elements matching this hint.',
+    vnStyleSuffix:              DEFAULT_VN_STYLE_SUFFIX
 };
 
 // ─── UI Refresh ───────────────────────────────────────────────────────────────

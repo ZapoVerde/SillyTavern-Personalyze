@@ -11,7 +11,7 @@
  *
  * @api-declaration
  * detectAnchorScan(context, focusName, profileId) -> Promise<object|null>
- * detectForceCostume(context, charName, hint, profileId) -> Promise<string>
+ * detectForceCostume(history, currentTurn, charName, hint, hintTemplate, profileId, template?) -> Promise<string>
  * 
  * @contract
  *   assertions:
@@ -84,16 +84,25 @@ export async function detectAnchorScan(context, focusName, profileId) {
 /**
  * Forces the AI to extract a character's outfit from a specific text turn,
  * optionally using a keyword hint to guide the extraction.
+ *
+ * @param {string} history - Preceding turns for context.
+ * @param {string} currentTurn - The target message text.
+ * @param {string} charName
+ * @param {string} hint - Optional keyword hint from the user.
+ * @param {string} hintTemplate - Settings template for building the hint block (contains {{hint}}).
+ * @param {string} profileId
+ * @param {string} [template] - Optional prompt override from settings.
  */
-export async function detectForceCostume(context, charName, hint, profileId) {
-    const hintBlock = hint 
-        ? `KEYWORD GUIDANCE: ${hint}\nFocus specifically on elements matching this hint.` 
+export async function detectForceCostume(history, currentTurn, charName, hint, hintTemplate, profileId, template = FORCE_COSTUME_PROMPT) {
+    const hintBlock = hint
+        ? hintTemplate.replace('{{hint}}', hint)
         : '';
 
-    const prompt = FORCE_COSTUME_PROMPT
+    const prompt = template
         .replace('{{character_name}}', charName)
         .replace('{{hint_block}}', hintBlock)
-        .replace('{{context}}', context);
+        .replace('{{history}}', history || 'None')
+        .replace('{{current_turn}}', currentTurn);
 
     return await dispatch(prompt, profileId, 'ForceCostume', { temperature: 0.3 });
 }

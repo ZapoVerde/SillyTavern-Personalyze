@@ -27,7 +27,10 @@ import {
     PHASE_2_CHANGE_PROMPT,
     PHASE_3_LAYERED_PROMPT,
     ANCHOR_SCAN_PROMPT,
-    OUTFIT_GENERATOR_PROMPT
+    SCENE_CHANGE_PROMPT,
+    WARDROBE_VALIDITY_PROMPT,
+    REDRESS_PROMPT,
+    FORCE_COSTUME_PROMPT,
 } from './logic/prompts.js';
 import {
     DEFAULT_IMAGE_MODEL,
@@ -67,11 +70,15 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     describerHistory:       DEFAULT_DESCRIBER_HISTORY,
     
     // Prompts
-    phase1SubjectPrompt:    PHASE_1_SUBJECT_PROMPT,
-    phase2ChangePrompt:     PHASE_2_CHANGE_PROMPT,
-    phase3LayeredPrompt:    PHASE_3_LAYERED_PROMPT,
-    anchorScanPrompt:       ANCHOR_SCAN_PROMPT,
-    outfitGeneratorPrompt:  OUTFIT_GENERATOR_PROMPT,
+    phase1SubjectPrompt:        PHASE_1_SUBJECT_PROMPT,
+    phase2ChangePrompt:         PHASE_2_CHANGE_PROMPT,
+    phase3LayeredPrompt:        PHASE_3_LAYERED_PROMPT,
+    anchorScanPrompt:           ANCHOR_SCAN_PROMPT,
+    sceneChangePrompt:          SCENE_CHANGE_PROMPT,
+    wardrobeValidityPrompt:     WARDROBE_VALIDITY_PROMPT,
+    redressPrompt:              REDRESS_PROMPT,
+    forceCostumePrompt:         FORCE_COSTUME_PROMPT,
+    forceCostumeHintTemplate:   'KEYWORD GUIDANCE: {{hint}}\nFocus specifically on elements matching this hint.',
     
     testPrompt:             DEFAULT_TEST_PROMPT,
     defaultEngine:          'pollinations',

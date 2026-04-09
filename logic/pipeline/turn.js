@@ -11,7 +11,7 @@
  *
  * @api-declaration
  * runTurnPipeline(messageId) -> Promise<void>
- * processKnownSubject(messageId, characterId, text, s) -> Promise<void>
+ * processKnownSubject(messageId, characterId, text, history, s) -> Promise<void>
  *
  * @contract
  *   assertions:
@@ -33,7 +33,7 @@ import {
     resolveAliasToId
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
-import { slugify } from '../../utils/history.js';
+import { slugify, buildHistoryText } from '../../utils/history.js';
 import { detectSubject, detectChange, detectLayers } from '../../io/llm/subject.js';
 import { parsePhase3, mergeLayeredUpdate } from '../parsers.js';
 import { compilePrompt } from '../promptCompiler.js';
@@ -53,11 +53,14 @@ export async function runTurnPipeline(messageId) {
     const s = getSettings();
 
     // ─── Phase 1: Subject Detection (3-State Routing) ─────────────────────
+    const history = buildHistoryText(context.chat, messageId, s.detectionHistory ?? 4);
+
     let detectedString;
     try {
         detectedString = await detectSubject(
-            message.mes, 
-            state.activeRoster, 
+            message.mes,
+            history,
+            state.activeRoster,
             state.chatCharacters,
             s.booleanProfileId || s.fastProfileId
         );
@@ -74,9 +77,9 @@ export async function runTurnPipeline(messageId) {
 
     // 2. State: Known Subject (Canonical ID or AKA)
     const resolvedId = resolveAliasToId(detectedString);
-    
+
     if (resolvedId) {
-        await processKnownSubject(messageId, resolvedId, message.mes, s);
+        await processKnownSubject(messageId, resolvedId, message.mes, history, s);
         return;
     }
 
@@ -100,7 +103,7 @@ export async function runTurnPipeline(messageId) {
 /**
  * Executes Phases 2 & 3 for a subject already present in the DNA/Roster.
  */
-export async function processKnownSubject(messageId, characterId, text, s) {
+export async function processKnownSubject(messageId, characterId, text, history, s) {
     const character = state.chatCharacters[characterId];
     if (!character) return; // Safety
 
@@ -114,6 +117,7 @@ export async function processKnownSubject(messageId, characterId, text, s) {
     try {
         hasChanged = await detectChange(
             text,
+            history,
             characterId.replace(/_/g, ' '),
             currentLayers,
             s.booleanProfileId || s.fastProfileId
@@ -134,8 +138,10 @@ export async function processKnownSubject(messageId, characterId, text, s) {
     try {
         rawUpdate = await detectLayers(
             text,
+            history,
             characterId.replace(/_/g, ' '),
             character.identityAnchor,
+            currentLayers,
             s.describerProfileId || s.smartProfileId
         );
     } catch (err) {

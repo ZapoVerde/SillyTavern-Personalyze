@@ -170,14 +170,20 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
                 </div>
 
                 <!-- Pipeline Stages -->
-                ${buildCallRow('fast', 'Fast Model (Phase 1 & 2)', 'fastProfileId', 'detectionHistory', 
-                    "Used for Subject Detection and the Change Gate. Recommended: Mistral Small.", `
+                ${buildCallRow('fast', 'Fast Model (Phase 1 & 2)', 'fastProfileId', 'detectionHistory',
+                    "Used for Subject Detection, the Change Gate, and Scene/Wardrobe checks. Recommended: Mistral Small.", `
                     <button class="menu_button plz-open-prompt" data-prompt-key="phase1SubjectPrompt">Subject?</button>
-                    <button class="menu_button plz-open-prompt" data-prompt-key="phase2ChangePrompt">Changed?</button>`)}
-                
-                ${buildCallRow('smart', 'Smart Model (Phase 3)', 'smartProfileId', 'describerHistory', 
-                    "Used for high-accuracy State Extraction. Recommended: Gemini Flash Lite or Claude Haiku.", `
-                    <button class="menu_button plz-open-prompt" data-prompt-key="phase3LayeredPrompt">Extract</button>`)}
+                    <button class="menu_button plz-open-prompt" data-prompt-key="phase2ChangePrompt">Changed?</button>
+                    <button class="menu_button plz-open-prompt" data-prompt-key="sceneChangePrompt">Scene?</button>
+                    <button class="menu_button plz-open-prompt" data-prompt-key="wardrobeValidityPrompt">Wardrobe?</button>`)}
+
+                ${buildCallRow('smart', 'Smart Model (Phase 3 & Workshop)', 'smartProfileId', 'describerHistory',
+                    "Used for State Extraction, Anchor Scan, Redress, and Force Costume. Recommended: Gemini Flash Lite or Claude Haiku.", `
+                    <button class="menu_button plz-open-prompt" data-prompt-key="phase3LayeredPrompt">Extract</button>
+                    <button class="menu_button plz-open-prompt" data-prompt-key="anchorScanPrompt">Anchor</button>
+                    <button class="menu_button plz-open-prompt" data-prompt-key="redressPrompt">Redress</button>
+                    <button class="menu_button plz-open-prompt" data-prompt-key="forceCostumePrompt">Costume</button>
+                    <button class="menu_button plz-open-prompt" data-prompt-key="forceCostumeHintTemplate">Hint</button>`)}
 
                 <!-- Workshop & Utils -->
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">

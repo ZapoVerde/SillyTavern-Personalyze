@@ -11,9 +11,9 @@
  * 3. Layered State Extraction
  *
  * @api-declaration
- * detectSubject(message, rosterIds, chatCharacters, profileId) -> Promise<string|null>
- * detectChange(message, charName, layers, profileId) -> Promise<boolean>
- * detectLayers(message, charName, anchor, profileId) -> Promise<string>
+ * detectSubject(message, history, rosterIds, chatCharacters, profileId) -> Promise<string|null>
+ * detectChange(message, history, charName, layers, profileId) -> Promise<boolean>
+ * detectLayers(message, history, charName, anchor, layers, profileId) -> Promise<string>
  * 
  * @contract
  *   assertions:
@@ -63,13 +63,14 @@ async function dispatch(prompt, profileId, label, extraOptions = {}) {
 /**
  * Identifies which character is the subject.
  * Formats roster with AKAs so the LLM knows nicknames.
- * 
+ *
  * @param {string} message - The latest AI message text.
+ * @param {string} history - Preceding turns for pronoun resolution.
  * @param {string[]} rosterIds - Canonical IDs in the roster.
  * @param {object} chatCharacters - The state.chatCharacters map.
  * @param {string} profileId - ST Connection Profile ID.
  */
-export async function detectSubject(message, rosterIds, chatCharacters, profileId) {
+export async function detectSubject(message, history, rosterIds, chatCharacters, profileId) {
     const formattedRoster = rosterIds.map(id => {
         const char = chatCharacters[id];
         const label = id.replace(/_/g, ' ');
@@ -81,6 +82,7 @@ export async function detectSubject(message, rosterIds, chatCharacters, profileI
 
     const prompt = PHASE_1_SUBJECT_PROMPT
         .replace('{{active_roster}}', formattedRoster || 'None')
+        .replace('{{history}}', history || 'None')
         .replace('{{message}}', message);
 
     const raw = await dispatch(prompt, profileId, 'SubjectDetect', { temperature: 0.1 });
@@ -91,9 +93,14 @@ export async function detectSubject(message, rosterIds, chatCharacters, profileI
 
 /**
  * Checks if the visual state needs an update based on the message.
+ *
+ * @param {string} message - The latest AI message text.
+ * @param {string} history - Preceding turns for context.
+ * @param {string} charName
+ * @param {object} layers
+ * @param {string} profileId
  */
-export async function detectChange(message, charName, layers, profileId) {
-    // Stringify current layers for context
+export async function detectChange(message, history, charName, layers, profileId) {
     const layerSummary = Object.entries(layers)
         .map(([k, v]) => {
             if (!v) return `${k}: None`;
@@ -105,6 +112,7 @@ export async function detectChange(message, charName, layers, profileId) {
     const prompt = PHASE_2_CHANGE_PROMPT
         .replace('{{character_name}}', charName)
         .replace('{{current_layers}}', layerSummary)
+        .replace('{{history}}', history || 'None')
         .replace('{{message}}', message);
 
     const raw = await dispatch(prompt, profileId, 'ChangeGate', { temperature: 0.1 });
@@ -115,11 +123,28 @@ export async function detectChange(message, charName, layers, profileId) {
 
 /**
  * Extracts the specific layer updates from the text.
+ *
+ * @param {string} message - The latest AI message text.
+ * @param {string} history - Preceding turns for pronoun and reference resolution.
+ * @param {string} charName
+ * @param {string} anchor
+ * @param {object} layers - Current visual state, so the LLM can detect removals and modifications.
+ * @param {string} profileId
  */
-export async function detectLayers(message, charName, anchor, profileId) {
+export async function detectLayers(message, history, charName, anchor, layers, profileId) {
+    const currentState = Object.entries(layers)
+        .map(([k, v]) => {
+            if (!v) return `${k}: None`;
+            if (typeof v === 'string') return `${k}: ${v}`;
+            return `${k}: ${v.item} | ${v.modifier || 'None'}`;
+        })
+        .join('\n');
+
     const prompt = PHASE_3_LAYERED_PROMPT
         .replace('{{character_name}}', charName)
         .replace('{{identity_anchor}}', anchor)
+        .replace('{{current_state}}', currentState)
+        .replace('{{history}}', history || 'None')
         .replace('{{message}}', message);
 
     return await dispatch(prompt, profileId, 'Extraction', { temperature: 0.3 });

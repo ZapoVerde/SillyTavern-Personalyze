@@ -95,7 +95,7 @@ export async function runArchivistPipeline(messageId, detectedName) {
                 document.dispatchEvent(new CustomEvent('plz:roster-changed'));
 
                 // FIX: Immediately process their visual state and generate image
-                await processKnownSubject(messageId, newId, context.chat[messageId].mes, s);
+                await processKnownSubject(messageId, newId, context.chat[messageId].mes, historyContext, s);
                 break;
             }
 
@@ -110,7 +110,7 @@ export async function runArchivistPipeline(messageId, detectedName) {
                 upsertChatCharacterAka(targetId, newAkaList);
 
                 // FIX: Immediately process their visual state using the new linked ID
-                await processKnownSubject(messageId, targetId, context.chat[messageId].mes, s);
+                await processKnownSubject(messageId, targetId, context.chat[messageId].mes, historyContext, s);
                 break;
             }
 
