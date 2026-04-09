@@ -22,6 +22,7 @@
  * startTurn(label)                            → void   (pipeline)
  * startWorkshopTurn(label)                    → void   (workshop)
  * logCall(label, prompt, response, errorMsg)  → void   (routes to active store)
+ * logPatchLast(response, errorMsg)            → void   (patches the most recent call entry)
  * getLogs()                                   → TurnRecord[]   (pipeline, oldest-first)
  * getWorkshopLogs()                           → TurnRecord[]   (workshop, oldest-first)
  *
@@ -117,8 +118,32 @@ export function logCall(label, prompt, response, errorMsg) {
         prompt:    prompt    ?? '',
         response:  response  ?? null,
         error:     errorMsg  ?? null,
+        meta:      null,
         timestamp: Date.now(),
     });
+}
+
+/**
+ * Patches the most recently added call entry in the active store.
+ * Used to fill in async results (e.g. image filename or error) after the
+ * initial logCall() was made before the async work completed.
+ *
+ * @param {string|null} response  The completed response (e.g. filename).
+ * @param {string|null} errorMsg  Error message, or null on success.
+ */
+/**
+ * @param {string|null} response
+ * @param {string|null} errorMsg
+ * @param {object|null} [meta]  Optional structured metadata (e.g. PiAPI task summary).
+ */
+export function logPatchLast(response, errorMsg, meta = undefined) {
+    const store = _target === 'workshop' ? _workshopTurns : _pipelineTurns;
+    const turn  = store.find(t => t.id === _currentTurnId);
+    if (!turn || !turn.calls.length) return;
+    const last = turn.calls[turn.calls.length - 1];
+    if (response !== undefined) last.response = response;
+    if (errorMsg !== undefined) last.error    = errorMsg;
+    if (meta     !== undefined) last.meta     = meta;
 }
 
 /**

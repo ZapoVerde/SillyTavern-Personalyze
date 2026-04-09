@@ -33,7 +33,7 @@ import {
 } from './defaults.js';
 import { getSettings } from './settings.js';
 import { log, warn, error } from './utils/logger.js';
-import { logCall } from './utils/callLog.js';
+import { logCall, logPatchLast } from './utils/callLog.js';
 
 const SECRET_POLLINATIONS = 'api_key_pollinations';
 const SECRET_HUGGINGFACE  = 'api_key_huggingface';
@@ -135,43 +135,55 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
 
 export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, anchor, seed = 1, provider = 'pollinations') {
     const fullPrompt = finalizePrompt(subjectPrompt);
-    logCall('PortraitGenerate', `[${provider}] ${fullPrompt}`, null, null);
-    
-    let imgRes;
-    const s = getSettings();
-    const w = s.devMode ? DEV_IMAGE_WIDTH : DEFAULT_IMAGE_WIDTH;
-    const h = s.devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
+    logCall('PortraitGenerate', `[${provider}]\n${fullPrompt}`, null, null);
 
-    if (provider === 'fal') {
-        imgRes = await fetch('/api/plugins/personalyze/fal-generate', {
-            method: 'POST', headers: getRequestHeaders(),
-            body: JSON.stringify({ model: s.falModel, prompt: fullPrompt, width: w, height: h }),
+    try {
+        let imgRes;
+        const s = getSettings();
+        const w = s.devMode ? DEV_IMAGE_WIDTH : DEFAULT_IMAGE_WIDTH;
+        const h = s.devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
+
+        if (provider === 'fal') {
+            imgRes = await fetch('/api/plugins/personalyze/fal-generate', {
+                method: 'POST', headers: getRequestHeaders(),
+                body: JSON.stringify({ model: s.falModel, prompt: fullPrompt, width: w, height: h }),
+            });
+        } else if (provider === 'piapi') {
+            imgRes = await fetch('/api/plugins/personalyze/piapi-generate', {
+                method: 'POST', headers: getRequestHeaders(),
+                body: JSON.stringify({ model: s.piapiModel, prompt: fullPrompt, width: w, height: h, seed }),
+            });
+        } else {
+            const key = await getAuthKey('pollinations');
+            const params = new URLSearchParams({ width: String(w), height: String(h), model: s.imageModel ?? DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed), safe: 'false' });
+            imgRes = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`, { headers: key ? { 'Authorization': `Bearer ${key}` } : {} });
+        }
+
+        await validateImageResponse(imgRes);
+
+        // Read PiAPI task metadata forwarded by the plugin (piapi provider only)
+        const piapiMetaHeader = imgRes.headers.get('X-PiAPI-Meta');
+        const piapiMeta = piapiMetaHeader ? (() => {
+            try { return JSON.parse(piapiMetaHeader); } catch { return null; }
+        })() : null;
+
+        const filename = `${buildFilenamePrefix(characterId, tag, emotion)}${Date.now()}.png`;
+        const blob = await imgRes.blob();
+        const base64 = await new Promise(r => {
+            const fr = new FileReader(); fr.onload = () => r(fr.result.split(',')[1]); fr.readAsDataURL(blob);
         });
-    } else if (provider === 'piapi') {
-        imgRes = await fetch('/api/plugins/personalyze/piapi-generate', {
+
+        await fetch('/api/images/upload', {
             method: 'POST', headers: getRequestHeaders(),
-            body: JSON.stringify({ model: s.piapiModel, prompt: fullPrompt, width: w, height: h }),
+            body: JSON.stringify({ image: base64, format: 'png', filename, ch_name: PLZ_IMAGE_FOLDER }),
         });
-    } else {
-        const key = await getAuthKey('pollinations');
-        const params = new URLSearchParams({ width: String(w), height: String(h), model: s.imageModel ?? DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed), safe: 'false' });
-        imgRes = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`, { headers: key ? { 'Authorization': `Bearer ${key}` } : {} });
+
+        logPatchLast(filename, null, piapiMeta);
+        return filename;
+    } catch (err) {
+        logPatchLast(null, err.message);
+        throw err;
     }
-
-    await validateImageResponse(imgRes);
-
-    const filename = `${buildFilenamePrefix(characterId, tag, emotion)}${Date.now()}.png`;
-    const blob = await imgRes.blob();
-    const base64 = await new Promise(r => {
-        const fr = new FileReader(); fr.onload = () => r(fr.result.split(',')[1]); fr.readAsDataURL(blob);
-    });
-
-    await fetch('/api/images/upload', {
-        method: 'POST', headers: getRequestHeaders(),
-        body: JSON.stringify({ image: base64, format: 'png', filename, ch_name: PLZ_IMAGE_FOLDER }),
-    });
-
-    return filename;
 }
 
 export async function flushCharacterImages(characterId) {

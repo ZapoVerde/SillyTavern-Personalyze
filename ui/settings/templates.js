@@ -74,41 +74,82 @@ export function buildLogModalHTML(pipelineLogs, workshopLogs) {
                 const status = c.error
                     ? `<span style="color:var(--SmartThemeErrorColor);">✗ ${escapeHtml(c.error)}</span>`
                     : `<span style="opacity:0.55;">✓</span>`;
-                // Image generation calls have response=null and error=null by design.
-                const isImageCall = !c.response && !c.error;
+                const isImageCall = c.label === 'PortraitGenerate';
+                const imageBlock = isImageCall && c.response
+                    ? `<div style="margin-top:6px;">
+                           <div style="font-size:0.78em;opacity:0.65;margin-bottom:3px;">Result</div>
+                           <a href="user/images/personalyze/${encodeURIComponent(c.response)}" target="_blank" style="display:inline-block;">
+                               <img src="user/images/personalyze/${encodeURIComponent(c.response)}"
+                                    style="max-width:120px;max-height:120px;border-radius:4px;display:block;"
+                                    title="${escapeHtml(c.response)}" />
+                           </a>
+                       </div>`
+                    : '';
+
+                const metaBlock = c.meta
+                    ? (() => {
+                        const m = c.meta;
+                        const dur = (m.started_at && m.ended_at)
+                            ? `${((new Date(m.ended_at) - new Date(m.started_at)) / 1000).toFixed(1)}s`
+                            : null;
+                        const rows = [
+                            m.task_id  && `<tr><td style="opacity:0.6;padding-right:12px;">Task ID</td><td>${escapeHtml(m.task_id)}</td></tr>`,
+                            m.model    && `<tr><td style="opacity:0.6;padding-right:12px;">Model</td><td>${escapeHtml(m.model)}</td></tr>`,
+                            m.status   && `<tr><td style="opacity:0.6;padding-right:12px;">Status</td><td>${escapeHtml(m.status)}</td></tr>`,
+                            dur        && `<tr><td style="opacity:0.6;padding-right:12px;">Duration</td><td>${dur}</td></tr>`,
+                            m.points   && `<tr><td style="opacity:0.6;padding-right:12px;">Points</td><td>${m.points.toLocaleString()}</td></tr>`,
+                            m.image_url && `<tr><td style="opacity:0.6;padding-right:12px;">CDN URL</td><td style="word-break:break-all;font-size:0.9em;">${escapeHtml(m.image_url)}</td></tr>`,
+                            m.error    && `<tr><td style="opacity:0.6;padding-right:12px;">API Error</td><td style="color:var(--SmartThemeErrorColor);">${escapeHtml(String(m.error))}</td></tr>`,
+                        ].filter(Boolean).join('');
+                        return `<details style="margin-top:6px;">
+                            <summary style="font-size:0.78em;opacity:0.65;cursor:pointer;list-style:none;">PiAPI Task Metadata</summary>
+                            <table style="font-size:0.78em;margin-top:4px;border-collapse:collapse;">${rows}</table>
+                        </details>`;
+                    })()
+                    : '';
                 return `
-                <div style="margin-top:8px;border-left:2px solid rgba(255,255,255,0.1);padding-left:8px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.8em;margin-bottom:3px;">
+                <details style="margin-top:6px;border-left:2px solid rgba(255,255,255,0.1);padding-left:8px;">
+                    <summary style="display:flex;justify-content:space-between;align-items:center;font-size:0.8em;cursor:pointer;list-style:none;padding:2px 0;">
                         <strong>${escapeHtml(c.label)}</strong>
                         <span style="display:flex;gap:8px;align-items:center;">
                             <span style="font-size:0.85em;opacity:0.4;">${callTime}</span>
                             ${status}
                         </span>
-                    </div>
+                    </summary>
                     ${copyBlock(c.prompt, 'Prompt')}
-                    ${c.response ? copyBlock(c.response, 'Response') : ''}
-                    ${isImageCall ? `<div style="font-size:0.72em;opacity:0.35;margin-top:3px;font-style:italic;">image generation — no text response</div>` : ''}
+                    ${!isImageCall && c.response ? copyBlock(c.response, 'Response') : ''}
+                    ${imageBlock}
+                    ${metaBlock}
+                    ${isImageCall && !c.response && !c.error ? `<div style="font-size:0.72em;opacity:0.35;margin-top:3px;font-style:italic;">generating…</div>` : ''}
                     ${c.error ? `<div style="font-size:0.75em;color:var(--SmartThemeErrorColor);margin-top:4px;">${escapeHtml(c.error)}</div>` : ''}
-                </div>`;
+                </details>`;
             }).join('');
             return `
-            <div style="margin-bottom:14px;padding:10px;background:rgba(255,255,255,0.04);border-radius:6px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <details style="margin-bottom:8px;padding:10px;background:rgba(255,255,255,0.04);border-radius:6px;">
+                <summary style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;list-style:none;">
                     <strong style="font-size:0.88em;">${escapeHtml(turn.label)}</strong>
                     <span style="font-size:0.78em;opacity:0.4;">${turnTime}</span>
-                </div>
+                </summary>
                 ${calls || '<span style="font-size:0.8em;opacity:0.5;">No calls.</span>'}
-            </div>`;
+            </details>`;
         }).join('');
     }
 
     return `
-    <h3 style="margin-top:0;">Call Logs</h3>
-    <div style="margin-bottom:6px;"><strong style="font-size:0.9em;">Pipeline</strong> <span style="font-size:0.8em;opacity:0.5;">(last 2 turns)</span></div>
-    ${renderTurns(pipelineLogs)}
-    <hr style="margin:16px 0;opacity:0.2;">
-    <div style="margin-bottom:6px;"><strong style="font-size:0.9em;">Settings / Modal</strong> <span style="font-size:0.8em;opacity:0.5;">(last 3)</span></div>
-    ${renderTurns(workshopLogs)}`;
+    <h3 style="margin-top:0;text-align:left;">Call Logs</h3>
+    <details>
+        <summary style="cursor:pointer;font-size:0.9em;margin-bottom:6px;list-style:none;">
+            <strong>Pipeline</strong> <span style="font-size:0.88em;opacity:0.5;">(last 2 turns)</span>
+        </summary>
+        ${renderTurns(pipelineLogs)}
+    </details>
+    <hr style="margin:12px 0;opacity:0.2;">
+    <details>
+        <summary style="cursor:pointer;font-size:0.9em;margin-bottom:6px;list-style:none;">
+            <strong>Settings / Modal</strong> <span style="font-size:0.88em;opacity:0.5;">(last 3)</span>
+        </summary>
+        ${renderTurns(workshopLogs)}
+    </details>`;
 }
 
 /** Utility for help tooltips. */
@@ -116,25 +157,36 @@ function tip(text) {
     return `<span class="plz-info-icon" title="${text}" style="cursor:help; opacity:0.6; margin-left:4px;"><i class="fa-solid fa-circle-info"></i></span>`;
 }
 
-/** Builds a pipeline stage row. */
-function buildCallRow(id, label, profileKey, historyKey, description, extraButtons = '') {
+/**
+ * Builds a pipeline stage row.
+ * @param {string} id
+ * @param {string} label
+ * @param {string} profileKey
+ * @param {string|null} historyKey
+ * @param {string} description
+ * @param {Array<{key: string, label: string}>} promptButtons
+ */
+function buildCallRow(id, label, profileKey, historyKey, description, promptButtons = []) {
     const historyRow = historyKey ? `
         <div style="margin-top:10px; display:flex; align-items:center; gap:8px;">
             <label style="font-size:0.85em; opacity:0.75; white-space:nowrap;">History Window:</label>
-            <input id="plz-history-${id}" type="number" min="0" step="1" class="text_pole plz-history-input" 
+            <input id="plz-history-${id}" type="number" min="0" step="1" class="text_pole plz-history-input"
                    data-history-key="${historyKey}" style="width:60px;" />
             <span style="font-size:0.83em; opacity:0.6;">pairs</span>
         </div>` : '';
 
+    const buttonRows = promptButtons.map(btn =>
+        `<button class="menu_button plz-open-prompt" data-prompt-key="${btn.key}"
+                 style="width:100%; text-align:left; font-size:0.82em;">${btn.label}</button>`
+    ).join('');
+
     return `
     <div class="plz-call-row" style="margin-bottom:14px; padding:12px; border:1px solid var(--SmartThemeBorderColor,#555); border-radius:6px;">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-            <div style="display:flex; align-items:center;">
-                <strong style="font-size:0.9em;">${label}</strong>
-                ${tip(description)}
-            </div>
-            <div style="display:flex; gap:6px;">${extraButtons}</div>
+        <div style="display:flex; align-items:center; margin-bottom:10px;">
+            <strong style="font-size:0.9em;">${label}</strong>
+            ${tip(description)}
         </div>
+        ${buttonRows ? `<div style="display:flex; flex-direction:column; gap:5px; margin-bottom:10px;">${buttonRows}</div>` : ''}
         <div style="display:flex; align-items:center; gap:8px;">
             <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:80px;">Connection:</label>
             <select id="plz-profile-${id}" class="text_pole" style="flex:1;" data-profile-key="${profileKey}"></select>
@@ -171,19 +223,23 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
 
                 <!-- Pipeline Stages -->
                 ${buildCallRow('fast', 'Fast Model (Phase 1 & 2)', 'fastProfileId', 'detectionHistory',
-                    "Used for Subject Detection, the Change Gate, and Scene/Wardrobe checks. Recommended: Mistral Small.", `
-                    <button class="menu_button plz-open-prompt" data-prompt-key="phase1SubjectPrompt">Subject?</button>
-                    <button class="menu_button plz-open-prompt" data-prompt-key="phase2ChangePrompt">Changed?</button>
-                    <button class="menu_button plz-open-prompt" data-prompt-key="sceneChangePrompt">Scene?</button>
-                    <button class="menu_button plz-open-prompt" data-prompt-key="wardrobeValidityPrompt">Wardrobe?</button>`)}
+                    "Used for Subject Detection, the Change Gate, and Scene/Wardrobe checks. Recommended: Mistral Small.",
+                    [
+                        { key: 'phase1SubjectPrompt',    label: 'Who is the subject of this turn?' },
+                        { key: 'phase2ChangePrompt',     label: "Has the subject's appearance or emotion changed?" },
+                        { key: 'sceneChangePrompt',      label: 'Has the scene moved to a new location?' },
+                        { key: 'wardrobeValidityPrompt', label: 'Are the current outfits still valid for this scene?' },
+                    ])}
 
                 ${buildCallRow('smart', 'Smart Model (Phase 3 & Workshop)', 'smartProfileId', 'describerHistory',
-                    "Used for State Extraction, Anchor Scan, Redress, and Force Costume. Recommended: Gemini Flash Lite or Claude Haiku.", `
-                    <button class="menu_button plz-open-prompt" data-prompt-key="phase3LayeredPrompt">Extract</button>
-                    <button class="menu_button plz-open-prompt" data-prompt-key="anchorScanPrompt">Anchor</button>
-                    <button class="menu_button plz-open-prompt" data-prompt-key="redressPrompt">Redress</button>
-                    <button class="menu_button plz-open-prompt" data-prompt-key="forceCostumePrompt">Costume</button>
-                    <button class="menu_button plz-open-prompt" data-prompt-key="forceCostumeHintTemplate">Hint</button>`)}
+                    "Used for State Extraction, Anchor Scan, Redress, and Force Costume. Recommended: Gemini Flash Lite or Claude Haiku.",
+                    [
+                        { key: 'phase3LayeredPrompt',      label: 'Extract the updated visual state layer by layer' },
+                        { key: 'anchorScanPrompt',         label: "Scan a transcript for a character's permanent physical identity" },
+                        { key: 'redressPrompt',            label: 'Determine new clothing after a scene transition' },
+                        { key: 'forceCostumePrompt',       label: 'Manually extract an outfit from a specific turn' },
+                        { key: 'forceCostumeHintTemplate', label: 'Hint block template (wraps the keyword hint)' },
+                    ])}
 
                 <!-- Workshop & Utils -->
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
@@ -196,6 +252,10 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
 
                 <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
                     <button class="menu_button" id="plz-open-engines" style="width:100%;"><i class="fa-solid fa-gear"></i> Configure Engines</button>
+                    <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap;">Prompt:</label>
+                        <button class="menu_button plz-open-prompt" data-prompt-key="vnStyleSuffix" style="flex:1;">Edit Portrait Prompt Template ${tip('The style suffix appended to every image generation prompt.')}</button>
+                    </div>
                 </div>
 
                 <div style="display:flex; gap:8px;">

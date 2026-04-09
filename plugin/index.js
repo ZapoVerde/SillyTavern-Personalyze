@@ -417,6 +417,18 @@ export async function init(router) {
                             error: `PiAPI task "${taskId}" completed but returned no image URL. Output: ${JSON.stringify(output).slice(0, 200)}`,
                         });
                     }
+                    // Stash the full final task payload for the client log
+                    res.locals.piapiMeta = {
+                        task_id:   taskPayload.task_id,
+                        model:     taskPayload.model,
+                        status:    taskPayload.status,
+                        created_at: taskPayload.meta?.created_at,
+                        started_at: taskPayload.meta?.started_at,
+                        ended_at:   taskPayload.meta?.ended_at,
+                        points:     taskPayload.meta?.usage?.consume,
+                        image_url:  imageUrl,
+                        error:      taskPayload.error?.message || taskPayload.error?.raw_message || null,
+                    };
                     break;
                 }
 
@@ -449,6 +461,9 @@ export async function init(router) {
             const contentType = imgRes.headers.get('Content-Type') ?? 'image/png';
             res.setHeader('Content-Type', contentType);
             res.setHeader('X-PiAPI-Task-ID', taskId);
+            if (res.locals.piapiMeta) {
+                res.setHeader('X-PiAPI-Meta', JSON.stringify(res.locals.piapiMeta));
+            }
             const buffer = await imgRes.arrayBuffer();
             res.send(Buffer.from(buffer));
 
