@@ -176,8 +176,8 @@ function buildCallRow(id, label, profileKey, historyKey, description, promptButt
         </div>` : '';
 
     const buttonRows = promptButtons.map(btn =>
-        `<button class="menu_button plz-open-prompt" data-prompt-key="${btn.key}"
-                 style="width:100%; text-align:left; font-size:0.82em; padding-left:10px;">${btn.label}</button>`
+        `<button class="menu_button plz-open-prompt plz-btn-left" data-prompt-key="${btn.key}"
+                 style="width:100%; font-size:0.82em;">${btn.label}</button>`
     ).join('');
 
     return `
@@ -254,7 +254,7 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
                     <button class="menu_button" id="plz-open-engines" style="width:100%;"><i class="fa-solid fa-gear"></i> Configure Engines</button>
                     <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
                         <label style="font-size:0.85em; opacity:0.75; white-space:nowrap;">Prompt:</label>
-                        <button class="menu_button plz-open-prompt" data-prompt-key="vnStyleSuffix" style="flex:1; text-align:left; padding-left:10px;">Edit Portrait Prompt Template ${tip('The style suffix appended to every image generation prompt.')}</button>
+                        <button class="menu_button plz-open-prompt plz-btn-left" data-prompt-key="vnStyleSuffix" style="flex:1;">Edit Portrait Prompt Template ${tip('The style suffix appended to every image generation prompt.')}</button>
                     </div>
                 </div>
 

@@ -84,36 +84,34 @@ export async function openPromptModal(key, title, defaultValue) {
     const current = getSettings()[key] ?? defaultValue;
 
     const vars = PROMPT_VARIABLES[key] ?? [];
-    const varBlock = vars.length ? `
-        <div style="margin-bottom:10px;">
-            ${vars.map((entry, i) => {
-                const copyId = `plz-var-copy-${key}-${i}`;
-                const onclickJs = `navigator.clipboard.writeText('${entry.v}').then(function(){`
-                    + `var el=document.getElementById('${copyId}');`
-                    + `el.style.outline='1px solid #4caf50';`
-                    + `setTimeout(function(){el.style.outline='';},900);`
-                    + `});event.stopPropagation();`;
-                return `<div style="display:flex; align-items:baseline; gap:6px; margin-bottom:4px;">
-                    <button id="${copyId}" onclick="${onclickJs}"
-                            class="menu_button"
-                            style="font-size:0.72em; padding:1px 6px; line-height:1.6; flex-shrink:0;"
-                            title="Copy to clipboard"><i class="fa-regular fa-copy"></i></button>
-                    <code style="font-size:0.82em; color:var(--SmartThemeQuoteColor, #c9a84c);">${entry.v}</code>
-                    <span style="font-size:0.80em; opacity:0.6;">— ${entry.d}</span>
-                </div>`;
-            }).join('')}
-        </div>` : '';
+    const varBlock = vars.length
+        ? `<div class="plz-var-list">
+               ${vars.map((entry, i) => {
+                   const copyId = `plz-var-copy-${key}-${i}`;
+                   const onclickJs = `navigator.clipboard.writeText('${entry.v}').then(function(){`
+                       + `var el=document.getElementById('${copyId}');`
+                       + `el.style.outline='1px solid #4caf50';`
+                       + `setTimeout(function(){el.style.outline='';},900);`
+                       + `});event.stopPropagation();`;
+                   return `<div class="plz-var-row">
+                       <button id="${copyId}" onclick="${onclickJs}" class="menu_button plz-var-copy-btn"
+                               title="Copy to clipboard"><i class="fa-regular fa-copy"></i></button>
+                       <code class="plz-var-code">${entry.v}</code>
+                       <span class="plz-var-desc">— ${entry.d}</span>
+                   </div>`;
+               }).join('')}
+           </div>`
+        : `<p class="plz-var-none">No template variables — this value is used as-is.</p>`;
 
     // Standard ST confirmation popup used as a container
     const popupPromise = callPopup(
-        `<h3 style="text-align:left; margin-top:0;">${title}</h3>
+        `<h3 class="plz-modal-title">${title}</h3>
          ${varBlock}
          <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="10"
                    style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden;"
                    spellcheck="false">${current.replace(/</g, '&lt;')}</textarea>
-         <div style="margin-top:8px; display:flex; gap:8px;">
-             <button class="menu_button" id="plz-prompt-reset"
-                     style="font-size:0.8em;">Reset to Default</button>
+         <div class="plz-modal-actions">
+             <button class="menu_button" id="plz-prompt-reset">Reset to Default</button>
          </div>`,
         'confirm',
     );

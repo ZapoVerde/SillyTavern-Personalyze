@@ -9,6 +9,73 @@
  * per-message state badges.
  */
 
+/* ─── Settings Panel ─────────────────────────────────────────────────────── */
+
+.plz-btn-left {
+    text-align: left !important;
+    justify-content: flex-start !important;
+    padding-left: 10px !important;
+}
+
+/* ─── Prompt Modal ───────────────────────────────────────────────────────── */
+
+.plz-modal-title {
+    text-align: left;
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+.plz-var-list {
+    margin-bottom: 12px;
+}
+
+.plz-var-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 5px;
+}
+
+.plz-var-copy-btn {
+    font-size: 0.72em !important;
+    padding: 1px 6px !important;
+    line-height: 1.6 !important;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.plz-var-code {
+    font-size: 0.82em;
+    color: var(--SmartThemeQuoteColor, #c9a84c);
+    white-space: nowrap;
+}
+
+.plz-var-desc {
+    font-size: 0.80em;
+    opacity: 0.6;
+    flex: 1;
+    min-width: 0;
+}
+
+.plz-var-none {
+    font-size: 0.82em;
+    opacity: 0.5;
+    font-style: italic;
+    margin-bottom: 10px;
+}
+
+.plz-modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.plz-modal-actions .menu_button {
+    white-space: nowrap;
+}
+
 /* ─── Portrait Container ──────────────────────────────────────────────────── */
 
 #plz-portrait-container {
