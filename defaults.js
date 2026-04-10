@@ -1,31 +1,20 @@
 /**
  * @file data/default-user/extensions/personalyze/defaults.js
- * @stamp {"utc":"2026-04-10T10:00:00.000Z"}
+ * @stamp {"utc":"2026-04-11T17:00:00.000Z"}
  * @architectural-role Default Configuration
  * @description
  * Default constants for the Layered State Pipeline.
- *
- * Defines the slots for visual tracking: Outerwear, Top, Bottom, Accessories, Emotion, and Pose.
- * Establishes the standard for Dual-Engine (Fast/Smart) profile routing.
+ * 
+ * Updated to provide BASE_SLOTS for the Flexible Wardrobe architecture.
  *
  * @api-declaration
+ * POLLINATIONS_BASE_URL
+ * BASE_SLOTS
  * DEFAULT_SLOTS
  * META_SLOT_EMOTION
  * META_SLOT_POSE
  * META_SLOTS
- * POLLINATIONS_BASE_URL
- * POLLINATIONS_MODELS
- * DEFAULT_IMAGE_MODEL
- * DEFAULT_IMAGE_WIDTH
- * DEFAULT_IMAGE_HEIGHT
- * DEFAULT_FAST_PROFILE_ID
- * DEFAULT_SMART_PROFILE_ID
- * DEFAULT_VN_STYLE_SUFFIX
- * DEFAULT_TEST_PROMPT
- * FAL_MODELS
- * DEFAULT_FAL_MODEL
- * PIAPI_MODELS
- * DEFAULT_PIAPI_MODEL
+ * ...
  */
 
 /** Primary API gateway for Pollinations. */
@@ -67,33 +56,36 @@ export const DEFAULT_DESCRIBER_HISTORY = 3;
 /**
  * Meta-slot keys.
  * These slots store a plain string value instead of { item, modifier }.
- * promptCompiler and mergeLayeredUpdate check against META_SLOTS to apply
- * the correct storage and injection logic.
  */
 export const META_SLOT_EMOTION = 'emotion';
 export const META_SLOT_POSE    = 'pose';
 export const META_SLOTS        = [META_SLOT_EMOTION, META_SLOT_POSE];
 
 /**
- * Default Layered State Slots.
- * These are the keys used in DNA visual_state and LLM communication.
- * Characters without a slots_definition record fall back to these.
+ * Base Clothing Slots.
+ * Used as the default schema template for all characters.
  */
-export const DEFAULT_SLOTS = [
+export const BASE_SLOTS = [
     'outerwear',
     'top',
     'bottom',
     'accessories',
+];
+
+/**
+ * Legacy Default Slots (Backward Compatibility).
+ */
+export const DEFAULT_SLOTS = [
+    ...BASE_SLOTS,
     META_SLOT_EMOTION,
     META_SLOT_POSE,
 ];
 
 /** 
  * Default Model Routing.
- * Placeholders for ST Connection Profile IDs. 
  */
-export const DEFAULT_FAST_PROFILE_ID = null; // Phase 1 & 2 (Mistral Small)
-export const DEFAULT_SMART_PROFILE_ID = null; // Phase 3 (Gemini 3.1 Flash Lite)
+export const DEFAULT_FAST_PROFILE_ID = null;
+export const DEFAULT_SMART_PROFILE_ID = null;
 
 /** Default test prompt for engine validation. */
 export const DEFAULT_TEST_PROMPT = 'a simple illustration of a blue bird, white background';
@@ -128,8 +120,7 @@ export const PIAPI_RMBG_MODELS = ['BEN2', 'RMBG-2.0', 'RMBG-1.4'];
 /**
  * Visual Style Suffix.
  * Supports slot-based variables: {{identity_anchor}}, {{layers_description}},
- * {{emotion}}, {{pose}}. Meta-slot variables are only injected if the placeholder
- * exists in this string AND the slot has a non-empty value.
+ * {{emotion}}, {{pose}}.
  */
 export const DEFAULT_VN_STYLE_SUFFIX =
     'A highly detailed anime-style character illustration of {{identity_anchor}}. ' +
@@ -139,5 +130,3 @@ export const DEFAULT_VN_STYLE_SUFFIX =
     'high-detail eyes, smooth stylized skin, refined facial features, delicate linework, moody atmosphere, ' +
     'medium full shot, framed from knees up, full upper legs visible, centered composition, body fully facing forward, ' +
     'polished illustration, studio-quality anime rendering';
-
-/** Legacy Prompt placeholders (removed - now managed in logic/prompts.js) */
