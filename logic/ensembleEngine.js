@@ -1,12 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/ensembleEngine.js
- * @stamp {"utc":"2026-04-10T19:40:00.000Z"}
+ * @stamp {"utc":"2026-04-11T12:00:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Pure logic engine for deriving visual states from saved ensemble snapshots.
  *
- * Implements logic for applying snapshots to the current state and retrieving 
- * designated "Default" (Everyday Wear) layers for wardrobe resets.
+ * Updated to include the pose slot in state derivation.
  *
  * @api-declaration
  * applyEnsemble(current, ensemble) -> object
@@ -37,7 +36,8 @@ export function applyEnsemble(current, ensemble) {
         top:         structuredClone(ensemble.top         ?? current.top         ?? null),
         bottom:      structuredClone(ensemble.bottom      ?? current.bottom      ?? null),
         accessories: structuredClone(ensemble.accessories ?? current.accessories ?? null),
-        emotion:     ensemble.emotion || current.emotion  || 'neutral'
+        emotion:     ensemble.emotion || current.emotion  || 'neutral',
+        pose:        ensemble.pose    || current.pose     || 'upright'
     };
 }
 
@@ -63,6 +63,7 @@ export function getDefaultEnsembleLayers(charId, stateObj) {
         top: { item: 'clothes', modifier: null },
         bottom: null,
         accessories: null,
-        emotion: 'neutral'
+        emotion: 'neutral',
+        pose: 'upright'
     };
 }

@@ -1,12 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/state.js
- * @stamp {"utc":"2026-04-10T11:00:00.000Z"}
+ * @stamp {"utc":"2026-04-11T12:10:00.000Z"}
  * @architectural-role Stateful Owner (Runtime State)
  * @description
  * Single source of truth for all PersonaLyze in-memory runtime state.
  * 
  * Tracks the active character, their current layered visual state (Outerwear, Top, 
- * Bottom, Accessories, Emotion), and the local DNA derived from chat history.
+ * Bottom, Accessories, Emotion, Pose), and the local DNA derived from chat history.
+ *
+ * Updated to include 'pose' in all visual state defaults.
  *
  * @api-declaration
  * state                                    — Read-only access to runtime data.
@@ -48,7 +50,8 @@ export const state = {
         top:         null, // { item, modifier }
         bottom:      null, // { item, modifier }
         accessories: null, // { item, modifier }
-        emotion:     'neutral' // string (adjective)
+        emotion:     'neutral', // string (adjective)
+        pose:        'upright'  // string (description)
     },
     
     activeImageFile: null, // resolved filename on disk
@@ -80,7 +83,7 @@ export function setWorkshopCharacter(characterId) {
 export function resetState() {
     state.activeCharacterId    = null;
     state.activeLayers = {
-        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral'
+        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral', pose: 'upright'
     };
     state.activeImageFile      = null;
     state.chatCharacters       = {};
@@ -125,7 +128,7 @@ export function bulkInitState({ chatCharacters, characterChain, activeRoster, ac
     state.activeRoster        = Array.isArray(activeRoster) ? [...activeRoster] : [];
     state.activeCharacterId   = activeCharacterId   ?? null;
     state.activeLayers        = structuredClone(activeLayers ?? {
-        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral'
+        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral', pose: 'upright'
     });
     state.activeImageFile     = activeImageFile     ?? null;
 }

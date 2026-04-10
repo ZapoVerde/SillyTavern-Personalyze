@@ -1,11 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/parsers.js
- * @stamp {"utc":"2026-04-10T10:40:00.000Z"}
+ * @stamp {"utc":"2026-04-11T12:20:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Pure functions to parse structured text responses from the Layered State Pipeline.
  * Implements the logic for handling "KEEP" (persistence) and "None" (removal) instructions
  * without side effects.
+ *
+ * Updated to robustly handle the 'pose' meta-slot during state merging.
  *
  * @api-declaration
  * parsePhase1(raw) -> string|null
@@ -94,28 +96,33 @@ export function parsePhase3(raw) {
  * 2. None | None -> Set slot to null (explicit removal).
  * 3. Item | Mod  -> Update slot with new visual data.
  * 
+ * Ensures all standard slots (including pose) exist in the output even if missing in current.
+ * 
  * @param {object} current - The current layers object from state.
  * @param {object} update - The parsed update from the LLM.
  * @returns {object} The new consolidated state.
  */
 export function mergeLayeredUpdate(current, update) {
-    const next = structuredClone(current ?? {
-        outerwear: null,
-        top: null,
-        bottom: null,
+    // 1. Initialize next state with full standard slot template
+    // This ensures all keys exist even when merging against legacy or partial objects.
+    const next = Object.assign({
+        outerwear:   null,
+        top:         null,
+        bottom:      null,
         accessories: null,
-        emotion: 'neutral',
-        pose: 'upright',
-    });
+        emotion:     'neutral',
+        pose:        'upright',
+    }, structuredClone(current ?? {}));
 
+    // 2. Iterate through the LLM-derived updates
     for (const [slot, val] of Object.entries(update)) {
         if (!val || val.item === 'KEEP') {
-            // State: Unknown/Unchanged. Persist existing.
+            // Instruction: Unknown/Unchanged. Persist existing value from 'next'.
             continue;
         }
 
         if (val.item === 'None') {
-            // State: Explicitly removed.
+            // Instruction: Explicitly removed/cleared.
             next[slot] = null;
         } else {
             // Meta-slots (emotion, pose) store a plain string, not {item, modifier}.
