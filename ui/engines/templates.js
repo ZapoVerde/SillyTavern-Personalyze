@@ -23,7 +23,7 @@
  *     external_io: []
  */
 
-import { POLLINATIONS_MODELS, FAL_MODELS, PIAPI_MODELS } from '../../defaults.js';
+import { POLLINATIONS_MODELS, FAL_MODELS, PIAPI_MODELS, PIAPI_RMBG_MODELS } from '../../defaults.js';
 import { escapeHtml } from '../../utils/history.js';
 
 /**
@@ -135,6 +135,9 @@ function getPiAPITabHTML(settings) {
     const modelOptions = PIAPI_MODELS
         .map(m => `<option value="${escapeHtml(m)}"${m === s.piapiModel ? ' selected' : ''}>${escapeHtml(m)}</option>`)
         .join('');
+    const rmbgModelOptions = PIAPI_RMBG_MODELS
+        .map(m => `<option value="${escapeHtml(m)}"${m === s.piapiRmbgModel ? ' selected' : ''}>${escapeHtml(m)}</option>`)
+        .join('');
 
     return `
     <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
@@ -157,6 +160,19 @@ function getPiAPITabHTML(settings) {
             <select id="plz-eng-piapi-model" class="text_pole" style="flex:1;">
                 ${modelOptions}
             </select>
+        </div>
+
+        <div style="padding:10px; border:1px solid var(--SmartThemeBorderColor,#444); border-radius:6px; display:flex; flex-direction:column; gap:10px;">
+            <label class="checkbox_label" style="font-size:0.9em; cursor:pointer;">
+                <input type="checkbox" id="plz-eng-piapi-rmbg" ${s.piapiRemoveBackground ? 'checked' : ''} />
+                <span>Remove Background <span style="opacity:0.55; font-size:0.88em;">($0.001/img)</span></span>
+            </label>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">RMBG Model:</label>
+                <select id="plz-eng-piapi-rmbg-model" class="text_pole" style="flex:1;" ${s.piapiRemoveBackground ? '' : 'disabled'}>
+                    ${rmbgModelOptions}
+                </select>
+            </div>
         </div>
 
         <div style="display:flex; gap:8px; margin-top:10px;">

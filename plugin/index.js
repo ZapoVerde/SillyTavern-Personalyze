@@ -314,13 +314,19 @@ export async function init(router) {
             const result = { task_id, status };
 
             if (/^(completed|success)$/i.test(status)) {
-                const imageUrl = extractPiapiImageUrl(taskPayload.output);
+                // Generation tasks expose the image at `output`; removal tasks at `task_result.task_output`
+                const outputObj = taskPayload.output ?? taskPayload.task_result?.task_output;
+                const imageUrl = extractPiapiImageUrl(outputObj);
                 if (!imageUrl) {
                     return res.status(500).json({
-                        error: `PiAPI task "${task_id}" completed but returned no image URL. Output: ${JSON.stringify(taskPayload.output).slice(0, 200)}`,
+                        error: `PiAPI task "${task_id}" completed but returned no image URL. Output: ${JSON.stringify(outputObj).slice(0, 200)}`,
                     });
                 }
                 result.image_url = imageUrl;
+                // Removal tasks also return base64 — pass it through so callers can skip the CDN fetch
+                if (typeof outputObj?.image_base64 === 'string' && outputObj.image_base64.length > 0) {
+                    result.image_base64 = outputObj.image_base64;
+                }
                 result.meta = {
                     task_id:    taskPayload.task_id,
                     model:      taskPayload.model,
@@ -368,6 +374,62 @@ export async function init(router) {
             res.status(500).json({ error: `${err.message}${cause ? ` (${cause})` : ''}` });
         } finally {
             piapiRelease();
+        }
+    });
+
+    // ── PiAPI: submit background-removal task, return task_id immediately ────
+    router.post('/piapi-remove-bg', async (req, res) => {
+        const { image_url, rmbg_model } = req.body;
+        const apiKey = readSecret(req.user.directories, 'api_key_piapi');
+
+        if (!apiKey) {
+            return res.status(401).json({ error: 'PiAPI key not configured.' });
+        }
+        if (!image_url || !image_url.startsWith('http')) {
+            return res.status(400).json({ error: 'Missing or invalid image_url.' });
+        }
+
+        try {
+            const taskResponse = await withRetry(
+                () => fetchChecked('https://api.piapi.ai/api/v1/task', {
+                    method: 'POST',
+                    headers: {
+                        'X-API-Key': apiKey,
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'Mozilla/5.0 (compatible; PersonaLyze/1.0)',
+                    },
+                    body: JSON.stringify({
+                        model: 'Qubico/image-toolkit',
+                        task_type: 'background-remove',
+                        input: {
+                            image:      image_url,
+                            rmbg_model: rmbg_model ?? 'BEN2',
+                        },
+                    }),
+                }),
+                'PiAPIRmbg'
+            );
+
+            const taskData = await taskResponse.json();
+            const taskPayload = taskData.data ?? taskData;
+            const taskId = taskPayload.task_id;
+
+            if (!taskId) {
+                return res.status(500).json({
+                    error: `PiAPI remove-bg returned no task_id. Response: ${JSON.stringify(taskData).slice(0, 300)}`,
+                });
+            }
+
+            return res.json({ task_id: taskId });
+
+        } catch (err) {
+            if (err.httpStatus) {
+                return res.status(err.httpStatus).json({
+                    error: `PiAPI remove-bg submit failed (HTTP ${err.httpStatus}): ${err.responseText?.slice(0, 300)}`,
+                });
+            }
+            const cause = err.cause?.message || err.cause?.code || '';
+            res.status(500).json({ error: `${err.message}${cause ? ` (${cause})` : ''}` });
         }
     });
 

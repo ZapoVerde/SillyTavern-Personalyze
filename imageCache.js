@@ -177,26 +177,73 @@ function _dispatchPortraitStatus(characterId, detail) {
     document.dispatchEvent(new CustomEvent('plz:portrait-status', { detail: { characterId, ...detail } }));
 }
 
+/**
+ * Polls a PiAPI task_id until completed/failed or the deadline is exceeded.
+ * Returns { image_url, image_base64?, meta? } on success, throws on failure/timeout.
+ *
+ * @param {string} taskId
+ * @param {number} timeoutMs
+ * @param {(status: string) => void} onStatus - Called with each raw status string from PiAPI.
+ */
+async function _pollPiapiTask(taskId, timeoutMs, onStatus) {
+    const POLL_INTERVAL_MS = 1500;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+        const statusRes = await fetch(`/api/plugins/personalyze/piapi-status/${taskId}`, {
+            headers: getRequestHeaders(),
+        });
+        if (!statusRes.ok) {
+            const errData = await statusRes.json().catch(() => ({}));
+            throw new Error(errData.error || `PiAPI status check failed (${statusRes.status})`);
+        }
+        const statusData = await statusRes.json();
+        onStatus(statusData.status);
+        if (/^(completed|success)$/i.test(statusData.status)) {
+            return {
+                image_url:    statusData.image_url,
+                image_base64: statusData.image_base64 ?? null,
+                meta:         statusData.meta ?? null,
+            };
+        }
+        if (/^failed$/i.test(statusData.status)) {
+            throw new Error(`PiAPI task failed: ${statusData.error || 'unknown error'}`);
+        }
+    }
+    throw new Error(`PiAPI task ${taskId} timed out after ${timeoutMs / 1000}s`);
+}
+
 export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed = 1, provider = 'pollinations') {
     const fullPrompt = finalizePrompt(subjectPrompt, anchor, emotionLabel, poseLabel, resolveStyle(characterId));
     logCall('PortraitGenerate', `[${provider}]\n${fullPrompt}`, null, null);
 
+    const POLL_TIMEOUT_MS = 120_000;
+    const RMBG_TIMEOUT_MS =  60_000;
+
     try {
-        let imgRes;
-        let piapiMeta = null;
         const s = getSettings();
         const w = s.devMode ? DEV_IMAGE_WIDTH : DEFAULT_IMAGE_WIDTH;
         const h = s.devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
 
+        // ── Stage 1: Source Generation ────────────────────────────────────────
+        // Produces either a binary Response (imgRes) or a public source URL.
+        // Fal returns the binary directly; PiAPI and Pollinations produce a URL.
+
+        _dispatchPortraitStatus(characterId, { status: 'generating' });
+
+        let sourceUrl = null;  // public URL for Stage 2 (RMBG) and Stage 3 (CDN fetch)
+        let imgRes    = null;  // binary Response — set when the binary is already in hand
+        let piapiMeta = null;
+
         if (provider === 'fal') {
-            _dispatchPortraitStatus(characterId, { status: 'generating' });
             imgRes = await fetch('/api/plugins/personalyze/fal-generate', {
                 method: 'POST', headers: getRequestHeaders(),
                 body: JSON.stringify({ model: s.falModel, prompt: fullPrompt, width: w, height: h }),
             });
+            // Fal returns the binary directly; no stable public URL is available,
+            // so background removal is not chainable for Fal generations.
+
         } else if (provider === 'piapi') {
-            // Step 1: Submit — returns {task_id} immediately
-            _dispatchPortraitStatus(characterId, { status: 'generating' });
             const submitRes = await fetch('/api/plugins/personalyze/piapi-generate', {
                 method: 'POST', headers: getRequestHeaders(),
                 body: JSON.stringify({ model: s.piapiModel, prompt: fullPrompt, width: w, height: h, seed }),
@@ -208,45 +255,79 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
             const { task_id } = await submitRes.json();
             _dispatchPortraitStatus(characterId, { status: 'pending' });
 
-            // Step 2: Poll until done. Fixed timeout and interval — independent of each other.
-            const POLL_INTERVAL_MS = 1500;
-            const POLL_TIMEOUT_MS  = 120_000;
-            const deadline = Date.now() + POLL_TIMEOUT_MS;
-            let imageUrl = null;
-            while (Date.now() < deadline) {
-                await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-                const statusRes = await fetch(`/api/plugins/personalyze/piapi-status/${task_id}`, {
-                    headers: getRequestHeaders(),
-                });
-                if (!statusRes.ok) {
-                    const errData = await statusRes.json().catch(() => ({}));
-                    throw new Error(errData.error || `PiAPI status check failed (${statusRes.status})`);
-                }
-                const statusData = await statusRes.json();
-                _dispatchPortraitStatus(characterId, { status: statusData.status });
-                if (/^(completed|success)$/i.test(statusData.status)) {
-                    imageUrl = statusData.image_url;
-                    piapiMeta = statusData.meta ?? null;
-                    break;
-                }
-                if (/^failed$/i.test(statusData.status)) {
-                    throw new Error(`PiAPI task failed: ${statusData.error || 'unknown error'}`);
-                }
-            }
-            if (!imageUrl) {
-                throw new Error(`PiAPI task ${task_id} timed out after ${POLL_TIMEOUT_MS / 1000}s`);
-            }
+            const genResult = await _pollPiapiTask(task_id, POLL_TIMEOUT_MS,
+                status => _dispatchPortraitStatus(characterId, { status }));
+            sourceUrl = genResult.image_url;
+            piapiMeta = genResult.meta;
 
-            // Step 3: Fetch image binary through concurrency-limited proxy
-            imgRes = await fetch('/api/plugins/personalyze/piapi-fetch', {
-                method: 'POST', headers: getRequestHeaders(),
-                body: JSON.stringify({ image_url: imageUrl }),
-            });
         } else {
-            _dispatchPortraitStatus(characterId, { status: 'generating' });
-            const key = await getAuthKey('pollinations');
-            const params = new URLSearchParams({ width: String(w), height: String(h), model: s.imageModel ?? DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed), safe: 'false' });
-            imgRes = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`, { headers: key ? { 'Authorization': `Bearer ${key}` } : {} });
+            // Pollinations: construct the deterministic public URL (binary fetch deferred to Stage 3)
+            const params = new URLSearchParams({
+                width: String(w), height: String(h),
+                model: s.imageModel ?? DEFAULT_IMAGE_MODEL,
+                nologo: 'true', seed: String(seed), safe: 'false',
+            });
+            sourceUrl = `${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`;
+        }
+
+        // ── Stage 2: Background Removal (optional) ────────────────────────────
+        // Available whenever sourceUrl is set (PiAPI and Pollinations).
+        // Fal is excluded because it returns a binary rather than a CDN URL.
+        // On failure, logs a warning and falls back gracefully to the Stage 1 result.
+
+        if (s.piapiRemoveBackground && sourceUrl) {
+            try {
+                _dispatchPortraitStatus(characterId, { status: 'removing_bg' });
+
+                const rmbgSubmitRes = await fetch('/api/plugins/personalyze/piapi-remove-bg', {
+                    method: 'POST', headers: getRequestHeaders(),
+                    body: JSON.stringify({ image_url: sourceUrl, rmbg_model: s.piapiRmbgModel }),
+                });
+                if (!rmbgSubmitRes.ok) {
+                    const errData = await rmbgSubmitRes.json().catch(() => ({}));
+                    throw new Error(errData.error || `RMBG submit failed (${rmbgSubmitRes.status})`);
+                }
+                const { task_id: rmbgTaskId } = await rmbgSubmitRes.json();
+
+                const rmbgResult = await _pollPiapiTask(rmbgTaskId, RMBG_TIMEOUT_MS,
+                    () => _dispatchPortraitStatus(characterId, { status: 'removing_bg' }));
+
+                // Prefer the base64 payload — avoids a second CDN round-trip entirely
+                if (rmbgResult.image_base64) {
+                    const filename = `${buildFilenamePrefix(characterId, tag, emotion)}${Date.now()}.png`;
+                    await fetch('/api/images/upload', {
+                        method: 'POST', headers: getRequestHeaders(),
+                        body: JSON.stringify({ image: rmbgResult.image_base64, format: 'png', filename, ch_name: PLZ_IMAGE_FOLDER }),
+                    });
+                    logPatchLast(filename, null, piapiMeta);
+                    return filename;
+                }
+
+                // No base64 — update sourceUrl; Stage 3 will fetch from the RMBG CDN URL
+                sourceUrl = rmbgResult.image_url;
+                imgRes = null;
+
+            } catch (rmbgErr) {
+                warn('ImageCache', `Background removal failed, using source image: ${rmbgErr.message}`);
+                // sourceUrl / imgRes from Stage 1 are unchanged — Stage 3 proceeds normally
+            }
+        }
+
+        // ── Stage 3: Final Download & Save ────────────────────────────────────
+
+        if (!imgRes) {
+            // Route via the concurrency-limited proxy for PiAPI/RMBG CDN URLs;
+            // fetch directly for Pollinations and other public URLs.
+            const isPiapiUrl = sourceUrl.includes('piapi.ai');
+            if (isPiapiUrl) {
+                imgRes = await fetch('/api/plugins/personalyze/piapi-fetch', {
+                    method: 'POST', headers: getRequestHeaders(),
+                    body: JSON.stringify({ image_url: sourceUrl }),
+                });
+            } else {
+                const key = provider === 'pollinations' ? await getAuthKey('pollinations') : null;
+                imgRes = await fetch(sourceUrl, { headers: key ? { 'Authorization': `Bearer ${key}` } : {} });
+            }
         }
 
         await validateImageResponse(imgRes);
@@ -264,6 +345,7 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
 
         logPatchLast(filename, null, piapiMeta);
         return filename;
+
     } catch (err) {
         _dispatchPortraitStatus(characterId, { status: 'failed', error: err.message });
         logPatchLast(null, err.message);

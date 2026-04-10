@@ -59,8 +59,8 @@ function _applyPosition() {
     log('Portrait', 'Position applied:', posClass);
 }
 
-const STATUS_PCT = { pending: 15, starting: 35, processing: 65, retry: 65, success: 100, failed: 100 };
-const STATUS_LABEL = { generating: 'generating…', pending: 'pending…', starting: 'starting…', processing: 'rendering…', retry: 'retrying…', success: 'done', failed: 'failed' };
+const STATUS_PCT = { pending: 15, starting: 35, processing: 65, retry: 65, removing_bg: 85, success: 100, failed: 100 };
+const STATUS_LABEL = { generating: 'generating…', pending: 'pending…', starting: 'starting…', processing: 'rendering…', retry: 'retrying…', removing_bg: 'removing bg…', success: 'done', failed: 'failed' };
 
 /**
  * Updates the portrait status bar element.

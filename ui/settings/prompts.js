@@ -1,13 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/prompts.js
- * @stamp {"utc":"2026-04-11T09:50:00.000Z"}
+ * @stamp {"utc":"2026-04-11T19:00:00.000Z"}
  * @architectural-role UI Logic (Prompt Editor)
  * @description
  * Orchestrates the multi-line Prompt Editor modal. 
  * Provides unlimited auto-resize for large textareas and manages reset/save 
  * lifecycle for LLM prompt templates.
  *
- * Updated to include {{pose}} in style templates and a dedicated Save button.
+ * Updated with robust auto-expansion logic for mobile and high-frequency input.
  *
  * @api-declaration
  * openPromptModal(key, title, defaultValue) -> Promise<void>
@@ -82,6 +82,36 @@ const PROMPT_VARIABLES = {
 };
 
 /**
+ * Handles initialization and event binding for the dynamic textarea in the prompt modals.
+ */
+function initTextareaAutoResize() {
+    const selector = '#plz-prompt-editor';
+    
+    // Robust listener for input changes (works for mobile keyboards, autocomplete, and paste)
+    $(document).on('input.plz-prompt keyup.plz-prompt change.plz-prompt', selector, function() {
+        smartResize(this);
+    });
+
+    // Handle initial sizing after SillyTavern injects the modal into the DOM
+    const triggerResize = () => {
+        const el = document.querySelector(selector);
+        if (el) smartResize(el);
+    };
+
+    // Multiple attempts to ensure height is calculated after layout is settled
+    requestAnimationFrame(triggerResize);
+    setTimeout(triggerResize, 50);
+    setTimeout(triggerResize, 200);
+}
+
+/**
+ * Cleanup function for shared prompt modal listeners.
+ */
+function cleanupPromptListeners() {
+    $(document).off('.plz-prompt');
+}
+
+/**
  * Opens a modal to edit a style library entry.
  * Reads from and writes directly to meta.styleLibrary[styleName].
  *
@@ -114,8 +144,8 @@ export async function openStyleModal(styleName) {
     const popupPromise = callPopup(
         `<h3 class="plz-modal-title">Portrait Style — ${styleName}</h3>
          ${varBlock}
-         <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="10"
-                   style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden;"
+         <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="1"
+                   style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden; min-height:100px;"
                    spellcheck="false">${current.replace(/</g, '&lt;')}</textarea>
          <div class="plz-modal-actions">
              <button class="menu_button" id="plz-prompt-save" style="background-color:rgba(76,175,80,0.15);">Save Style</button>
@@ -124,29 +154,20 @@ export async function openStyleModal(styleName) {
         'confirm',
     );
 
-    const triggerResize = () => {
-        const el = document.getElementById('plz-prompt-editor');
-        if (el) smartResize(el);
-    };
-    requestAnimationFrame(() => { triggerResize(); setTimeout(triggerResize, 50); });
+    initTextareaAutoResize();
 
-    $(document).on('input.plz-prompt', '#plz-prompt-editor', function() { smartResize(this); });
-    
     $(document).on('click.plz-prompt', '#plz-prompt-reset', () => {
         const $editor = $('#plz-prompt-editor');
         $editor.val(DEFAULT_VN_STYLE_SUFFIX);
         smartResize($editor[0]);
     });
 
-    // Dedicated Save button logic
     $(document).on('click.plz-prompt', '#plz-prompt-save', () => {
         $('#dialogue_popup_ok').trigger('click');
     });
 
     const result = await popupPromise;
-
-    $(document).off('input.plz-prompt');
-    $(document).off('click.plz-prompt');
+    cleanupPromptListeners();
 
     if (result) {
         const newValue = $('#plz-prompt-editor').val();
@@ -187,12 +208,11 @@ export async function openPromptModal(key, title, defaultValue) {
            </div>`
         : `<p class="plz-var-none">No template variables — this value is used as-is.</p>`;
 
-    // Standard ST confirmation popup used as a container
     const popupPromise = callPopup(
         `<h3 class="plz-modal-title">${title}</h3>
          ${varBlock}
-         <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="10"
-                   style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden;"
+         <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="1"
+                   style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden; min-height:100px;"
                    spellcheck="false">${current.replace(/</g, '&lt;')}</textarea>
          <div class="plz-modal-actions">
              <button class="menu_button" id="plz-prompt-save" style="background-color:rgba(76,175,80,0.15);">Save Template</button>
@@ -201,39 +221,20 @@ export async function openPromptModal(key, title, defaultValue) {
         'confirm',
     );
 
-    // Initial resize trigger after DOM insertion
-    const triggerResize = () => {
-        const el = document.getElementById('plz-prompt-editor');
-        if (el) smartResize(el);
-    };
-    
-    requestAnimationFrame(() => {
-        triggerResize();
-        setTimeout(triggerResize, 50);
-    });
+    initTextareaAutoResize();
 
-    // Handle live resizing as user types
-    $(document).on('input.plz-prompt', '#plz-prompt-editor', function() {
-        smartResize(this);
-    });
-
-    // Handle reset action
     $(document).on('click.plz-prompt', '#plz-prompt-reset', () => {
         const $editor = $('#plz-prompt-editor');
         $editor.val(defaultValue);
         smartResize($editor[0]);
     });
 
-    // Dedicated Save button logic
     $(document).on('click.plz-prompt', '#plz-prompt-save', () => {
         $('#dialogue_popup_ok').trigger('click');
     });
 
     const result = await popupPromise;
-
-    // Cleanup global listeners before resolving
-    $(document).off('input.plz-prompt');
-    $(document).off('click.plz-prompt');
+    cleanupPromptListeners();
 
     if (result) {
         const newValue = $('#plz-prompt-editor').val();

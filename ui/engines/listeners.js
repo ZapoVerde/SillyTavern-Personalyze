@@ -93,6 +93,8 @@ export function refreshEnginesUI() {
 
     // 2b. Populate PiAPI
     $('#plz-eng-piapi-model').val(s.piapiModel);
+    $('#plz-eng-piapi-rmbg').prop('checked', !!s.piapiRemoveBackground);
+    $('#plz-eng-piapi-rmbg-model').val(s.piapiRmbgModel).prop('disabled', !s.piapiRemoveBackground);
 
     // 3. Test Prompt Area
     const $testArea = $('#plz-eng-test-prompt');
@@ -275,6 +277,16 @@ export function bindEnginesHandlers($modal) {
 
     $modal.on('change', '#plz-eng-piapi-model', function () {
         updateSetting('piapiModel', $(this).val());
+    });
+
+    $modal.on('change', '#plz-eng-piapi-rmbg', function () {
+        const enabled = $(this).prop('checked');
+        updateSetting('piapiRemoveBackground', enabled);
+        $('#plz-eng-piapi-rmbg-model').prop('disabled', !enabled);
+    });
+
+    $modal.on('change', '#plz-eng-piapi-rmbg-model', function () {
+        updateSetting('piapiRmbgModel', $(this).val());
     });
 
     // ─── Test Prompt Actions ───

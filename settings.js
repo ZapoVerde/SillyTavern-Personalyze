@@ -48,6 +48,8 @@ import {
     DEFAULT_TEST_PROMPT,
     DEFAULT_FAL_MODEL,
     DEFAULT_PIAPI_MODEL,
+    DEFAULT_PIAPI_REMOVE_BG,
+    DEFAULT_PIAPI_RMBG_MODEL,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
@@ -92,6 +94,10 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     engineEnableFal:          false,
     engineEnablePiAPI:        false,
     showPortraitStatus:       true,
+
+    // Background Removal (PiAPI Image Toolkit)
+    piapiRemoveBackground:    DEFAULT_PIAPI_REMOVE_BG,
+    piapiRmbgModel:           DEFAULT_PIAPI_RMBG_MODEL,
 });
 
 /** Returns the active working copy. */
