@@ -1,19 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/index.js
- * @stamp {"utc":"2026-04-10T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-11T10:00:00.000Z"}
  * @architectural-role Server-Side Plugin
  * @description
  * Proxies Fal AI and PiAPI calls for the PersonaLyze extension.
  * This server-side component bypasses CORS restrictions and handles secure
  * API key injection from the SillyTavern secrets vault.
  *
- * Routes provided:
- * - /fal-generate   : Fal AI generation proxy (JSON -> Image pipe)
- * - /fal-ping       : Fal AI API key validation
- * - /piapi-generate : PiAPI task submission — returns {task_id} immediately
- * - /piapi-status   : PiAPI single status check for a task_id
- * - /piapi-fetch    : PiAPI image download for a completed task_id
- * - /piapi-ping     : PiAPI API key validation
+ * Updated to wrap PiAPI CDN fetching in the withRetry block to catch
+ * transient EAI_AGAIN DNS resolution errors on newly generated URLs.
  *
  * @contract
  *   assertions:
@@ -361,14 +356,10 @@ export async function init(router) {
 
         await piapiAcquire();
         try {
-            const imgRes = await fetch(image_url, {
+            const imgRes = await withRetry(() => fetchChecked(image_url, {
                 headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PersonaLyze/1.0)' },
-            });
-            if (!imgRes.ok) {
-                return res.status(imgRes.status).json({
-                    error: `CDN fetch failed (HTTP ${imgRes.status}) for ${image_url.slice(0, 80)}`,
-                });
-            }
+            }), 'PiAPICDN');
+
             const contentType = imgRes.headers.get('Content-Type') ?? 'image/png';
             res.setHeader('Content-Type', contentType);
             res.send(Buffer.from(await imgRes.arrayBuffer()));

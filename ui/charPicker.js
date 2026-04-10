@@ -1,12 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-11T09:40:00.000Z"}
+ * @stamp {"utc":"2026-04-11T10:10:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
  * visual state for the current turn using the 5-slot architecture.
  *
- * Updated to include the pose slot in the grid and generation.
+ * Updated to randomize the seed on Force Regen, guaranteeing that API providers
+ * bypass their own caching layers and generate a new variant.
  *
  * @api-declaration
  * openCharPicker() → Promise<void>
@@ -198,6 +199,9 @@ export async function openCharPicker() {
     if (window.toastr) window.toastr.info('Generating...', 'PersonaLyze');
 
     try {
+        // Randomize seed if forceRegen is true to bypass provider-side caching
+        const generationSeed = forceRegen ? Math.floor(Math.random() * 1000000) : (character.seed ?? 1);
+
         filename = await generate(
             characterId, 
             'layered', 
@@ -206,7 +210,7 @@ export async function openCharPicker() {
             layers.emotion, 
             layers.pose,
             character.identityAnchor, 
-            character.seed,
+            generationSeed,
             engine
         );
         addToFileIndex(filename);
