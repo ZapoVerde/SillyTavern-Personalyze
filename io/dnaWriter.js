@@ -10,7 +10,7 @@
  * and ensemble deletion tombstones.
  *
  * @api-declaration
- * lockedWriteCharacterDef(messageId, characterId, anchor, seed)
+ * lockedWriteCharacterDef(messageId, characterId, anchor, seed, engine?)
  * lockedWriteEnsemble(messageId, characterId, key, label, layers)
  * lockedWriteVisualState(messageId, characterId, layers, image)       → recordId (string)
  * lockedPatchVisualStateImage(messageId, characterId, filename, recordId?)
@@ -46,20 +46,18 @@ function ensureArray(message) {
 
 /**
  * Writes a character identity definition to the DNA chain.
+ * The engine is bundled into this record so the full "generation recipe" stays together.
  */
-export async function lockedWriteCharacterDef(messageId, characterId, anchor, seed) {
+export async function lockedWriteCharacterDef(messageId, characterId, anchor, seed, engine = null) {
     await writeLock.acquire();
     try {
         const context = getContext();
         const message = context.chat[messageId];
         if (message) {
             ensureArray(message);
-            message.extra.personalyze.push({
-                type: 'character_def',
-                characterId,
-                anchor,
-                seed
-            });
+            const rec = { type: 'character_def', characterId, anchor, seed };
+            if (engine) rec.engine = engine;
+            message.extra.personalyze.push(rec);
             await saveChatConditional();
         }
     } finally {

@@ -25,7 +25,8 @@ import {
     state, setWorkshopCharacter, updateActiveCharacter, updateActiveLayers,
     updateActiveImage, addToFileIndex, updateChainLayers, setActiveRoster,
     upsertChatCharacterDef, upsertChatCharacterLabel, upsertChatCharacterAka,
-    upsertChatEnsemble, upsertChatDefaultEnsemble, deleteChatEnsemble
+    upsertChatCharacterEngine, upsertChatEnsemble, upsertChatDefaultEnsemble,
+    deleteChatEnsemble, removeFromFileIndex
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
 import { slugify, buildDescriberContext, buildHistoryText } from '../../utils/history.js';
@@ -37,8 +38,8 @@ import {
 import { detectAnchorScan, detectForceCostume } from '../../io/llm/workshop.js';
 import { compilePrompt as compile } from '../../logic/promptCompiler.js';
 import { parsePhase3 } from '../../logic/parsers.js';
-import { generate } from '../../imageCache.js';
-import { setPortrait } from '../../portrait.js';
+import { generate, flushCharacterImages } from '../../imageCache.js';
+import { setPortrait, clearPortrait } from '../../portrait.js';
 import { getDnaRosterHTML, getStudioHTML, getStudioEmptyHTML } from './dnaTemplates.js';
 import { switchTab } from './core.js';
 import { smartResize } from '../../utils/dom.js';
@@ -61,7 +62,14 @@ export function renderStudioView() {
     }
 
     const layers = state.characterChain[id]?.layers || state.activeLayers;
-    $panel.html(getStudioHTML(id, char, layers));
+    const s = getSettings();
+    const enabledEngines = {
+        engineEnablePollinations: s.engineEnablePollinations,
+        engineEnableFal:          s.engineEnableFal,
+        engineEnableHuggingFace:  s.engineEnableHuggingFace,
+        engineEnablePiAPI:        s.engineEnablePiAPI,
+    };
+    $panel.html(getStudioHTML(id, char, layers, enabledEngines));
 
     $panel.find('.plz-auto-textarea').each(function() { smartResize(this); });
 }
@@ -113,9 +121,10 @@ export function bindDNAHandlers() {
             const id = state._workshopCharacterId;
             const anchor = $('#plz-studio-anchor').val().trim();
             if (!id || !anchor) return;
+            const char = state.chatCharacters[id];
             const lastMsgId = Math.max(0, getContext().chat.length - 1);
-            await lockedWriteCharacterDef(lastMsgId, id, anchor, state.chatCharacters[id].seed);
-            upsertChatCharacterDef(id, anchor, state.chatCharacters[id].seed);
+            await lockedWriteCharacterDef(lastMsgId, id, anchor, char.seed, char.engine);
+            upsertChatCharacterDef(id, anchor, char.seed);
         }, 600);
     });
 
@@ -183,6 +192,47 @@ export function bindDNAHandlers() {
         const alias = $(this).data('alias');
         const current = state.chatCharacters[id]?.aka || [];
         await commitAka(id, current.filter(a => a !== alias));
+    });
+
+    // ─── Studio Tab: Engine Pinning ───
+    $overlay.on('change', '#plz-studio-engine', async function() {
+        const id = state._workshopCharacterId;
+        if (!id) return;
+        const engine = $(this).val() || null;
+        const char = state.chatCharacters[id];
+        const lastMsgId = Math.max(0, getContext().chat.length - 1);
+        await lockedWriteCharacterDef(lastMsgId, id, char.identityAnchor, char.seed, engine);
+        upsertChatCharacterEngine(id, engine);
+    });
+
+    // ─── Studio Tab: Purge Portraits ───
+    $overlay.on('click', '#plz-studio-purge', async function() {
+        const id = state._workshopCharacterId;
+        if (!id) return;
+        const displayName = state.chatCharacters[id]?.label || id.replace(/_/g, ' ');
+        const confirmed = await callPopup(
+            `Delete all generated portraits for <b>${$('<div>').text(displayName).html()}</b>?<br><br><small>This will free up disk space but requires re-generating images for all visual states.</small>`,
+            'confirm'
+        );
+        if (!confirmed) return;
+
+        const deleted = await flushCharacterImages(id);
+        removeFromFileIndex(deleted);
+
+        // Clear the chain image pointer
+        if (state.characterChain[id]) {
+            updateChainLayers(id, state.characterChain[id].layers, null);
+        }
+
+        // Clear active portrait if this is the current character
+        if (state.activeCharacterId === id) {
+            updateActiveImage(null);
+            clearPortrait();
+        }
+
+        if (window.toastr) {
+            window.toastr.success(`${deleted.length} portrait${deleted.length !== 1 ? 's' : ''} deleted for ${displayName}.`);
+        }
     });
 
     $overlay.on('click', '#plz-studio-layers-save', async function() {

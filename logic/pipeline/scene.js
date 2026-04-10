@@ -56,13 +56,14 @@ export async function runScenePipeline(messageId) {
         // Simple summary of current top-level clothes for the LLM
         const clothes = layers.outerwear?.item || layers.top?.item || 'standard clothes';
         
-        return { 
-            id, 
-            name: id.replace(/_/g, ' '), 
-            clothes, 
-            layers, 
-            anchor: char?.identityAnchor || '',
-            seed: char?.seed || 1
+        return {
+            id,
+            name: char?.label || id.replace(/_/g, ' '),
+            clothes,
+            layers,
+            anchor:  char?.identityAnchor || '',
+            seed:    char?.seed || 1,
+            engine:  char?.engine || null,
         };
     });
 
@@ -130,10 +131,11 @@ export async function runScenePipeline(messageId) {
 async function processSceneGeneration(messageId, item, layers, s, recordId) {
     try {
         const prompt = compilePrompt(item.anchor, layers);
+        const engine = item.engine || s.defaultEngine || 'pollinations';
         const filename = await generate(
             item.id, 'redress', slugify(layers.emotion),
             prompt, layers.emotion, item.anchor, item.seed,
-            s.defaultEngine || 'pollinations'
+            engine
         );
 
         addToFileIndex(filename);

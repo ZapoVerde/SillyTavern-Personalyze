@@ -102,13 +102,27 @@ export function getDnaRosterHTML(characters, activeRoster, activeId) {
     }).join('');
 }
 
+const ENGINE_OPTIONS = [
+    { value: 'pollinations', label: 'Pollinations',  key: 'engineEnablePollinations' },
+    { value: 'fal',          label: 'Fal AI',        key: 'engineEnableFal'          },
+    { value: 'huggingface',  label: 'Hugging Face',  key: 'engineEnableHuggingFace'  },
+    { value: 'piapi',        label: 'PiAPI',         key: 'engineEnablePiAPI'        },
+];
+
 /** Renders the Studio dashboard with the Layered Grid. */
-export function getStudioHTML(characterId, character, layers) {
+export function getStudioHTML(characterId, character, layers, enabledEngines = {}) {
     const displayName = character.label || characterId.replace(/_/g, ' ');
     const akaTagsHTML = (character.aka || []).map(alias => `
         <span class="plz-aka-tag" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;background:rgba(255,255,255,0.08);font-size:0.8em;">
             ${escapeHtml(alias)}<i class="fa-solid fa-xmark plz-aka-remove" data-alias="${escapeHtml(alias)}" style="cursor:pointer;opacity:0.6;"></i>
         </span>`).join('');
+
+    const pinnedEngine = character.engine || '';
+    const engineOptionsHTML = ENGINE_OPTIONS
+        .filter(e => enabledEngines[e.key])
+        .map(e => `<option value="${e.value}" ${pinnedEngine === e.value ? 'selected' : ''}>${escapeHtml(e.label)}</option>`)
+        .join('');
+
 
     return `
     <div style="margin-bottom:10px;">
@@ -158,6 +172,21 @@ export function getStudioHTML(characterId, character, layers) {
     <div style="margin-bottom:8px;"><strong>Saved Ensembles</strong> <small style="opacity:0.5; font-weight:normal;">(★ = Everyday Wear)</small></div>
     <div id="plz-studio-ensembles">
         ${getEnsembleListHTML(character.ensembles, character.defaultEnsemble)}
+    </div>
+
+    <div style="margin-top:20px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.07);">
+        <label class="plz-studio-label" style="display:block;margin-bottom:6px;">Preferred Image Engine</label>
+        <select id="plz-studio-engine" class="text_pole" style="width:100%;margin-bottom:16px;">
+            <option value="" ${!pinnedEngine ? 'selected' : ''}>Use Global Default</option>
+            ${engineOptionsHTML}
+        </select>
+
+        <div style="border:1px solid rgba(var(--SmartThemeErrorColor-rgb, 200,60,60),0.3);border-radius:6px;padding:10px 12px;">
+            <div style="font-size:0.8em;opacity:0.6;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">Maintenance</div>
+            <button id="plz-studio-purge" class="menu_button" style="width:100%;color:var(--SmartThemeErrorColor, #c83c3c);">
+                <i class="fa-solid fa-trash-can"></i> Purge Character Portraits
+            </button>
+        </div>
     </div>`;
 }
 

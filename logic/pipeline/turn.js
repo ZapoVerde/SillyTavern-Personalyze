@@ -21,7 +21,7 @@
  */
 
 import { getContext } from '../../../../../extensions.js';
-import { log, warn, error } from '../../utils/logger.js';
+import { log, error } from '../../utils/logger.js';
 import { 
     state, 
     updateActiveCharacter, 
@@ -160,11 +160,13 @@ export async function processKnownSubject(messageId, characterId, text, history,
     const prompt = compilePrompt(character.identityAnchor, nextLayers);
     const recordId = await lockedWriteVisualState(messageId, characterId, nextLayers, null);
 
+    const engine = character.engine || s.defaultEngine || 'pollinations';
+
     try {
         const file = await generate(
             characterId, 'layered', slugify(nextLayers.emotion),
             prompt, nextLayers.emotion, character.identityAnchor, character.seed,
-            s.defaultEngine || 'pollinations'
+            engine
         );
 
         addToFileIndex(file);

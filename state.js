@@ -24,6 +24,7 @@
  * setActiveRoster(roster)                  — Replaces the active roster for this chat.
  * upsertChatCharacterDef(id, anchor, seed) — Updates local DNA identity.
  * upsertChatCharacterLabel(id, label)      — Updates a character's display label.
+ * upsertChatCharacterEngine(id, engine)   — Updates a character's pinned image engine.
  * upsertChatEnsemble(id, key, label, layers) — Updates local DNA ensemble (saved layers).
  * deleteChatEnsemble(id, key)              — Removes an ensemble from local DNA.
  * upsertChatCharacterAka(id, akaList)      — Updates a character's AKA aliases.
@@ -54,7 +55,7 @@ export const state = {
 
     // Local DNA definitions
     // Keyed by characterId.
-    chatCharacters: {}, // { [id]: { label, identityAnchor, seed, ensembles: {}, aka: string[], defaultEnsemble: string|null } }
+    chatCharacters: {}, // { [id]: { label, identityAnchor, seed, engine: string|null, ensembles: {}, aka: string[], defaultEnsemble: string|null } }
 
     // Per-chat roster
     activeRoster: [],
@@ -153,7 +154,7 @@ export function removeFromFileIndex(filenames) {
 
 function _ensureChatChar(id) {
     if (!state.chatCharacters[id]) {
-        state.chatCharacters[id] = { label: id.replace(/_/g, ' '), identityAnchor: '', seed: 1, ensembles: {}, aka: [], defaultEnsemble: null };
+        state.chatCharacters[id] = { label: id.replace(/_/g, ' '), identityAnchor: '', seed: 1, engine: null, ensembles: {}, aka: [], defaultEnsemble: null };
     }
     return state.chatCharacters[id];
 }
@@ -169,6 +170,12 @@ export function upsertChatCharacterDef(id, anchor, seed) {
 export function upsertChatCharacterLabel(id, label) {
     const char = _ensureChatChar(id);
     char.label = label;
+}
+
+/** Updates a character's pinned image engine in local DNA. */
+export function upsertChatCharacterEngine(id, engine) {
+    const char = _ensureChatChar(id);
+    char.engine = engine || null;
 }
 
 /** Adds or updates an ensemble (saved layer snapshot) for a character. */

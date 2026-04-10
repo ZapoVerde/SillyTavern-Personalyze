@@ -52,6 +52,7 @@ export function reconstruct(chat) {
                 label:           id.replace(/_/g, ' '),
                 identityAnchor:  '',
                 seed:            1,
+                engine:          null,
                 ensembles:       {},
                 aka:             [],
                 defaultEnsemble: null
@@ -80,6 +81,7 @@ export function reconstruct(chat) {
                     const char = ensureChar(rec.characterId);
                     if (rec.anchor !== undefined) char.identityAnchor = rec.anchor;
                     if (rec.seed !== undefined)   char.seed = rec.seed;
+                    if (rec.engine !== undefined) char.engine = rec.engine || null;
                     break;
                 }
 
