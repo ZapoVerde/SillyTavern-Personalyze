@@ -1,11 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/turn.js
- * @stamp {"utc":"2026-04-11T09:30:00.000Z"}
+ * @stamp {"utc":"2026-04-11T16:20:00.000Z"}
  * @architectural-role Orchestrator (Turn Logic)
  * @description
  * Implements the standard 3-Phase Turn pipeline.
+ * Handles the 3-state Phase 1 routing:
+ * 1. None/Narrator (Abort)
+ * 2. Known Subject (Proceed to change gate)
+ * 3. Unknown Subject (Delegate to Archivist)
  *
- * Updated to pass the pose label to the portrait generator.
+ * Updated for Flexible Wardrobe: passes character.slots to Phase 3 extraction.
  *
  * @api-declaration
  * runTurnPipeline(messageId) -> Promise<void>
@@ -60,7 +64,7 @@ export async function runTurnPipeline(messageId) {
             history,
             state.activeRoster,
             state.chatCharacters,
-            s.booleanProfileId || s.fastProfileId
+            s.fastProfileId
         );
     } catch (err) {
         error('Turn', 'Phase 1 failed:', err.message);
@@ -120,7 +124,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
             history,
             charName,
             currentLayers,
-            s.booleanProfileId || s.fastProfileId
+            s.fastProfileId
         );
     } catch (err) {
         error('Turn', 'Phase 2 failed:', err.message);
@@ -142,7 +146,8 @@ export async function processKnownSubject(messageId, characterId, text, history,
             charName,
             character.identityAnchor,
             currentLayers,
-            s.describerProfileId || s.smartProfileId
+            character.slots, // Flexible Wardrobe: pass character-specific category list
+            s.smartProfileId
         );
     } catch (err) {
         error('Turn', 'Phase 3 failed:', err.message);
@@ -167,7 +172,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
             slugify(nextLayers.emotion),
             prompt, 
             nextLayers.emotion, 
-            nextLayers.pose || 'upright',
+            nextLayers.pose,
             character.identityAnchor, 
             character.seed,
             engine

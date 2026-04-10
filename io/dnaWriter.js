@@ -1,13 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/io/dnaWriter.js
- * @stamp {"utc":"2026-04-10T19:00:00.000Z"}
+ * @stamp {"utc":"2026-04-11T14:00:00.000Z"}
  * @architectural-role IO Executor / DNA Chain Writer
  * @description
  * Handles all writes to message.extra.personalyze with integrated concurrency 
  * locking. Implements the Array Pattern for the Layered State Pipeline.
  * 
  * Updated to support AKA alias updates, default ensemble (everyday wear) settings,
- * and ensemble deletion tombstones.
+ * ensemble deletion tombstones, and custom wardrobe slot schemas.
  *
  * @api-declaration
  * lockedWriteCharacterDef(messageId, characterId, anchor, seed, engine?)
@@ -16,6 +16,7 @@
  * lockedPatchVisualStateImage(messageId, characterId, filename, recordId?)
  * lockedWriteRoster(messageId, roster)
  * lockedWriteAka(messageId, characterId, akaList)
+ * lockedWriteSlots(messageId, characterId, slots)
  * lockedDeleteEnsemble(messageId, characterId, key)
  * lockedWriteDefaultEnsemble(messageId, characterId, ensembleKey)
  * lockedWriteLabel(messageId, characterId, label)
@@ -46,7 +47,6 @@ function ensureArray(message) {
 
 /**
  * Writes a character identity definition to the DNA chain.
- * The engine is bundled into this record so the full "generation recipe" stays together.
  */
 export async function lockedWriteCharacterDef(messageId, characterId, anchor, seed, engine = null) {
     await writeLock.acquire();
@@ -91,7 +91,6 @@ export async function lockedWriteEnsemble(messageId, characterId, key, label, la
 
 /**
  * Writes a layered visual state transition to the DNA chain.
- * Returns the generated record ID so the caller can patch the exact record later.
  */
 export async function lockedWriteVisualState(messageId, characterId, layers, image = null) {
     const recordId = `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -118,8 +117,6 @@ export async function lockedWriteVisualState(messageId, characterId, layers, ima
 
 /**
  * Patches the image field of an existing visual state record.
- * If recordId is provided, targets that exact record. Otherwise falls back
- * to the last visual_state for the given characterId (for workshop manual saves).
  */
 export async function lockedPatchVisualStateImage(messageId, characterId, filename, recordId = null) {
     await writeLock.acquire();
@@ -178,6 +175,28 @@ export async function lockedWriteAka(messageId, characterId, akaList) {
                 type: 'aka_update',
                 characterId,
                 aka: [...akaList]
+            });
+            await saveChatConditional();
+        }
+    } finally {
+        writeLock.release();
+    }
+}
+
+/**
+ * Writes a custom wardrobe slot schema to the DNA chain.
+ */
+export async function lockedWriteSlots(messageId, characterId, slots) {
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (message) {
+            ensureArray(message);
+            message.extra.personalyze.push({
+                type: 'slots_update',
+                characterId,
+                slots: Array.isArray(slots) ? [...slots] : []
             });
             await saveChatConditional();
         }

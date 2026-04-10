@@ -1,13 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-11T10:10:00.000Z"}
+ * @stamp {"utc":"2026-04-11T16:40:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
  * visual state for the current turn using the 5-slot architecture.
  *
- * Updated to randomize the seed on Force Regen, guaranteeing that API providers
- * bypass their own caching layers and generate a new variant.
+ * Updated for Flexible Wardrobe:
+ * 1. Dynamically renders inputs based on character.slots.
+ * 2. Slot-agnostic data collection and ensemble loading.
  *
  * @api-declaration
  * openCharPicker() → Promise<void>
@@ -34,27 +35,26 @@ import { error } from '../utils/logger.js';
 import { smartResize } from '../utils/dom.js';
 import { getSettings } from '../settings.js';
 import { applyEnsemble } from '../logic/ensembleEngine.js';
+import { BASE_SLOTS } from '../defaults.js';
 
 /**
- * Builds the HTML for the layered grid inside the picker.
+ * Builds the HTML for the dynamic layered grid inside the picker.
+ * @param {string[]} slots - The categories to render.
+ * @param {object} layers - Current values for those slots.
  */
-function buildGridHTML(layers) {
-    const slots = [
-        { label: 'Outerwear', key: 'outerwear' },
-        { label: 'Top', key: 'top' },
-        { label: 'Bottom', key: 'bottom' },
-        { label: 'Accessories', key: 'accessories' }
-    ];
+function buildGridHTML(slots, layers) {
+    const effectiveSlots = slots && slots.length > 0 ? slots : BASE_SLOTS;
 
-    const clothingHtml = slots.map(s => {
-        const item = layers[s.key]?.item ?? '';
-        const mod  = layers[s.key]?.modifier ?? '';
+    const clothingHtml = effectiveSlots.map(key => {
+        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+        const item = layers[key]?.item ?? '';
+        const mod  = layers[key]?.modifier ?? '';
         return `
         <div style="margin-bottom:10px;">
-            <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">${s.label}</label>
+            <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">${escapeHtml(label)}</label>
             <div style="display:flex; gap:4px;">
-                <input class="plz-cp-item text_pole" data-slot="${s.key}" type="text" placeholder="Item" value="${escapeHtml(item)}" style="flex:2;" />
-                <input class="plz-cp-mod text_pole" data-slot="${s.key}" type="text" placeholder="Mod" value="${escapeHtml(mod)}" style="flex:1;" />
+                <input class="plz-cp-item text_pole" data-slot="${key}" type="text" placeholder="Item" value="${escapeHtml(item)}" style="flex:2;" />
+                <input class="plz-cp-mod text_pole" data-slot="${key}" type="text" placeholder="Mod" value="${escapeHtml(mod)}" style="flex:1;" />
             </div>
         </div>`;
     }).join('');
@@ -91,6 +91,7 @@ export async function openCharPicker() {
         ? state.activeCharacterId : rosterChars[0];
 
     const currentLayers = state.characterChain[initId]?.layers || state.activeLayers;
+    const currentSlots = state.chatCharacters[initId]?.slots || [...BASE_SLOTS];
 
     const charOptions = rosterChars.map(id => {
         const label = state.chatCharacters[id]?.label || id.replace(/_/g, ' ');
@@ -122,7 +123,7 @@ export async function openCharPicker() {
                 <select id="plz-cp-char" class="text_pole" style="width:100%; margin-bottom:8px;">${charOptions}</select>
                 <select id="plz-cp-ensemble" class="text_pole" style="width:100%;">${buildEnsembleOptions(initId)}</select>
             </div>
-            <div id="plz-cp-grid-container">${buildGridHTML(currentLayers)}</div>
+            <div id="plz-cp-grid-container">${buildGridHTML(currentSlots, currentLayers)}</div>
             <button id="plz-cp-force-regen" class="menu_button" style="width:100%;margin-top:12px;opacity:0.75;">
                 <i class="fa-solid fa-rotate-right"></i> Force New Generation
             </button>`,
@@ -133,8 +134,10 @@ export async function openCharPicker() {
         $(document).on('change.plzCp', '#plz-cp-char', function() {
             const id = $(this).val();
             $('#plz-cp-ensemble').html(buildEnsembleOptions(id));
+            const charData = state.chatCharacters[id];
             const layers = state.characterChain[id]?.layers || state.activeLayers;
-            $('#plz-cp-grid-container').html(buildGridHTML(layers));
+            const slots = charData?.slots || [...BASE_SLOTS];
+            $('#plz-cp-grid-container').html(buildGridHTML(slots, layers));
         });
 
         // Ensemble Quick Load
@@ -142,13 +145,18 @@ export async function openCharPicker() {
             const charId = $('#plz-cp-char').val();
             const key = $(this).val();
             if (!key) return;
-            const layers = applyEnsemble(state.activeLayers, state.chatCharacters[charId].ensembles[key].layers);
+            const ensemble = state.chatCharacters[charId].ensembles[key];
+            const layers = applyEnsemble(state.activeLayers, ensemble.layers);
+            
             $('#plz-cp-emotion').val(layers.emotion || 'neutral');
             $('#plz-cp-pose').val(layers.pose || 'upright');
-            Object.entries(layers).forEach(([slot, val]) => {
-                if (slot === 'emotion' || slot === 'pose') return;
-                $(`.plz-cp-item[data-slot="${slot}"]`).val(val?.item || '');
-                $(`.plz-cp-mod[data-slot="${slot}"]`).val(val?.modifier || '');
+
+            // Find all inputs in the current grid and update them from the loaded ensemble
+            $('#plz-cp-grid-container .plz-cp-item').each(function() {
+                const slot = $(this).data('slot');
+                const val = layers[slot];
+                $(this).val(val?.item || '');
+                $(`#plz-cp-grid-container .plz-cp-mod[data-slot="${slot}"]`).val(val?.modifier || '');
             });
         });
 
@@ -161,16 +169,17 @@ export async function openCharPicker() {
 
     if (!confirmed) return;
 
-    // Collect Layers
+    // Collect Layers dynamically from all inputs in the grid
     const characterId = $('#plz-cp-char').val();
     const layers = { 
         emotion: $('#plz-cp-emotion').val().trim() || 'neutral',
         pose:    $('#plz-cp-pose').val().trim()    || 'upright'
     };
-    $('.plz-cp-item').each(function() {
+    
+    $('#plz-cp-grid-container .plz-cp-item').each(function() {
         const slot = $(this).data('slot');
         const item = $(this).val().trim();
-        const mod = $(`.plz-cp-mod[data-slot="${slot}"]`).val().trim();
+        const mod = $(`#plz-cp-grid-container .plz-cp-mod[data-slot="${slot}"]`).val().trim();
         layers[slot] = item ? { item, modifier: mod || null } : null;
     });
 

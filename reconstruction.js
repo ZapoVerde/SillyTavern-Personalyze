@@ -1,17 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/reconstruction.js
- * @stamp {"utc":"2026-04-10T19:20:00.000Z"}
+ * @stamp {"utc":"2026-04-11T13:40:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Derives PersonaLyze runtime state from a single forward pass over the chat DNA.
  * Reconstructs character definitions, saved ensembles, and the layered visual state.
  *
- * Updated to handle AKA aliases, default ensemble (everyday wear) definitions,
- * and ensemble deletion tombstones (ensemble_delete record type).
+ * Updated to handle Dynamic Wardrobe Slots via the slots_update record type.
  *
  * @api-declaration
  * reconstruct(chat) → {
- *   chatCharacters:      { [characterId]: { label, identityAnchor, seed, ensembles, aka, defaultEnsemble } },
+ *   chatCharacters:      { [characterId]: { label, identityAnchor, seed, ensembles, aka, defaultEnsemble, slots } },
  *   characterChain:      { [characterId]: { layers, image } },
  *   activeRoster:        string[],
  *   activeCharacterId:   string|null,
@@ -25,6 +24,8 @@
  *     state_ownership: []
  *     external_io: []
  */
+
+import { BASE_SLOTS } from './defaults.js';
 
 /**
  * Reads all PLZ DNA records from the chat array and builds the runtime state.
@@ -56,7 +57,8 @@ export function reconstruct(chat) {
                 ensembles:       {},
                 aka:             [],
                 defaultEnsemble: null,
-                styleName:       null
+                styleName:       null,
+                slots:           [...BASE_SLOTS] // Default minimalist template
             };
         }
         return chatCharacters[id];
@@ -97,6 +99,13 @@ export function reconstruct(chat) {
                     if (!rec.characterId || !rec.aka) break;
                     const char = ensureChar(rec.characterId);
                     char.aka = Array.isArray(rec.aka) ? [...rec.aka] : [];
+                    break;
+                }
+
+                case 'slots_update': {
+                    if (!rec.characterId || !rec.slots) break;
+                    const char = ensureChar(rec.characterId);
+                    char.slots = Array.isArray(rec.slots) ? [...rec.slots] : [...BASE_SLOTS];
                     break;
                 }
 

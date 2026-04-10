@@ -1,13 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/prompts.js
- * @stamp {"utc":"2026-04-10T21:00:00.000Z"}
+ * @stamp {"utc":"2026-04-11T15:00:00.000Z"}
  * @architectural-role Pipeline Templates
  * @description
  * Defines the strict Key-Value templates for the Layered State Pipeline.
  * Optimized for Dual-Model routing (Fast/Smart).
  * 
- * Includes prompts for the standard pipeline, proactive scene tracking,
- * and manual workshop extraction tools.
+ * Updated for Flexible Wardrobe:
+ * 1. Replaced hardcoded slot lists with {{slot_format_instructions}}.
+ * 2. Added Full-body item distribution logic.
  * 
  * @api-declaration
  * PHASE_1_SUBJECT_PROMPT
@@ -87,17 +88,11 @@ RULES:
 2. If an item is put on or modified: [Item] | [Modifier]
 3. If an item is explicitly REMOVED (e.g. "took off", "discarded"): None | None
 4. If a slot is UNMENTIONED or UNCHANGED: KEEP | KEEP
-5. EMOTION: Provide one adjective describing their mood and physical expression. Use KEEP if unchanged.
-6. POSE: Provide a short description of their physical stance or position. Use KEEP if unchanged.
-7. DO NOT OUTPUT JSON.
+5. Full-body items: If a character wears a single item covering multiple slots (e.g. a "Dress" or "Robe"), put the primary item in the "Top" or "Body" slot and set the "Bottom" slot to "None".
+6. DO NOT OUTPUT JSON.
 
 FORMAT:
-Outerwear: [Item] | [Modifier]
-Top: [Item] | [Modifier]
-Bottom: [Item] | [Modifier]
-Accessories: [Item] | [Modifier]
-Emotion: [Adjective]
-Pose: [Description]
+{{slot_format_instructions}}
 
 LATEST MESSAGE:
 {{message}}
@@ -175,15 +170,11 @@ LATEST MESSAGE:
 INSTRUCTIONS:
 1. Extract the specific new clothing described in the text.
 2. If the text does NOT explicitly mention what they are wearing now (e.g. they just woke up or the scene started), reply ONLY with 'USE_DEFAULT'.
-3. Otherwise, use the standard 5-slot format.
+3. Full-body items: If a character wears a single item covering multiple slots (e.g. a "Dress"), put the item in "Top" and set "Bottom" to "None".
+4. Use the requested format.
 
 FORMAT (if clothes mentioned):
-Outerwear: [Item] | [Modifier]
-Top: [Item] | [Modifier]
-Bottom: [Item] | [Modifier]
-Accessories: [Item] | [Modifier]
-Emotion: [Adjective]
-Pose: [Description]
+{{slot_format_instructions}}
 
 RESULT:`;
 
@@ -227,10 +218,4 @@ INSTRUCTIONS:
 - Do not provide explanations.
 
 FORMAT:
-Outerwear: [Item] | [Modifier]
-Top: [Item] | [Modifier]
-Bottom: [Item] | [Modifier]
-Accessories: [Item] | [Modifier]
-Emotion: [Adjective]
-Pose: [Description]`;
-
+{{slot_format_instructions}}`;

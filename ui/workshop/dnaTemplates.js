@@ -1,18 +1,19 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaTemplates.js
- * @stamp {"utc":"2026-04-10T23:20:00.000Z"}
+ * @stamp {"utc":"2026-04-11T14:20:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Generates the HTML for the Character Workshop Dashboard.
  * 
- * Updated for the 5-slot architecture with:
- * 1. Default Ensemble (Everyday Wear) star toggle.
- * 2. DataList support for quick-selection dropdowns in the layer grid.
+ * Updated for the Flexible Wardrobe architecture:
+ * 1. Dynamic slot rendering based on character.slots.
+ * 2. Add Category button.
+ * 3. Delete icons for custom slots.
  * 
  * @api-declaration
  * getBaseWorkshopHTML()
  * getDnaRosterHTML(characters, activeRoster, activeId)
- * getStudioHTML(characterId, character, layers)
+ * getStudioHTML(characterId, character, layers, enabledEngines, styleLibrary, defaultStyleName)
  * getStudioEmptyHTML()
  * getAddCharacterHTML()
  * 
@@ -24,6 +25,7 @@
  */
 
 import { escapeHtml } from '../../utils/history.js';
+import { BASE_SLOTS } from '../../defaults.js';
 
 /** Main modal shell with DNA, Studio, Library, and Add tabs. */
 export function getBaseWorkshopHTML() {
@@ -50,7 +52,6 @@ export function getBaseWorkshopHTML() {
             </div>
         </div>
 
-        <!-- Global Datalists for quick item/mod selection -->
         <datalist id="plz-items-list">
             <option value="Shirt">
             <option value="Pants">
@@ -108,7 +109,7 @@ const ENGINE_OPTIONS = [
     { value: 'piapi',        label: 'PiAPI',         key: 'engineEnablePiAPI'        },
 ];
 
-/** Renders the Studio dashboard with the Layered Grid. */
+/** Renders the Studio dashboard with the Dynamic Layered Grid. */
 export function getStudioHTML(characterId, character, layers, enabledEngines = {}, styleLibrary = {}, defaultStyleName = '') {
     const displayName = character.label || characterId.replace(/_/g, ' ');
     const akaTagsHTML = (character.aka || []).map(alias => `
@@ -122,6 +123,13 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
         .map(e => `<option value="${e.value}" ${pinnedEngine === e.value ? 'selected' : ''}>${escapeHtml(e.label)}</option>`)
         .join('');
 
+    // Generate dynamic rows for clothing slots
+    const slots = character.slots || [...BASE_SLOTS];
+    const slotsHTML = slots.map(key => {
+        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+        const isDeletable = !BASE_SLOTS.includes(key);
+        return getLayerInputHTML(label, key, layers[key], isDeletable);
+    }).join('');
 
     return `
     <div style="margin-bottom:10px;">
@@ -151,20 +159,18 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
         </div>
     </div>
 
-    <!-- Layer Grid with Keyword Hint / Force Scan -->
     <div style="display:grid;grid-template-columns: 1fr 1fr;gap:10px;margin-bottom:12px;">
-        ${getLayerInputHTML('Outerwear', 'outerwear', layers.outerwear)}
-        ${getLayerInputHTML('Top', 'top', layers.top)}
-        ${getLayerInputHTML('Bottom', 'bottom', layers.bottom)}
-        ${getLayerInputHTML('Accessories', 'accessories', layers.accessories)}
+        ${slotsHTML}
         ${getEmotionInputHTML(layers.emotion)}
         ${getPoseInputHTML(layers.pose)}
     </div>
 
     <div style="display:flex; gap:6px; margin-bottom:20px;">
-        <input id="plz-studio-hint" type="text" class="text_pole" placeholder="Hint (e.g. 'Formal')" style="flex:1; font-size:0.85em;" />
-        <button id="plz-studio-force-costume" class="menu_button" style="font-size:0.85em;">Scan Current Turn</button>
-        <button id="plz-studio-layers-save" class="menu_button" style="flex:1;">Apply to Turn</button>
+        <button id="plz-studio-add-slot" class="menu_button" style="font-size:0.85em;"><i class="fa-solid fa-plus"></i> Add Category</button>
+        <div style="flex:1;"></div>
+        <input id="plz-studio-hint" type="text" class="text_pole" placeholder="Hint (e.g. 'Formal')" style="width:120px; font-size:0.85em;" />
+        <button id="plz-studio-force-costume" class="menu_button" style="font-size:0.85em;">Scan</button>
+        <button id="plz-studio-layers-save" class="menu_button" style="padding:0 15px;">Apply to Turn</button>
     </div>
 
     <div style="margin-bottom:8px;"><strong>Saved Ensembles</strong> <small style="opacity:0.5; font-weight:normal;">(★ = Everyday Wear)</small></div>
@@ -196,12 +202,20 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
     </div>`;
 }
 
-function getLayerInputHTML(label, key, val) {
+function getLayerInputHTML(label, key, val, deletable = false) {
     const item = val?.item ?? '';
     const mod  = val?.modifier ?? '';
+    const deleteBtn = deletable 
+        ? `<i class="fa-solid fa-trash-can plz-studio-delete-slot" data-slot="${key}" 
+              style="font-size:0.8em; opacity:0.3; cursor:pointer; margin-left:5px;" title="Delete Category"></i>` 
+        : '';
+
     return `
     <div class="plz-layer-input">
-        <label style="font-size:0.75em;opacity:0.6;display:block;margin-bottom:2px;">${label}</label>
+        <div style="display:flex; align-items:center; margin-bottom:2px;">
+            <label style="font-size:0.75em;opacity:0.6;flex:1;">${label}</label>
+            ${deleteBtn}
+        </div>
         <div style="display:flex;gap:4px;">
             <input class="plz-layer-item text_pole" data-slot="${key}" type="text" placeholder="Item" list="plz-items-list" value="${escapeHtml(item)}" style="flex:2;" />
             <input class="plz-layer-mod text_pole" data-slot="${key}" type="text" placeholder="Mod" list="plz-mods-list" value="${escapeHtml(mod)}" style="flex:1;" />

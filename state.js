@@ -1,21 +1,21 @@
 /**
  * @file data/default-user/extensions/personalyze/state.js
- * @stamp {"utc":"2026-04-11T12:10:00.000Z"}
+ * @stamp {"utc":"2026-04-11T13:00:00.000Z"}
  * @architectural-role Stateful Owner (Runtime State)
  * @description
  * Single source of truth for all PersonaLyze in-memory runtime state.
  * 
- * Tracks the active character, their current layered visual state (Outerwear, Top, 
- * Bottom, Accessories, Emotion, Pose), and the local DNA derived from chat history.
+ * Tracks the active character, their current layered visual state, 
+ * and the local DNA derived from chat history.
  *
- * Updated to include 'pose' in all visual state defaults.
+ * Updated to support Dynamic Wardrobe Slots per character.
  *
  * @api-declaration
  * state                                    — Read-only access to runtime data.
  * setWorkshopCharacter(characterId)        — Sets the character open in the Workshop.
  * resetState()                             — Restores state to factory defaults.
  * updateActiveCharacter(characterId)       — Sets the currently tracked character.
- * updateActiveLayers(layers)               — Sets the active 5-slot visual state.
+ * updateActiveLayers(layers)               — Sets the active visual state.
  * updateActiveImage(filename)              — Updates the resolved filename on disk.
  * updateChainLayers(characterId, layers, image) — Updates one character's chain slot.
  * getChainEntry(characterId)               — Returns a character's last-known state or null.
@@ -26,11 +26,12 @@
  * setActiveRoster(roster)                  — Replaces the active roster for this chat.
  * upsertChatCharacterDef(id, anchor, seed) — Updates local DNA identity.
  * upsertChatCharacterLabel(id, label)      — Updates a character's display label.
- * upsertChatCharacterEngine(id, engine)   — Updates a character's pinned image engine.
- * upsertChatEnsemble(id, key, label, layers) — Updates local DNA ensemble (saved layers).
+ * upsertChatCharacterEngine(id, engine)    — Updates a character's pinned image engine.
+ * upsertChatEnsemble(id, key, label, layers) — Updates local DNA ensemble.
  * deleteChatEnsemble(id, key)              — Removes an ensemble from local DNA.
  * upsertChatCharacterAka(id, akaList)      — Updates a character's AKA aliases.
  * upsertChatDefaultEnsemble(id, key)       — Updates a character's designated default ensemble.
+ * upsertChatSlots(id, slots)               — Updates a character's custom slot schema.
  * resolveAliasToId(detectedName)           — Maps a raw name to a canonical character ID.
  * 
  * @contract
@@ -40,31 +41,32 @@
  *     external_io: []
  */
 
+import { BASE_SLOTS } from './defaults.js';
+
 export const state = {
     // Active character for the current chat turn
     activeCharacterId: null,
 
     // Current visual state (The Layered Snapshot)
     activeLayers: {
-        outerwear:   null, // { item, modifier }
-        top:         null, // { item, modifier }
-        bottom:      null, // { item, modifier }
-        accessories: null, // { item, modifier }
-        emotion:     'neutral', // string (adjective)
-        pose:        'upright'  // string (description)
+        outerwear:   null,
+        top:         null,
+        bottom:      null,
+        accessories: null,
+        emotion:     'neutral',
+        pose:        'upright'
     },
     
-    activeImageFile: null, // resolved filename on disk
+    activeImageFile: null,
 
     // Local DNA definitions
     // Keyed by characterId.
-    chatCharacters: {}, // { [id]: { label, identityAnchor, seed, engine: string|null, ensembles: {}, aka: string[], defaultEnsemble: string|null } }
+    chatCharacters: {}, // { [id]: { label, identityAnchor, seed, engine, ensembles, aka, defaultEnsemble, slots: string[] } }
 
     // Per-chat roster
     activeRoster: [],
 
     // Last-known visual state per character.
-    // Keyed by characterId. { layers, image }
     characterChain: {},
 
     // Filesystem cache
@@ -98,7 +100,7 @@ export function updateActiveCharacter(characterId) {
     state.activeCharacterId = characterId;
 }
 
-/** Updates the active 5-slot visual state. */
+/** Updates the active visual state. */
 export function updateActiveLayers(layers) {
     state.activeLayers = structuredClone(layers);
 }
@@ -157,7 +159,17 @@ export function removeFromFileIndex(filenames) {
 
 function _ensureChatChar(id) {
     if (!state.chatCharacters[id]) {
-        state.chatCharacters[id] = { label: id.replace(/_/g, ' '), identityAnchor: '', seed: 1, engine: null, ensembles: {}, aka: [], defaultEnsemble: null, styleName: null };
+        state.chatCharacters[id] = { 
+            label: id.replace(/_/g, ' '), 
+            identityAnchor: '', 
+            seed: 1, 
+            engine: null, 
+            ensembles: {}, 
+            aka: [], 
+            defaultEnsemble: null, 
+            styleName: null,
+            slots: [...BASE_SLOTS] // Default template
+        };
     }
     return state.chatCharacters[id];
 }
@@ -214,36 +226,24 @@ export function upsertChatCharacterStyle(id, styleName) {
     char.styleName = styleName || null;
 }
 
+/** Updates a character's custom wardrobe slot list. */
+export function upsertChatSlots(id, slots) {
+    const char = _ensureChatChar(id);
+    char.slots = Array.isArray(slots) ? [...slots] : [...BASE_SLOTS];
+}
+
 // ─── Reverse Lookup ──────────────────────────────────────────────────────────
 
 /**
  * Maps a raw detected name back to a canonical character ID.
- * Checks exact ID matches first, then checks alias arrays.
- * 
- * @param {string} detectedName - The raw name output by the LLM.
- * @returns {string|null} - The canonical ID, or null if genuinely unknown.
  */
 export function resolveAliasToId(detectedName) {
     if (!detectedName) return null;
-
     const target = detectedName.trim().toLowerCase();
-
     for (const [id, char] of Object.entries(state.chatCharacters)) {
-        // 1. Exact key match (accounting for slug differences)
-        if (id.toLowerCase().replace(/_/g, ' ') === target.replace(/_/g, ' ')) {
-            return id;
-        }
-
-        // 2. Label match
-        if (char.label && char.label.toLowerCase() === target) {
-            return id;
-        }
-
-        // 3. AKA match
-        if (char.aka && char.aka.some(alias => alias.toLowerCase() === target)) {
-            return id;
-        }
+        if (id.toLowerCase().replace(/_/g, ' ') === target.replace(/_/g, ' ')) return id;
+        if (char.label && char.label.toLowerCase() === target) return id;
+        if (char.aka && char.aka.some(alias => alias.toLowerCase() === target)) return id;
     }
-
     return null;
 }

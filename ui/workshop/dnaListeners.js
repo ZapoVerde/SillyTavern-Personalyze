@@ -1,11 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaListeners.js
- * @stamp {"utc":"2026-04-10T23:40:00.000Z"}
+ * @stamp {"utc":"2026-04-11T14:30:00.000Z"}
  * @architectural-role UI Controller (Workshop DNA)
  * @description
  * Manages event listeners and rendering for the DNA, Studio, and Add tabs.
  * Implements the logic for the Layered Grid, Ensemble management, and 
  * Targeted Manual Extraction (Force Scan).
+ * 
+ * Updated for the Flexible Wardrobe architecture:
+ * 1. Added Add/Delete custom category handlers.
+ * 2. Ensures getGridLayers is slot-agnostic.
  * 
  * @api-declaration
  * renderDNAView()
@@ -16,7 +20,7 @@
  *   assertions:
  *     purity: IO / Stateful UI
  *     state_ownership: [state (mutates via setters)]
- *     external_io: [dnaWriter.js, promptCompiler.js, imageCache.js, llm/workshop.js, DOM]
+ *     external_io:[dnaWriter.js, promptCompiler.js, imageCache.js, llm/workshop.js, DOM]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -26,16 +30,17 @@ import {
     updateActiveImage, addToFileIndex, updateChainLayers, setActiveRoster,
     upsertChatCharacterDef, upsertChatCharacterLabel, upsertChatCharacterAka,
     upsertChatCharacterEngine, upsertChatCharacterStyle, upsertChatEnsemble,
-    upsertChatDefaultEnsemble, deleteChatEnsemble, removeFromFileIndex
+    upsertChatDefaultEnsemble, deleteChatEnsemble, removeFromFileIndex,
+    upsertChatSlots
 } from '../../state.js';
 import { getSettings, getMetaSettings } from '../../settings.js';
-import { META_SLOTS } from '../../defaults.js';
-import { slugify, buildDescriberContext, buildHistoryText } from '../../utils/history.js';
+import { META_SLOTS, BASE_SLOTS } from '../../defaults.js';
+import { slugify, buildDescriberContext, buildHistoryText, escapeHtml } from '../../utils/history.js';
 import {
     lockedWriteCharacterDef, lockedWriteLabel, lockedWriteAka,
     lockedWriteEnsemble, lockedWriteVisualState,
     lockedPatchVisualStateImage, lockedWriteRoster, lockedWriteDefaultEnsemble,
-    lockedDeleteEnsemble, lockedWriteCharacterStyle
+    lockedDeleteEnsemble, lockedWriteCharacterStyle, lockedWriteSlots
 } from '../../io/dnaWriter.js';
 import { detectAnchorScan, detectForceCostume } from '../../io/llm/workshop.js';
 import { compilePrompt as compile } from '../../logic/promptCompiler.js';
@@ -179,9 +184,9 @@ export function bindDNAHandlers() {
         const input = $('#plz-studio-aka-input');
         const alias = input.val().trim();
         if (!alias) return;
-        const current = state.chatCharacters[id]?.aka || [];
+        const current = state.chatCharacters[id]?.aka ||[];
         if (current.includes(alias)) { input.val(''); return; }
-        await commitAka(id, [...current, alias]);
+        await commitAka(id,[...current, alias]);
         input.val('');
     });
 
@@ -195,7 +200,7 @@ export function bindDNAHandlers() {
         const id = state._workshopCharacterId;
         if (!id) return;
         const alias = $(this).data('alias');
-        const current = state.chatCharacters[id]?.aka || [];
+        const current = state.chatCharacters[id]?.aka ||[];
         await commitAka(id, current.filter(a => a !== alias));
     });
 
@@ -218,6 +223,67 @@ export function bindDNAHandlers() {
         const lastMsgId = Math.max(0, getContext().chat.length - 1);
         await lockedWriteCharacterDef(lastMsgId, id, char.identityAnchor, char.seed, engine);
         upsertChatCharacterEngine(id, engine);
+    });
+
+    // ─── Studio Tab: Dynamic Slots Management ───
+    $overlay.on('click', '#plz-studio-add-slot', async function() {
+        const id = state._workshopCharacterId;
+        if (!id) return;
+
+        const nameRaw = await callPopup('<h3>New Category Name</h3>', 'input', '');
+        const label = (nameRaw ?? '').trim();
+        if (!label) return;
+
+        const key = slugify(label);
+        if (META_SLOTS.includes(key) || BASE_SLOTS.includes(key)) {
+            if (window.toastr) window.toastr.error(`"${label}" is a reserved system keyword.`, 'PersonaLyze');
+            return;
+        }
+
+        const char = state.chatCharacters[id];
+        const currentSlots = char.slots ||[...BASE_SLOTS];
+
+        if (currentSlots.includes(key)) {
+            if (window.toastr) window.toastr.warning(`Category "${label}" already exists.`);
+            return;
+        }
+
+        const newSlots =[...currentSlots, key];
+        const lastMsgId = Math.max(0, getContext().chat.length - 1);
+
+        await lockedWriteSlots(lastMsgId, id, newSlots);
+        upsertChatSlots(id, newSlots);
+
+        renderStudioView();
+    });
+
+    $overlay.on('click', '.plz-studio-delete-slot', async function() {
+        const id = state._workshopCharacterId;
+        const key = $(this).data('slot');
+        if (!id || !key) return;
+
+        if (BASE_SLOTS.includes(key)) {
+            return; // Safety guard: cannot delete base slots
+        }
+
+        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+        const confirmed = await callPopup(`Delete category "<b>${escapeHtml(label)}</b>"?`, 'confirm');
+        if (!confirmed) return;
+
+        const char = state.chatCharacters[id];
+        const currentSlots = char.slots || [...BASE_SLOTS];
+        const newSlots = currentSlots.filter(s => s !== key);
+
+        const lastMsgId = Math.max(0, getContext().chat.length - 1);
+        await lockedWriteSlots(lastMsgId, id, newSlots);
+        upsertChatSlots(id, newSlots);
+
+        // Optional: clear the orphaned data from active state if it was there
+        if (state.activeLayers && state.activeLayers[key] !== undefined && state.activeCharacterId === id) {
+            state.activeLayers[key] = null;
+        }
+
+        renderStudioView();
     });
 
     // ─── Studio Tab: Purge Portraits ───
@@ -267,7 +333,7 @@ export function bindDNAHandlers() {
         await lockedWriteVisualState(lastAiIdx, id, layers, null);
 
         try {
-            const file = await generate(id, 'manual', slugify(layers.emotion), prompt, layers.emotion, char.identityAnchor, char.seed);
+            const file = await generate(id, 'manual', slugify(layers.emotion), prompt, layers.emotion, layers.pose, char.identityAnchor, char.seed);
             addToFileIndex(file);
             updateActiveImage(file);
             updateChainLayers(id, layers, file);
@@ -291,6 +357,7 @@ export function bindDNAHandlers() {
         $btn.prop('disabled', true).text('Scanning...');
 
         try {
+            // Note: detectForceCostume will soon handle dynamic slots. 
             const raw = await detectForceCostume(history, currentTurn, id.replace(/_/g, ' '), hint, s.forceCostumeHintTemplate, s.smartProfileId, s.forceCostumePrompt);
             const layers = parsePhase3(raw);
 
