@@ -18,6 +18,7 @@
  * lockedWriteAka(messageId, characterId, akaList)
  * lockedDeleteEnsemble(messageId, characterId, key)
  * lockedWriteDefaultEnsemble(messageId, characterId, ensembleKey)
+ * lockedWriteLabel(messageId, characterId, label)
  *
  * @contract
  *   assertions:
@@ -201,6 +202,28 @@ export async function lockedDeleteEnsemble(messageId, characterId, key) {
                 type: 'ensemble_delete',
                 characterId,
                 key
+            });
+            await saveChatConditional();
+        }
+    } finally {
+        writeLock.release();
+    }
+}
+
+/**
+ * Writes a character's display label to the DNA chain.
+ */
+export async function lockedWriteLabel(messageId, characterId, label) {
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (message) {
+            ensureArray(message);
+            message.extra.personalyze.push({
+                type: 'label_update',
+                characterId,
+                label
             });
             await saveChatConditional();
         }

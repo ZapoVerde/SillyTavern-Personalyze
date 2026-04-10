@@ -73,11 +73,12 @@ async function dispatch(prompt, profileId, label, extraOptions = {}) {
 export async function detectSubject(message, history, rosterIds, chatCharacters, profileId) {
     const formattedRoster = rosterIds.map(id => {
         const char = chatCharacters[id];
-        const label = id.replace(/_/g, ' ');
+        const displayName = char?.label || id.replace(/_/g, ' ');
+        let entry = `${displayName} (ID: ${id})`;
         if (char?.aka && char.aka.length > 0) {
-            return `${label} (AKA: ${char.aka.join(', ')})`;
+            entry += ` [AKA: ${char.aka.join(', ')}]`;
         }
-        return label;
+        return entry;
     }).join('\n');
 
     const prompt = PHASE_1_SUBJECT_PROMPT

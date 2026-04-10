@@ -23,6 +23,7 @@
  * removeFromFileIndex(filenames)           — Removes filenames from the set.
  * setActiveRoster(roster)                  — Replaces the active roster for this chat.
  * upsertChatCharacterDef(id, anchor, seed) — Updates local DNA identity.
+ * upsertChatCharacterLabel(id, label)      — Updates a character's display label.
  * upsertChatEnsemble(id, key, label, layers) — Updates local DNA ensemble (saved layers).
  * deleteChatEnsemble(id, key)              — Removes an ensemble from local DNA.
  * upsertChatCharacterAka(id, akaList)      — Updates a character's AKA aliases.
@@ -53,7 +54,7 @@ export const state = {
 
     // Local DNA definitions
     // Keyed by characterId.
-    chatCharacters: {}, // { [id]: { identityAnchor, seed, ensembles: {}, aka: string[], defaultEnsemble: string|null } }
+    chatCharacters: {}, // { [id]: { label, identityAnchor, seed, ensembles: {}, aka: string[], defaultEnsemble: string|null } }
 
     // Per-chat roster
     activeRoster: [],
@@ -152,7 +153,7 @@ export function removeFromFileIndex(filenames) {
 
 function _ensureChatChar(id) {
     if (!state.chatCharacters[id]) {
-        state.chatCharacters[id] = { identityAnchor: '', seed: 1, ensembles: {}, aka: [], defaultEnsemble: null };
+        state.chatCharacters[id] = { label: id.replace(/_/g, ' '), identityAnchor: '', seed: 1, ensembles: {}, aka: [], defaultEnsemble: null };
     }
     return state.chatCharacters[id];
 }
@@ -162,6 +163,12 @@ export function upsertChatCharacterDef(id, anchor, seed) {
     const char = _ensureChatChar(id);
     char.identityAnchor = anchor;
     char.seed = seed;
+}
+
+/** Updates a character's display label in local DNA. */
+export function upsertChatCharacterLabel(id, label) {
+    const char = _ensureChatChar(id);
+    char.label = label;
 }
 
 /** Adds or updates an ensemble (saved layer snapshot) for a character. */
@@ -202,20 +209,25 @@ export function upsertChatDefaultEnsemble(id, key) {
  */
 export function resolveAliasToId(detectedName) {
     if (!detectedName) return null;
-    
+
     const target = detectedName.trim().toLowerCase();
-    
+
     for (const [id, char] of Object.entries(state.chatCharacters)) {
-        // Direct ID match (accounting for slugification differences like spaces vs underscores)
+        // 1. Exact key match (accounting for slug differences)
         if (id.toLowerCase().replace(/_/g, ' ') === target.replace(/_/g, ' ')) {
             return id;
         }
-        
-        // Alias match
+
+        // 2. Label match
+        if (char.label && char.label.toLowerCase() === target) {
+            return id;
+        }
+
+        // 3. AKA match
         if (char.aka && char.aka.some(alias => alias.toLowerCase() === target)) {
             return id;
         }
     }
-    
+
     return null;
 }

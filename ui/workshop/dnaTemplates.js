@@ -86,10 +86,11 @@ export function getDnaRosterHTML(characters, activeRoster, activeId) {
     return entries.map(([id, char]) => {
         const isEnabled = activeRoster.includes(id);
         const isActive = id === activeId;
+        const displayName = char.label || id.replace(/_/g, ' ');
         return `
         <div class="plz-roster-item ${isActive ? 'plz-active-char' : ''}" data-id="${escapeHtml(id)}">
             <div class="plz-roster-text">
-                <strong>${isActive ? '<i class="fa-solid fa-user"></i> ' : ''}${escapeHtml(id.replace(/_/g, ' '))}</strong>
+                <strong>${isActive ? '<i class="fa-solid fa-user"></i> ' : ''}${escapeHtml(displayName)}</strong>
                 <small>${escapeHtml(char.identityAnchor || '—')}</small>
             </div>
             <div class="plz-roster-actions">
@@ -103,20 +104,39 @@ export function getDnaRosterHTML(characters, activeRoster, activeId) {
 
 /** Renders the Studio dashboard with the Layered Grid. */
 export function getStudioHTML(characterId, character, layers) {
-    const label = characterId.replace(/_/g, ' ');
-    
+    const displayName = character.label || characterId.replace(/_/g, ' ');
+    const akaTagsHTML = (character.aka || []).map(alias => `
+        <span class="plz-aka-tag" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;background:rgba(255,255,255,0.08);font-size:0.8em;">
+            ${escapeHtml(alias)}<i class="fa-solid fa-xmark plz-aka-remove" data-alias="${escapeHtml(alias)}" style="cursor:pointer;opacity:0.6;"></i>
+        </span>`).join('');
+
     return `
-    <div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
-        <strong style="font-size:1.05em;">${escapeHtml(label)} Dashboard</strong>
-        <button class="menu_button plz-save-ensemble-btn" style="font-size:0.8em;">Save as Ensemble</button>
+    <div style="margin-bottom:10px;">
+        <input id="plz-studio-label" class="text_pole" type="text" value="${escapeHtml(displayName)}"
+               style="width:100%;font-size:1em;font-weight:bold;margin-bottom:4px;" />
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <small style="opacity:0.35;">System ID: ${escapeHtml(characterId)}</small>
+            <button class="menu_button plz-save-ensemble-btn" style="font-size:0.8em;">Save as Ensemble</button>
+        </div>
     </div>
 
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;">
         <label class="plz-studio-label">Identity Anchor</label>
         <button class="menu_button plz-anchor-scan" data-mode="studio" style="font-size:0.75em;padding:2px 8px;">Scan Chat</button>
     </div>
-    <textarea id="plz-studio-anchor" class="text_pole plz-auto-textarea" rows="2" 
+    <textarea id="plz-studio-anchor" class="text_pole plz-auto-textarea" rows="2"
               style="width:100%;margin-bottom:12px;font-size:0.88em;">${escapeHtml(character.identityAnchor)}</textarea>
+
+    <div style="margin-bottom:12px;">
+        <label class="plz-studio-label" style="display:block;margin-bottom:5px;">Aliases (AKAs)</label>
+        <div id="plz-studio-aka-tags" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;min-height:20px;">
+            ${akaTagsHTML || '<span style="opacity:0.3;font-size:0.8em;">No aliases yet.</span>'}
+        </div>
+        <div style="display:flex;gap:6px;">
+            <input id="plz-studio-aka-input" class="text_pole" type="text" placeholder="Add alias..." style="flex:1;font-size:0.85em;" />
+            <button class="menu_button plz-aka-add" style="font-size:0.8em;">Add</button>
+        </div>
+    </div>
 
     <!-- Layer Grid with Keyword Hint / Force Scan -->
     <div style="display:grid;grid-template-columns: 1fr 1fr;gap:10px;margin-bottom:12px;">

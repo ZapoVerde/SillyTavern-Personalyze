@@ -11,7 +11,7 @@
  *
  * @api-declaration
  * reconstruct(chat) → {
- *   chatCharacters:      { [characterId]: { identityAnchor, seed, ensembles, aka, defaultEnsemble } },
+ *   chatCharacters:      { [characterId]: { label, identityAnchor, seed, ensembles, aka, defaultEnsemble } },
  *   characterChain:      { [characterId]: { layers, image } },
  *   activeRoster:        string[],
  *   activeCharacterId:   string|null,
@@ -48,12 +48,13 @@ export function reconstruct(chat) {
     /** Helper to guarantee a valid character structure exists. */
     const ensureChar = (id) => {
         if (!chatCharacters[id]) {
-            chatCharacters[id] = { 
-                identityAnchor: '', 
-                seed: 1, 
-                ensembles: {}, 
-                aka: [], 
-                defaultEnsemble: null 
+            chatCharacters[id] = {
+                label:           id.replace(/_/g, ' '),
+                identityAnchor:  '',
+                seed:            1,
+                ensembles:       {},
+                aka:             [],
+                defaultEnsemble: null
             };
         }
         return chatCharacters[id];
@@ -79,6 +80,13 @@ export function reconstruct(chat) {
                     const char = ensureChar(rec.characterId);
                     if (rec.anchor !== undefined) char.identityAnchor = rec.anchor;
                     if (rec.seed !== undefined)   char.seed = rec.seed;
+                    break;
+                }
+
+                case 'label_update': {
+                    if (!rec.characterId || !rec.label) break;
+                    const char = ensureChar(rec.characterId);
+                    char.label = rec.label;
                     break;
                 }
 

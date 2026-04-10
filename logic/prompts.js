@@ -22,7 +22,7 @@
 
 // ─── Phase 1-3: Standard Pipeline ─────────────────────────────────────────────
 
-/** Phase 1: Identify the active character. Output: [Name] or None. */
+/** Phase 1: Identify the active character. Output: [ID] or a raw name if unknown. */
 export const PHASE_1_SUBJECT_PROMPT =
 `[SYSTEM: TASK — SUBJECT IDENTIFICATION]
 Identify the primary character speaking or acting in the LATEST MESSAGE.
@@ -38,11 +38,11 @@ LATEST MESSAGE:
 
 INSTRUCTIONS:
 - Identify the primary character in the LATEST MESSAGE only.
-- Use the CONTEXT to resolve pronouns (e.g. "He", "She") to a specific Roster name.
-- Return ONLY the exact name from the roster if they are the main focus.
-- If the character is referred to by an alias (AKA), return their canonical Roster Name.
-- If it is a narrator, a group, or an unlisted character, return their name (e.g. RESULT: The Guard).
-- Do NOT provide explanations.
+- Use the CONTEXT to resolve pronouns (e.g. "He", "She") to a specific Roster entry.
+- Each Roster entry shows the display name followed by the System ID in parentheses.
+- If the character matches a Roster entry (by name or AKA), return ONLY the exact System ID shown in parentheses (e.g. RESULT: strider_01).
+- If it is a narrator, a group, or a character not on the Roster, return their name as it appears (e.g. RESULT: The Guard).
+- Do NOT return the display name. Do NOT provide explanations.
 
 RESULT:`;
 

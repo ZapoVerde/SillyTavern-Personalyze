@@ -21,15 +21,17 @@
 
 import { getContext } from '../../../../../extensions.js';
 import { callPopup } from '../../../../../../script.js';
-import { 
-    state, setWorkshopCharacter, updateActiveCharacter, updateActiveLayers, 
+import {
+    state, setWorkshopCharacter, updateActiveCharacter, updateActiveLayers,
     updateActiveImage, addToFileIndex, updateChainLayers, setActiveRoster,
-    upsertChatCharacterDef, upsertChatEnsemble, upsertChatDefaultEnsemble, deleteChatEnsemble
+    upsertChatCharacterDef, upsertChatCharacterLabel, upsertChatCharacterAka,
+    upsertChatEnsemble, upsertChatDefaultEnsemble, deleteChatEnsemble
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
 import { slugify, buildDescriberContext, buildHistoryText } from '../../utils/history.js';
-import { 
-    lockedWriteCharacterDef, lockedWriteEnsemble, lockedWriteVisualState,
+import {
+    lockedWriteCharacterDef, lockedWriteLabel, lockedWriteAka,
+    lockedWriteEnsemble, lockedWriteVisualState,
     lockedPatchVisualStateImage, lockedWriteRoster, lockedWriteDefaultEnsemble, lockedDeleteEnsemble
 } from '../../io/dnaWriter.js';
 import { detectAnchorScan, detectForceCostume } from '../../io/llm/workshop.js';
@@ -76,6 +78,10 @@ function getGridLayers() {
     return layers;
 }
 
+let anchorSaveTimeout = null;
+let layerSaveTimeout  = null;
+let labelSaveTimeout  = null;
+
 /** Binds all Workshop interaction events. */
 export function bindDNAHandlers() {
     const $overlay = $('#plz-workshop-overlay');
@@ -100,14 +106,83 @@ export function bindDNAHandlers() {
     });
 
     // ─── Studio Tab: Identity & Layers ───
-    $overlay.on('click', '#plz-studio-anchor-save', async function() {
-        const id = state._workshopCharacterId;
-        const anchor = $('#plz-studio-anchor').val().trim();
-        if (!id || !anchor) return;
+    $overlay.on('input', '#plz-studio-anchor', function() {
+        smartResize(this);
+        clearTimeout(anchorSaveTimeout);
+        anchorSaveTimeout = setTimeout(async () => {
+            const id = state._workshopCharacterId;
+            const anchor = $('#plz-studio-anchor').val().trim();
+            if (!id || !anchor) return;
+            const lastMsgId = Math.max(0, getContext().chat.length - 1);
+            await lockedWriteCharacterDef(lastMsgId, id, anchor, state.chatCharacters[id].seed);
+            upsertChatCharacterDef(id, anchor, state.chatCharacters[id].seed);
+        }, 600);
+    });
+
+    $overlay.on('input', '.plz-layer-item, .plz-layer-mod, #plz-layer-emotion', function() {
+        clearTimeout(layerSaveTimeout);
+        layerSaveTimeout = setTimeout(async () => {
+            const id = state._workshopCharacterId;
+            if (!id) return;
+            const layers = getGridLayers();
+            const lastAiIdx = getContext().chat.findLastIndex(m => !m.is_user);
+            if (lastAiIdx === -1) return;
+            updateActiveLayers(layers);
+            updateChainLayers(id, layers, state.characterChain[id]?.image ?? null);
+            await lockedWriteVisualState(lastAiIdx, id, layers, state.characterChain[id]?.image ?? null);
+        }, 600);
+    });
+
+    // ─── Studio Tab: Display Name (Label) ───
+    $overlay.on('input', '#plz-studio-label', function() {
+        clearTimeout(labelSaveTimeout);
+        labelSaveTimeout = setTimeout(async () => {
+            const id = state._workshopCharacterId;
+            const label = $('#plz-studio-label').val().trim();
+            if (!id || !label) return;
+            const lastMsgId = Math.max(0, getContext().chat.length - 1);
+            await lockedWriteLabel(lastMsgId, id, label);
+            upsertChatCharacterLabel(id, label);
+        }, 800);
+    });
+
+    // ─── Studio Tab: AKA Management ───
+    async function commitAka(id, newList) {
         const lastMsgId = Math.max(0, getContext().chat.length - 1);
-        await lockedWriteCharacterDef(lastMsgId, id, anchor, state.chatCharacters[id].seed);
-        upsertChatCharacterDef(id, anchor, state.chatCharacters[id].seed);
-        if (window.toastr) window.toastr.success('Anchor saved to DNA.');
+        await lockedWriteAka(lastMsgId, id, newList);
+        upsertChatCharacterAka(id, newList);
+        // Re-render only the tags area, not the whole studio
+        const akaTagsHTML = newList.map(alias => `
+            <span class="plz-aka-tag" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;background:rgba(255,255,255,0.08);font-size:0.8em;">
+                ${$('<div>').text(alias).html()}<i class="fa-solid fa-xmark plz-aka-remove" data-alias="${$('<div>').text(alias).html()}" style="cursor:pointer;opacity:0.6;"></i>
+            </span>`).join('');
+        $('#plz-studio-aka-tags').html(akaTagsHTML || '<span style="opacity:0.3;font-size:0.8em;">No aliases yet.</span>');
+    }
+
+    $overlay.on('click', '.plz-aka-add', async function() {
+        const id = state._workshopCharacterId;
+        if (!id) return;
+        const input = $('#plz-studio-aka-input');
+        const alias = input.val().trim();
+        if (!alias) return;
+        const current = state.chatCharacters[id]?.aka || [];
+        if (current.includes(alias)) { input.val(''); return; }
+        await commitAka(id, [...current, alias]);
+        input.val('');
+    });
+
+    $overlay.on('keydown', '#plz-studio-aka-input', async function(e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        $overlay.find('.plz-aka-add').trigger('click');
+    });
+
+    $overlay.on('click', '.plz-aka-remove', async function() {
+        const id = state._workshopCharacterId;
+        if (!id) return;
+        const alias = $(this).data('alias');
+        const current = state.chatCharacters[id]?.aka || [];
+        await commitAka(id, current.filter(a => a !== alias));
     });
 
     $overlay.on('click', '#plz-studio-layers-save', async function() {
@@ -246,7 +321,9 @@ export function bindDNAHandlers() {
         const id = slugify(name);
         const lastMsgId = Math.max(0, getContext().chat.length - 1);
         await lockedWriteCharacterDef(lastMsgId, id, anchor, 1);
+        await lockedWriteLabel(lastMsgId, id, name);
         upsertChatCharacterDef(id, anchor, 1);
+        upsertChatCharacterLabel(id, name);
         setWorkshopCharacter(id);
         switchTab('studio');
     });

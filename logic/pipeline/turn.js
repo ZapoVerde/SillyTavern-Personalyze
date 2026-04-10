@@ -113,12 +113,14 @@ export async function processKnownSubject(messageId, characterId, text, history,
     const chainEntry = getChainEntry(characterId);
     const currentLayers = chainEntry?.layers || state.activeLayers;
 
+    const charName = character.label || characterId.replace(/_/g, ' ');
+
     let hasChanged;
     try {
         hasChanged = await detectChange(
             text,
             history,
-            characterId.replace(/_/g, ' '),
+            charName,
             currentLayers,
             s.booleanProfileId || s.fastProfileId
         );
@@ -139,7 +141,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
         rawUpdate = await detectLayers(
             text,
             history,
-            characterId.replace(/_/g, ' '),
+            charName,
             character.identityAnchor,
             currentLayers,
             s.describerProfileId || s.smartProfileId

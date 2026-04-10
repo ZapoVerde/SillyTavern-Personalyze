@@ -27,16 +27,18 @@ import { addPending, removePending, ignore } from '../blacklist.js';
 import { detectAnchorScan } from '../../io/llm/workshop.js';
 import { showArchivistModal } from '../../ui/archivistModal.js';
 import { processKnownSubject } from './turn.js';
-import { 
-    lockedWriteCharacterDef, 
-    lockedWriteAka, 
-    lockedWriteRoster 
+import {
+    lockedWriteCharacterDef,
+    lockedWriteLabel,
+    lockedWriteAka,
+    lockedWriteRoster
 } from '../../io/dnaWriter.js';
-import { 
+import {
     state,
-    upsertChatCharacterDef, 
-    upsertChatCharacterAka, 
-    setActiveRoster 
+    upsertChatCharacterDef,
+    upsertChatCharacterLabel,
+    upsertChatCharacterAka,
+    setActiveRoster
 } from '../../state.js';
 
 /**
@@ -84,9 +86,11 @@ export async function runArchivistPipeline(messageId, detectedName) {
             case 'create': {
                 const newId = slugify(detectedName);
                 const finalAnchor = resolution.anchor || scanResult.anchor;
-                
+
                 await lockedWriteCharacterDef(messageId, newId, finalAnchor, 1);
+                await lockedWriteLabel(messageId, newId, detectedName);
                 upsertChatCharacterDef(newId, finalAnchor, 1);
+                upsertChatCharacterLabel(newId, detectedName);
                 
                 const newRoster = [...new Set([...state.activeRoster, newId])];
                 await lockedWriteRoster(messageId, newRoster);
