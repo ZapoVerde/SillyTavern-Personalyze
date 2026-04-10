@@ -1,10 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-10T17:00:00.000Z"}
+ * @stamp {"utc":"2026-04-11T11:00:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
  * Implements the "Working Table" architecture for the Layered State Pipeline.
+ *
+ * Updated to include currentStyleName to remember the last selected style 
+ * in the settings panel across refreshes.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -62,6 +65,9 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     devMode:                DEFAULT_DEV_MODE,
     verboseLogging:         DEFAULT_VERBOSE_LOGGING,
     
+    // UI State persistence
+    currentStyleName:       'Default',
+
     // Dual-Model Routing
     fastProfileId:          DEFAULT_FAST_PROFILE_ID,
     smartProfileId:         DEFAULT_SMART_PROFILE_ID,

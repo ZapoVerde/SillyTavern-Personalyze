@@ -1,10 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/panel.js
- * @stamp {"utc":"2026-04-10T17:20:00.000Z"}
+ * @stamp {"utc":"2026-04-11T11:10:00.000Z"}
  * @architectural-role UI Orchestrator (Settings)
  * @description
  * Main orchestrator for the Personalyze extensions settings panel.
  * Coordinates profile management, Dual-Model routing, and the 3-Phase prompt editor.
+ *
+ * Updated to persist the current style selection across refreshes.
  *
  * @api-declaration
  * injectSettingsPanel() — Main entry point to build and bind the panel.
@@ -89,8 +91,8 @@ function refreshUI() {
         $(this).val(s[key] ?? 0);
     });
 
-    // Update connection dropdowns (Logic updated in next turn for connection.js)
     refreshConnectionDropdowns(() => updateDirtyIndicator());
+    refreshStyleDropdown();
     updateDirtyIndicator();
 
     setPortraitPosition(s.portraitPosition);
@@ -101,17 +103,26 @@ function refreshUI() {
 
 function refreshStyleDropdown() {
     const meta = getMetaSettings();
+    const s = getSettings();
     const lib = meta.styleLibrary ?? {};
-    const def = meta.defaultStyleName ?? '';
+    const defaultName = meta.defaultStyleName ?? '';
+    
+    // Fallback: if remembered style no longer exists, use the default.
+    const activeName = (s.currentStyleName && lib[s.currentStyleName]) 
+        ? s.currentStyleName 
+        : defaultName;
+
     const $sel = $('#plz-style-select');
     if (!$sel.length) return;
 
     $sel.empty();
     for (const name of Object.keys(lib)) {
-        $sel.append($('<option>').val(name).text(name + (name === def ? ' ⭐' : '')));
+        const text = name + (name === defaultName ? ' ⭐' : '');
+        $sel.append($('<option>').val(name).text(text));
     }
-    $sel.val(def);
-    $('#plz-style-edit').text(`✏️ Edit "${$sel.val() || ''}"`);
+    
+    $sel.val(activeName);
+    $('#plz-style-edit').text(`✏️ Edit "${activeName}"`);
 }
 
 // ─── Event Bindings ───────────────────────────────────────────────────────────
@@ -168,7 +179,10 @@ function bindHandlers() {
 
     // ─── Style Library ───────────────────────────────────────────────────────
     $panel.on('change', '#plz-style-select', function () {
-        $('#plz-style-edit').text(`✏️ Edit "${$(this).val()}"`);
+        const val = $(this).val();
+        updateSetting('currentStyleName', val);
+        $('#plz-style-edit').text(`✏️ Edit "${val}"`);
+        updateDirtyIndicator();
     });
 
     $panel.on('click', '#plz-style-edit', async function () {
@@ -217,13 +231,20 @@ function bindHandlers() {
         if (meta.defaultStyleName === name) {
             meta.defaultStyleName = Object.keys(meta.styleLibrary)[0] ?? '';
         }
+        // If we deleted the style we were currently using, revert setting to default.
+        const s = getSettings();
+        if (s.currentStyleName === name) {
+            updateSetting('currentStyleName', meta.defaultStyleName);
+        }
         saveSettingsDebounced();
         refreshStyleDropdown();
     });
 
     $panel.on('click', '.plz-open-prompt', async function () {
         const key = $(this).data('prompt-key');
-        await openPromptModal(key, PROMPT_TITLES[key], PROMPT_DEFAULTS[key]);
+        const title = PROMPT_TITLES[key];
+        const def = PROMPT_DEFAULTS[key];
+        await openPromptModal(key, title, def);
         updateDirtyIndicator();
     });
 
