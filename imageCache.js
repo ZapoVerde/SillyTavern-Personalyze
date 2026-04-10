@@ -190,13 +190,15 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
                 throw new Error(errData.error || `PiAPI submit failed (${submitRes.status})`);
             }
             const { task_id } = await submitRes.json();
-            _dispatchPortraitStatus(characterId, { status: 'pending', poll: 0, max: 24 });
+            _dispatchPortraitStatus(characterId, { status: 'pending' });
 
-            // Step 2: Poll every 5 seconds, up to 24 times (120s total)
-            const MAX_POLLS = 24;
+            // Step 2: Poll until done. Fixed timeout and interval — independent of each other.
+            const POLL_INTERVAL_MS = 1500;
+            const POLL_TIMEOUT_MS  = 120_000;
+            const deadline = Date.now() + POLL_TIMEOUT_MS;
             let imageUrl = null;
-            for (let i = 0; i < MAX_POLLS; i++) {
-                await new Promise(r => setTimeout(r, 1500));
+            while (Date.now() < deadline) {
+                await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
                 const statusRes = await fetch(`/api/plugins/personalyze/piapi-status/${task_id}`, {
                     headers: getRequestHeaders(),
                 });
@@ -205,7 +207,7 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
                     throw new Error(errData.error || `PiAPI status check failed (${statusRes.status})`);
                 }
                 const statusData = await statusRes.json();
-                _dispatchPortraitStatus(characterId, { status: statusData.status, poll: i + 1, max: MAX_POLLS });
+                _dispatchPortraitStatus(characterId, { status: statusData.status });
                 if (/^(completed|success)$/i.test(statusData.status)) {
                     imageUrl = statusData.image_url;
                     piapiMeta = statusData.meta ?? null;
@@ -216,7 +218,7 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
                 }
             }
             if (!imageUrl) {
-                throw new Error(`PiAPI task ${task_id} timed out after ${MAX_POLLS * 5}s`);
+                throw new Error(`PiAPI task ${task_id} timed out after ${POLL_TIMEOUT_MS / 1000}s`);
             }
 
             // Step 3: Fetch image binary through concurrency-limited proxy

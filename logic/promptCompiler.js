@@ -31,19 +31,9 @@
 export function compilePrompt(identityAnchor, layers) {
     const promptParts = [];
 
-    // 1. Foundation: Permanent Physical Identity
-    if (identityAnchor) {
-        promptParts.push(identityAnchor.trim());
-    }
-
-    // 2. State: Emotion & Body Language
-    // Requirement: More than just face; includes hands and arms.
-    if (layers.emotion && layers.emotion !== 'None' && layers.emotion !== 'KEEP') {
-        const emotion = layers.emotion.toLowerCase();
-        promptParts.push(`(expressing ${emotion} through facial expression, hands, and body posture:1.2)`);
-    }
-
-    // 3. Wardrobe: Layered Clothing Slots
+    // 1. Wardrobe: Layered Clothing Slots only
+    // We skip Identity Anchor and Emotion here because they are handled 
+    // by the top-level prompt template tags.
     const clothingSlots = ['outerwear', 'top', 'bottom', 'accessories'];
 
     for (const slot of clothingSlots) {
@@ -56,16 +46,16 @@ export function compilePrompt(identityAnchor, layers) {
 
         let itemString = data.item;
         
-        // Prefix with modifier if present
+        // Prefix with modifier if present (e.g., "leather" + "armor")
         if (data.modifier && data.modifier !== 'None' && data.modifier !== 'KEEP') {
             itemString = `${data.modifier} ${data.item}`;
         }
 
-        // Apply visual weight to clothing items
-        promptParts.push(`(${itemString.toLowerCase()}:1.1)`);
+        // Add to list without weights
+        promptParts.push(itemString.toLowerCase());
     }
 
-    // 4. Cleanup and Join
+    // 2. Cleanup and Join
     return promptParts
         .filter(Boolean)
         .join(', ')
