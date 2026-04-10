@@ -1,13 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/turn.js
- * @stamp {"utc":"2026-04-10T21:40:00.000Z"}
+ * @stamp {"utc":"2026-04-11T09:30:00.000Z"}
  * @architectural-role Orchestrator (Turn Logic)
  * @description
  * Implements the standard 3-Phase Turn pipeline.
- * Handles the 3-state Phase 1 routing:
- * 1. None/Narrator (Abort)
- * 2. Known Subject (Proceed to change gate)
- * 3. Unknown Subject (Delegate to Archivist)
+ *
+ * Updated to pass the pose label to the portrait generator.
  *
  * @api-declaration
  * runTurnPipeline(messageId) -> Promise<void>
@@ -164,8 +162,14 @@ export async function processKnownSubject(messageId, characterId, text, history,
 
     try {
         const file = await generate(
-            characterId, 'layered', slugify(nextLayers.emotion),
-            prompt, nextLayers.emotion, character.identityAnchor, character.seed,
+            characterId, 
+            'layered', 
+            slugify(nextLayers.emotion),
+            prompt, 
+            nextLayers.emotion, 
+            nextLayers.pose || 'upright',
+            character.identityAnchor, 
+            character.seed,
             engine
         );
 

@@ -1,12 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-10T15:00:00.000Z"}
+ * @stamp {"utc":"2026-04-11T09:40:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
  * visual state for the current turn using the 5-slot architecture.
  *
- * Provides a "Quick Load" dropdown for Ensembles (saved snapshots).
+ * Updated to include the pose slot in the grid and generation.
  *
  * @api-declaration
  * openCharPicker() → Promise<void>
@@ -61,9 +61,13 @@ function buildGridHTML(layers) {
     return `
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
         ${clothingHtml}
-        <div style="grid-column: span 2;">
+        <div>
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">Emotion</label>
             <input id="plz-cp-emotion" class="text_pole" type="text" value="${escapeHtml(layers.emotion || 'neutral')}" style="width:100%;" />
+        </div>
+        <div>
+            <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">Pose</label>
+            <input id="plz-cp-pose" class="text_pole" type="text" value="${escapeHtml(layers.pose || 'upright')}" style="width:100%;" />
         </div>
     </div>`;
 }
@@ -138,9 +142,10 @@ export async function openCharPicker() {
             const key = $(this).val();
             if (!key) return;
             const layers = applyEnsemble(state.activeLayers, state.chatCharacters[charId].ensembles[key].layers);
-            $('#plz-cp-emotion').val(layers.emotion);
+            $('#plz-cp-emotion').val(layers.emotion || 'neutral');
+            $('#plz-cp-pose').val(layers.pose || 'upright');
             Object.entries(layers).forEach(([slot, val]) => {
-                if (slot === 'emotion') return;
+                if (slot === 'emotion' || slot === 'pose') return;
                 $(`.plz-cp-item[data-slot="${slot}"]`).val(val?.item || '');
                 $(`.plz-cp-mod[data-slot="${slot}"]`).val(val?.modifier || '');
             });
@@ -157,7 +162,10 @@ export async function openCharPicker() {
 
     // Collect Layers
     const characterId = $('#plz-cp-char').val();
-    const layers = { emotion: $('#plz-cp-emotion').val().trim() || 'neutral' };
+    const layers = { 
+        emotion: $('#plz-cp-emotion').val().trim() || 'neutral',
+        pose:    $('#plz-cp-pose').val().trim()    || 'upright'
+    };
     $('.plz-cp-item').each(function() {
         const slot = $(this).data('slot');
         const item = $(this).val().trim();
@@ -191,8 +199,14 @@ export async function openCharPicker() {
 
     try {
         filename = await generate(
-            characterId, 'layered', slugify(layers.emotion),
-            prompt, layers.emotion, character.identityAnchor, character.seed,
+            characterId, 
+            'layered', 
+            slugify(layers.emotion),
+            prompt, 
+            layers.emotion, 
+            layers.pose,
+            character.identityAnchor, 
+            character.seed,
             engine
         );
         addToFileIndex(filename);

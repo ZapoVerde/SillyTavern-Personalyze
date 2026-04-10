@@ -1,14 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/scene.js
- * @stamp {"utc":"2026-04-10T22:20:00.000Z"}
+ * @stamp {"utc":"2026-04-11T09:20:00.000Z"}
  * @architectural-role Orchestrator (Scene Logic)
  * @description
  * Manages the wardrobe "Redress" flow triggered by location changes.
  * 
- * Logic Flow:
- * 1. Batch Wardrobe Check: Determines which roster characters need a change.
- * 2. Targeted Redress: Extracts new outfits or applies "Everyday Wear" defaults.
- * 3. DNA Commitment: Writes new visual states for affected characters.
+ * Updated to pass the pose label to the portrait generator.
  *
  * @api-declaration
  * runScenePipeline(messageId) -> Promise<void>
@@ -133,8 +130,14 @@ async function processSceneGeneration(messageId, item, layers, s, recordId) {
         const prompt = compilePrompt(item.anchor, layers);
         const engine = item.engine || s.defaultEngine || 'pollinations';
         const filename = await generate(
-            item.id, 'redress', slugify(layers.emotion),
-            prompt, layers.emotion, item.anchor, item.seed,
+            item.id, 
+            'redress', 
+            slugify(layers.emotion),
+            prompt, 
+            layers.emotion, 
+            layers.pose || 'upright', 
+            item.anchor, 
+            item.seed,
             engine
         );
 

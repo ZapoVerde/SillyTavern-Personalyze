@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/bootstrapper.js
- * @stamp {"utc":"2026-04-10T16:00:00.000Z"}
+ * @stamp {"utc":"2026-04-11T09:10:00.000Z"}
  * @architectural-role Orchestrator / Boot Sequence
  * @description
  * Manages the initialization of the PersonaLyze environment for the active chat.
@@ -46,9 +46,9 @@ export async function runBoot() {
     bulkInitState(reconstructed);
 
     log('Boot', 'DNA Reconstructed.', {
-        charactersFound: Object.keys(state.chatCharacters).length,
         activeChar: state.activeCharacterId,
-        activeEmotion: state.activeLayers?.emotion
+        activeEmotion: state.activeLayers?.emotion,
+        activePose: state.activeLayers?.pose
     });
 
     // 2. Filesystem Reconciliation
@@ -94,6 +94,7 @@ export async function runBoot() {
                 slugify(state.activeLayers.emotion),
                 prompt,
                 state.activeLayers.emotion,
+                state.activeLayers.pose || 'upright',
                 character.identityAnchor,
                 character.seed,
                 getSettings().defaultEngine || 'pollinations'

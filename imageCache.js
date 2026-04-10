@@ -1,17 +1,19 @@
 /**
  * @file data/default-user/extensions/personalyze/imageCache.js
- * @stamp {"utc":"2026-04-10T14:20:00.000Z"}
+ * @stamp {"utc":"2026-04-11T09:00:00.000Z"}
  * @architectural-role IO Executor (Image)
  * @description
  * Owns all image-related network and filesystem IO for Personalyze.
  * Supports Multi-Engine architecture (Pollinations, Fal, PiAPI).
  * 
+ * Updated to support the {{pose}} variable in portrait style templates.
+ * 
  * @api-declaration
  * buildFilenamePrefix(characterId, tag, emotion) → string
  * findCachedImage(prefix, fileIndex) → string|null
  * fetchFileIndex() → Promise<{ fileIndex: Set<string>, allImages: string[] }>
- * fetchPreviewBlob(prompt, characterId, provider, seed) → Promise<string>
- * generate(characterId, tag, emotion, subjectPrompt, emotionLabel, anchor, seed, provider) → Promise<string>
+ * fetchPreviewBlob(prompt, characterId, provider, seed, emotion, pose) → Promise<string>
+ * generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed, provider) → Promise<string>
  * 
  * @contract
  *   assertions:
@@ -112,9 +114,10 @@ function resolveStyle(characterId) {
  * @param {string} subjectPrompt - Compiled layers description from promptCompiler.
  * @param {string} [anchor]      - Character's permanent identity anchor.
  * @param {string} [emotion]     - Current emotion label.
+ * @param {string} [pose]        - Current pose label.
  * @param {string} [style]       - Resolved style template string.
  */
-function finalizePrompt(subjectPrompt, anchor = '', emotion = '', style = '') {
+function finalizePrompt(subjectPrompt, anchor = '', emotion = '', pose = '', style = '') {
     const effectiveStyle = style || getSettings().vnStyleSuffix || '';
 
     if (effectiveStyle.includes('{{')) {
@@ -122,6 +125,7 @@ function finalizePrompt(subjectPrompt, anchor = '', emotion = '', style = '') {
             .replace(/\{\{identity_anchor\}\}/g, anchor)
             .replace(/\{\{layers_description\}\}/g, subjectPrompt)
             .replace(/\{\{emotion\}\}/g, emotion)
+            .replace(/\{\{pose\}\}/g, pose)
             .replace(/(,\s*)+/g, ', ')
             .trim();
     }
@@ -142,8 +146,8 @@ export async function fetchFileIndex() {
     return { fileIndex: new Set(allImages.filter(f => f.startsWith(FILE_PREFIX))), allImages };
 }
 
-export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinations', seed = 1) {
-    const fullPrompt = finalizePrompt(prompt, '', '', resolveStyle(characterId));
+export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinations', seed = 1, emotion = '', pose = '') {
+    const fullPrompt = finalizePrompt(prompt, '', emotion, pose, resolveStyle(characterId));
     log('ImageCache', `Preview [${provider}]: ${fullPrompt}`);
 
     let res;
@@ -173,8 +177,8 @@ function _dispatchPortraitStatus(characterId, detail) {
     document.dispatchEvent(new CustomEvent('plz:portrait-status', { detail: { characterId, ...detail } }));
 }
 
-export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, anchor, seed = 1, provider = 'pollinations') {
-    const fullPrompt = finalizePrompt(subjectPrompt, anchor, emotionLabel, resolveStyle(characterId));
+export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed = 1, provider = 'pollinations') {
+    const fullPrompt = finalizePrompt(subjectPrompt, anchor, emotionLabel, poseLabel, resolveStyle(characterId));
     logCall('PortraitGenerate', `[${provider}]\n${fullPrompt}`, null, null);
 
     try {

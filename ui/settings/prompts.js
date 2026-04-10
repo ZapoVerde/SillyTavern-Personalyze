@@ -1,11 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/prompts.js
- * @stamp {"utc":"2026-04-07T14:50:00.000Z"}
+ * @stamp {"utc":"2026-04-11T09:50:00.000Z"}
  * @architectural-role UI Logic (Prompt Editor)
  * @description
  * Orchestrates the multi-line Prompt Editor modal. 
  * Provides unlimited auto-resize for large textareas and manages reset/save 
  * lifecycle for LLM prompt templates.
+ *
+ * Updated to include {{pose}} in style templates and a dedicated Save button.
  *
  * @api-declaration
  * openPromptModal(key, title, defaultValue) -> Promise<void>
@@ -75,6 +77,7 @@ const PROMPT_VARIABLES = {
         { v: '{{identity_anchor}}',   d: 'Permanent physical description of the character' },
         { v: '{{layers_description}}', d: 'Compiled outfit string built from the 5 visual slots' },
         { v: '{{emotion}}',            d: 'Current emotion label (e.g. "curious", "tense")' },
+        { v: '{{pose}}',               d: 'Current pose description (e.g. "sitting cross-legged")' },
     ],
 };
 
@@ -115,6 +118,7 @@ export async function openStyleModal(styleName) {
                    style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden;"
                    spellcheck="false">${current.replace(/</g, '&lt;')}</textarea>
          <div class="plz-modal-actions">
+             <button class="menu_button" id="plz-prompt-save" style="background-color:rgba(76,175,80,0.15);">Save Style</button>
              <button class="menu_button" id="plz-prompt-reset">Reset to Default</button>
          </div>`,
         'confirm',
@@ -127,10 +131,16 @@ export async function openStyleModal(styleName) {
     requestAnimationFrame(() => { triggerResize(); setTimeout(triggerResize, 50); });
 
     $(document).on('input.plz-prompt', '#plz-prompt-editor', function() { smartResize(this); });
+    
     $(document).on('click.plz-prompt', '#plz-prompt-reset', () => {
         const $editor = $('#plz-prompt-editor');
         $editor.val(DEFAULT_VN_STYLE_SUFFIX);
         smartResize($editor[0]);
+    });
+
+    // Dedicated Save button logic
+    $(document).on('click.plz-prompt', '#plz-prompt-save', () => {
+        $('#dialogue_popup_ok').trigger('click');
     });
 
     const result = await popupPromise;
@@ -143,6 +153,7 @@ export async function openStyleModal(styleName) {
         if (!meta.styleLibrary) meta.styleLibrary = {};
         meta.styleLibrary[styleName] = newValue;
         saveSettingsDebounced();
+        if (window.toastr) window.toastr.success(`Style "${styleName}" updated.`, 'PersonaLyze');
     }
 }
 
@@ -184,6 +195,7 @@ export async function openPromptModal(key, title, defaultValue) {
                    style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden;"
                    spellcheck="false">${current.replace(/</g, '&lt;')}</textarea>
          <div class="plz-modal-actions">
+             <button class="menu_button" id="plz-prompt-save" style="background-color:rgba(76,175,80,0.15);">Save Template</button>
              <button class="menu_button" id="plz-prompt-reset">Reset to Default</button>
          </div>`,
         'confirm',
@@ -212,6 +224,11 @@ export async function openPromptModal(key, title, defaultValue) {
         smartResize($editor[0]);
     });
 
+    // Dedicated Save button logic
+    $(document).on('click.plz-prompt', '#plz-prompt-save', () => {
+        $('#dialogue_popup_ok').trigger('click');
+    });
+
     const result = await popupPromise;
 
     // Cleanup global listeners before resolving
@@ -221,5 +238,6 @@ export async function openPromptModal(key, title, defaultValue) {
     if (result) {
         const newValue = $('#plz-prompt-editor').val();
         updateSetting(key, newValue);
+        if (window.toastr) window.toastr.success('Template updated.', 'PersonaLyze');
     }
 }
