@@ -25,15 +25,17 @@ import {
     state, setWorkshopCharacter, updateActiveCharacter, updateActiveLayers,
     updateActiveImage, addToFileIndex, updateChainLayers, setActiveRoster,
     upsertChatCharacterDef, upsertChatCharacterLabel, upsertChatCharacterAka,
-    upsertChatCharacterEngine, upsertChatEnsemble, upsertChatDefaultEnsemble,
-    deleteChatEnsemble, removeFromFileIndex
+    upsertChatCharacterEngine, upsertChatCharacterStyle, upsertChatEnsemble,
+    upsertChatDefaultEnsemble, deleteChatEnsemble, removeFromFileIndex
 } from '../../state.js';
-import { getSettings } from '../../settings.js';
+import { getSettings, getMetaSettings } from '../../settings.js';
+import { META_SLOTS } from '../../defaults.js';
 import { slugify, buildDescriberContext, buildHistoryText } from '../../utils/history.js';
 import {
     lockedWriteCharacterDef, lockedWriteLabel, lockedWriteAka,
     lockedWriteEnsemble, lockedWriteVisualState,
-    lockedPatchVisualStateImage, lockedWriteRoster, lockedWriteDefaultEnsemble, lockedDeleteEnsemble
+    lockedPatchVisualStateImage, lockedWriteRoster, lockedWriteDefaultEnsemble,
+    lockedDeleteEnsemble, lockedWriteCharacterStyle
 } from '../../io/dnaWriter.js';
 import { detectAnchorScan, detectForceCostume } from '../../io/llm/workshop.js';
 import { compilePrompt as compile } from '../../logic/promptCompiler.js';
@@ -63,20 +65,23 @@ export function renderStudioView() {
 
     const layers = state.characterChain[id]?.layers || state.activeLayers;
     const s = getSettings();
+    const meta = getMetaSettings();
     const enabledEngines = {
         engineEnablePollinations: s.engineEnablePollinations,
         engineEnableFal:          s.engineEnableFal,
-        engineEnableHuggingFace:  s.engineEnableHuggingFace,
         engineEnablePiAPI:        s.engineEnablePiAPI,
     };
-    $panel.html(getStudioHTML(id, char, layers, enabledEngines));
+    $panel.html(getStudioHTML(id, char, layers, enabledEngines, meta.styleLibrary ?? {}, meta.defaultStyleName ?? ''));
 
     $panel.find('.plz-auto-textarea').each(function() { smartResize(this); });
 }
 
 /** Collects values from the Layered Grid into a layers object. */
 function getGridLayers() {
-    const layers = { emotion: $('#plz-layer-emotion').val().trim() || 'neutral' };
+    const layers = {
+        emotion: $('#plz-layer-emotion').val().trim() || 'neutral',
+        pose:    $('#plz-layer-pose').val().trim()    || 'upright',
+    };
     $('.plz-layer-item').each(function() {
         const slot = $(this).data('slot');
         const item = $(this).val().trim();
@@ -128,7 +133,7 @@ export function bindDNAHandlers() {
         }, 600);
     });
 
-    $overlay.on('input', '.plz-layer-item, .plz-layer-mod, #plz-layer-emotion', function() {
+    $overlay.on('input', '.plz-layer-item, .plz-layer-mod, #plz-layer-emotion, #plz-layer-pose', function() {
         clearTimeout(layerSaveTimeout);
         layerSaveTimeout = setTimeout(async () => {
             const id = state._workshopCharacterId;
@@ -192,6 +197,16 @@ export function bindDNAHandlers() {
         const alias = $(this).data('alias');
         const current = state.chatCharacters[id]?.aka || [];
         await commitAka(id, current.filter(a => a !== alias));
+    });
+
+    // ─── Studio Tab: Style Pinning ───
+    $overlay.on('change', '#plz-studio-style', async function() {
+        const id = state._workshopCharacterId;
+        if (!id) return;
+        const styleName = $(this).val() || null;
+        const lastMsgId = Math.max(0, getContext().chat.length - 1);
+        await lockedWriteCharacterStyle(lastMsgId, id, styleName);
+        upsertChatCharacterStyle(id, styleName);
     });
 
     // ─── Studio Tab: Engine Pinning ───
@@ -278,11 +293,14 @@ export function bindDNAHandlers() {
         try {
             const raw = await detectForceCostume(history, currentTurn, id.replace(/_/g, ' '), hint, s.forceCostumeHintTemplate, s.smartProfileId, s.forceCostumePrompt);
             const layers = parsePhase3(raw);
-            
-            // Populate the UI inputs
-            $('#plz-layer-emotion').val(layers.emotion || 'neutral');
+
+            // Populate meta-slot inputs
+            if (layers.emotion) $('#plz-layer-emotion').val(layers.emotion);
+            if (layers.pose)    $('#plz-layer-pose').val(layers.pose);
+
+            // Populate clothing slot inputs
             Object.entries(layers).forEach(([slot, val]) => {
-                if (slot === 'emotion') return;
+                if (META_SLOTS.includes(slot)) return;
                 $(`.plz-layer-item[data-slot="${slot}"]`).val(val?.item || '');
                 $(`.plz-layer-mod[data-slot="${slot}"]`).val(val?.modifier || '');
             });
@@ -311,9 +329,10 @@ export function bindDNAHandlers() {
         const key = $(this).closest('.plz-ensemble-item').data('key');
         const layers = state.chatCharacters[id].ensembles[key].layers;
         
-        $('#plz-layer-emotion').val(layers.emotion);
+        $('#plz-layer-emotion').val(layers.emotion || '');
+        $('#plz-layer-pose').val(layers.pose || '');
         Object.entries(layers).forEach(([slot, val]) => {
-            if (slot === 'emotion') return;
+            if (META_SLOTS.includes(slot)) return;
             $(`.plz-layer-item[data-slot="${slot}"]`).val(val?.item || '');
             $(`.plz-layer-mod[data-slot="${slot}"]`).val(val?.modifier || '');
         });

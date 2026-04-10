@@ -4,7 +4,7 @@
  * @architectural-role IO Executor (Image)
  * @description
  * Owns all image-related network and filesystem IO for Personalyze.
- * Supports Multi-Engine architecture (Pollinations, HF, Fal, PiAPI).
+ * Supports Multi-Engine architecture (Pollinations, Fal, PiAPI).
  * 
  * @api-declaration
  * buildFilenamePrefix(characterId, tag, emotion) → string
@@ -31,12 +31,12 @@ import {
     DEV_IMAGE_HEIGHT,
     DEFAULT_VN_STYLE_SUFFIX,
 } from './defaults.js';
-import { getSettings } from './settings.js';
+import { getSettings, getMetaSettings } from './settings.js';
+import { state } from './state.js';
 import { log, warn, error } from './utils/logger.js';
 import { logCall, logPatchLast } from './utils/callLog.js';
 
 const SECRET_POLLINATIONS = 'api_key_pollinations';
-const SECRET_HUGGINGFACE  = 'api_key_huggingface';
 const SECRET_FAL          = 'api_key_fal';
 const SECRET_PIAPI        = 'api_key_piapi';
 const FILE_PREFIX         = 'plz_';
@@ -60,9 +60,8 @@ export function findCachedImage(prefix, fileIndex) {
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 async function getAuthKey(provider) {
-    const map = { 
-        huggingface: SECRET_HUGGINGFACE, 'hf-space': SECRET_HUGGINGFACE, 
-        fal: SECRET_FAL, piapi: SECRET_PIAPI, pollinations: SECRET_POLLINATIONS 
+    const map = {
+        fal: SECRET_FAL, piapi: SECRET_PIAPI, pollinations: SECRET_POLLINATIONS
     };
     const key = await findSecret(map[provider]);
     if (!key && provider !== 'pollinations') throw new Error(`${provider.toUpperCase()} key missing.`);
@@ -85,22 +84,41 @@ async function validateImageResponse(response) {
 }
 
 /**
+ * Resolves the portrait style template for a given character.
+ * Fallback chain: character pin → library default → profile vnStyleSuffix → hardcoded default.
+ *
+ * @param {string} characterId
+ * @returns {string}
+ */
+function resolveStyle(characterId) {
+    const meta = getMetaSettings();
+    const lib = meta.styleLibrary;
+    if (lib) {
+        const pin = state.chatCharacters[characterId]?.styleName;
+        if (pin && lib[pin]) return lib[pin];
+        const def = meta.defaultStyleName;
+        if (def && lib[def]) return lib[def];
+    }
+    return getSettings().vnStyleSuffix || DEFAULT_VN_STYLE_SUFFIX;
+}
+
+/**
  * Builds the final image generation prompt from the compiled subject and style template.
  *
- * If vnStyleSuffix contains {{variables}}, they are substituted and the result is
+ * If the style contains {{variables}}, they are substituted and the result is
  * used as the complete prompt. If it contains no variables, it is appended as a
  * style suffix to the compiled subject prompt (legacy behaviour).
  *
  * @param {string} subjectPrompt - Compiled layers description from promptCompiler.
  * @param {string} [anchor]      - Character's permanent identity anchor.
  * @param {string} [emotion]     - Current emotion label.
+ * @param {string} [style]       - Resolved style template string.
  */
-function finalizePrompt(subjectPrompt, anchor = '', emotion = '') {
-    const s = getSettings();
-    const style = s.vnStyleSuffix || '';
+function finalizePrompt(subjectPrompt, anchor = '', emotion = '', style = '') {
+    const effectiveStyle = style || getSettings().vnStyleSuffix || '';
 
-    if (style.includes('{{')) {
-        return style
+    if (effectiveStyle.includes('{{')) {
+        return effectiveStyle
             .replace(/\{\{identity_anchor\}\}/g, anchor)
             .replace(/\{\{layers_description\}\}/g, subjectPrompt)
             .replace(/\{\{emotion\}\}/g, emotion)
@@ -109,7 +127,7 @@ function finalizePrompt(subjectPrompt, anchor = '', emotion = '') {
     }
 
     // Legacy: no variables — append as style suffix
-    return `${subjectPrompt}, ${style}`.replace(/(,\s*)+/g, ', ').trim();
+    return `${subjectPrompt}, ${effectiveStyle}`.replace(/(,\s*)+/g, ', ').trim();
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -125,7 +143,7 @@ export async function fetchFileIndex() {
 }
 
 export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinations', seed = 1) {
-    const fullPrompt = finalizePrompt(prompt);
+    const fullPrompt = finalizePrompt(prompt, '', '', resolveStyle(characterId));
     log('ImageCache', `Preview [${provider}]: ${fullPrompt}`);
 
     let res;
@@ -134,12 +152,6 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
             method: 'POST',
             headers: getRequestHeaders(),
             body: JSON.stringify({ model: getSettings().falModel, prompt: fullPrompt, width: DEV_IMAGE_WIDTH, height: DEV_IMAGE_HEIGHT }),
-        });
-    } else if (provider === 'huggingface') {
-        res = await fetch('/api/plugins/personalyze/hf-generate', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ provider: getSettings().hfProvider, model: getSettings().hfImageModel, prompt: fullPrompt, width: DEV_IMAGE_WIDTH, height: DEV_IMAGE_HEIGHT }),
         });
     } else {
         const s = getSettings();
@@ -162,7 +174,7 @@ function _dispatchPortraitStatus(characterId, detail) {
 }
 
 export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, anchor, seed = 1, provider = 'pollinations') {
-    const fullPrompt = finalizePrompt(subjectPrompt, anchor, emotionLabel);
+    const fullPrompt = finalizePrompt(subjectPrompt, anchor, emotionLabel, resolveStyle(characterId));
     logCall('PortraitGenerate', `[${provider}]\n${fullPrompt}`, null, null);
 
     try {

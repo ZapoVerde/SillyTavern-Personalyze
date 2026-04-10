@@ -8,7 +8,7 @@
  * Supports the Multi-Engine architecture with a three-tab layout:
  * 1. Pollinations (Direct API)
  * 2. Fal AI (Proxy API)
- * 3. Hugging Face (Proxy Router / Proxy Spaces)
+ * 3. PiAPI (Proxy API)
  *
  * @api-declaration
  * injectEnginesModal() — idempotent, injects modal HTML into DOM
@@ -21,30 +21,9 @@
  *     external_io: [jQuery DOM, templates.js, listeners.js, settings.js]
  */
 
-import { getSettings, updateSetting } from '../settings.js';
+import { getSettings } from '../settings.js';
 import { getEnginesModalHTML } from './engines/templates.js';
 import { bindEnginesHandlers, refreshEnginesUI } from './engines/listeners.js';
-
-// ─── Mode Switching Logic ───────────────────────────────────────────────────
-
-/**
- * Updates the Hugging Face internal mode UI (Router vs Space).
- * This only affects the content inside the Hugging Face tab.
- * @param {jQuery} $overlay 
- * @param {'router'|'space'} mode 
- */
-function switchHFMode($overlay, mode) {
-    // 1. Update mode buttons
-    $overlay.find('.plz-eng-mode-btn').removeClass('plz-active');
-    $overlay.find(`.plz-eng-mode-btn[data-mode="${mode}"]`).addClass('plz-active');
-
-    // 2. Update content visibility
-    $overlay.find('#plz-eng-mode-router-content, #plz-eng-mode-space-content').addClass('plz-hidden');
-    $overlay.find(`#plz-eng-mode-${mode}-content`).removeClass('plz-hidden');
-    
-    // 3. Persist setting
-    updateSetting('hfEngine', mode);
-}
 
 // ─── Injection ────────────────────────────────────────────────────────────────
 
@@ -58,7 +37,7 @@ export function injectEnginesModal() {
     const $overlay = $(getEnginesModalHTML(settings));
     $('body').append($overlay);
 
-    // 1. Main Tab Switching (Pollinations / Fal / Hugging Face)
+    // 1. Main Tab Switching (Pollinations / Fal / PiAPI)
     $overlay.on('click', '.plz-tab-btn', function (e) {
         e.stopPropagation();
         const tab = $(this).data('tab');
@@ -70,14 +49,7 @@ export function injectEnginesModal() {
         $overlay.find(`#plz-eng-tab-${tab}`).removeClass('plz-hidden');
     });
 
-    // 2. HF Internal Mode Switching (Router vs Space)
-    $overlay.on('click', '.plz-eng-mode-btn', function (e) {
-        e.stopPropagation();
-        const mode = $(this).data('mode');
-        switchHFMode($overlay, mode);
-    });
-
-    // 3. Close button
+    // 2. Close button
     $overlay.on('click', '#plz-engines-close', function (e) {
         e.stopPropagation();
         $overlay.addClass('plz-hidden');
@@ -90,7 +62,7 @@ export function injectEnginesModal() {
         }
     });
 
-    // 5. Wire up logic (ping, test, save) from listeners.js
+    // 4. Wire up logic (ping, test, save) from listeners.js
     bindEnginesHandlers($overlay);
 }
 
@@ -102,12 +74,8 @@ export function injectEnginesModal() {
 export function openEnginesModal() {
     injectEnginesModal();
     const $overlay = $('#plz-engines-overlay');
-    const s = getSettings();
 
     $overlay.removeClass('plz-hidden');
-    
-    // Initial sync of the HF Mode UI (Router vs Space)
-    switchHFMode($overlay, s.hfEngine || 'router');
 
     // Refresh model dropdowns, key statuses, and availability toggles via listeners.js
     refreshEnginesUI();

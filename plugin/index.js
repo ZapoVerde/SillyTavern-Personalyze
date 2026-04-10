@@ -1,17 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/index.js
- * @stamp {"utc":"2026-04-07T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-10T00:00:00.000Z"}
  * @architectural-role Server-Side Plugin
  * @description
- * Proxies Hugging Face, Fal AI, and PiAPI calls for the PersonaLyze extension.
+ * Proxies Fal AI and PiAPI calls for the PersonaLyze extension.
  * This server-side component bypasses CORS restrictions and handles secure
  * API key injection from the SillyTavern secrets vault.
  *
  * Routes provided:
- * - /hf-generate    : Hugging Face Inference Router proxy
- * - /hf-ping        : HF API key validation
- * - /space-generate : Hugging Face Gradio Space (Gradio API) proxy
- * - /space-ping     : HF Space status check
  * - /fal-generate   : Fal AI generation proxy (JSON -> Image pipe)
  * - /fal-ping       : Fal AI API key validation
  * - /piapi-generate : PiAPI task submission — returns {task_id} immediately
@@ -21,7 +17,7 @@
  *
  * @contract
  *   assertions:
- *     external_io: [HuggingFace API, Fal AI API, PiAPI, SillyTavern Secrets]
+ *     external_io: [Fal AI API, PiAPI, SillyTavern Secrets]
  */
 
 import { readSecret } from '../src/endpoints/secrets.js';
@@ -137,21 +133,10 @@ async function withRetry(fn, label) {
 export const info = {
     id: 'personalyze',
     name: 'PersonaLyze',
-    description: 'Proxies Hugging Face, Fal AI, and PiAPI calls for PersonaLyze extension',
+    description: 'Proxies Fal AI and PiAPI calls for PersonaLyze extension',
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Converts a HuggingFace Space ID (owner/space-name) to its .hf.space URL.
- * @param {string} spaceId
- * @returns {string}
- */
-function spaceIdToUrl(spaceId) {
-    const [owner, name] = spaceId.split('/');
-    const domain = `${owner}-${name}`.toLowerCase().replace(/_/g, '-');
-    return `https://${domain}.hf.space`;
-}
 
 /**
  * Extracts an image URL from a PiAPI task output object.
@@ -179,194 +164,9 @@ function extractPiapiImageUrl(output) {
     return null;
 }
 
-/**
- * Reads a Gradio SSE stream to completion, returns the outputs array.
- * @param {Response} sseResponse
- * @returns {Promise<any[]>}
- */
-async function readGradioSSE(sseResponse) {
-    const reader = sseResponse.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let lastEvent = null;
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        for (const line of lines) {
-            if (line.startsWith('event: ')) {
-                lastEvent = line.slice(7).trim();
-            } else if (line.startsWith('data: ')) {
-                if (lastEvent === 'complete') {
-                    return JSON.parse(line.slice(6));
-                }
-                if (lastEvent === 'error') {
-                    throw new Error(`Gradio error: ${line.slice(6)}`);
-                }
-            }
-        }
-    }
-    throw new Error('Gradio SSE stream ended without a complete event');
-}
-
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 export async function init(router) {
-
-    // ── HuggingFace Router: image generation ──────────────────────────────────
-    router.post('/hf-generate', async (req, res) => {
-        try {
-            const { provider, model, prompt, width, height } = req.body;
-            const apiKey = readSecret(req.user.directories, 'api_key_huggingface');
-
-            if (!apiKey) {
-                return res.status(401).json({ error: 'HuggingFace API key not configured.' });
-            }
-
-            const url = `https://router.huggingface.co/${provider}/models/${model}`;
-            const response = await withRetry(
-                () => fetchChecked(url, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        inputs: prompt,
-                        parameters: { width, height },
-                    }),
-                }),
-                'HuggingFace'
-            );
-
-            const contentType = response.headers.get('Content-Type');
-            if (contentType) res.setHeader('Content-Type', contentType);
-            res.send(Buffer.from(await response.arrayBuffer()));
-        } catch (err) {
-            if (err.httpStatus) return res.status(err.httpStatus).send(err.responseText || '');
-            res.status(500).json({ error: err.message });
-        }
-    });
-
-    // ── HuggingFace key ping (whoami) ─────────────────────────────────────────
-    router.post('/hf-ping', async (req, res) => {
-        try {
-            const apiKey = readSecret(req.user.directories, 'api_key_huggingface');
-            if (!apiKey) {
-                return res.status(401).json({ error: 'HuggingFace API key not configured.' });
-            }
-            const response = await fetch('https://huggingface.co/api/whoami', {
-                headers: { 'Authorization': `Bearer ${apiKey}` },
-            });
-            if (response.ok) {
-                const data = await response.json();
-                return res.json({ ok: true, user: data.name || data.fullname || 'authenticated' });
-            }
-            const text = await response.text();
-            return res.status(response.status).json({
-                error: `HF returned ${response.status}: ${text.slice(0, 100)}`,
-            });
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
-
-    // ── HuggingFace Space ping ────────────────────────────────────────────────
-    router.post('/space-ping', async (req, res) => {
-        try {
-            const { spaceId } = req.body;
-            if (!spaceId || !spaceId.includes('/')) {
-                return res.status(400).json({ error: 'Invalid spaceId. Expected owner/space-name.' });
-            }
-            const spaceUrl = spaceIdToUrl(spaceId);
-            const response = await fetch(`${spaceUrl}/info`);
-            if (response.ok) {
-                const data = await response.json();
-                return res.json({ ok: true, info: { space_id: spaceId, ...data } });
-            }
-            return res.status(response.status).json({ error: `Space returned ${response.status}` });
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
-
-    // ── HuggingFace Space image generation (Gradio) ───────────────────────────
-    router.post('/space-generate', async (req, res) => {
-        try {
-            const { spaceId, prompt, width, height } = req.body;
-            if (!spaceId || !spaceId.includes('/')) {
-                return res.status(400).json({ error: 'Invalid spaceId. Expected owner/space-name.' });
-            }
-
-            const apiKey = readSecret(req.user.directories, 'api_key_huggingface');
-            const spaceUrl = spaceIdToUrl(spaceId);
-            const authHeaders = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
-
-            let endpoint = 'predict';
-            try {
-                const infoRes = await fetch(`${spaceUrl}/info`, { headers: authHeaders });
-                if (infoRes.ok) {
-                    const apiInfo = await infoRes.json();
-                    const named = apiInfo.named_endpoints;
-                    if (named && Object.keys(named).length > 0) {
-                        endpoint = Object.keys(named)[0];
-                    }
-                }
-            } catch (_) { /* fall through */ }
-
-            const submitRes = await fetch(`${spaceUrl}/call/${endpoint}`, {
-                method: 'POST',
-                headers: { ...authHeaders, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ data: [prompt, width ?? 512, height ?? 768] }),
-            });
-            if (!submitRes.ok) {
-                const text = await submitRes.text();
-                return res.status(submitRes.status).json({
-                    error: `Gradio submit failed: ${text.slice(0, 200)}`,
-                });
-            }
-            const { event_id } = await submitRes.json();
-
-            const sseRes = await fetch(`${spaceUrl}/call/${endpoint}/${event_id}`, {
-                headers: authHeaders,
-            });
-            if (!sseRes.ok) {
-                return res.status(sseRes.status).json({
-                    error: `Gradio SSE failed: ${sseRes.status}`,
-                });
-            }
-
-            const outputs = await readGradioSSE(sseRes);
-
-            let imageUrl = null;
-            for (const out of outputs) {
-                if (out && typeof out === 'object') {
-                    imageUrl = out.url || (out.path ? `${spaceUrl}/file=${out.path}` : null);
-                    if (imageUrl) break;
-                }
-            }
-            if (!imageUrl) {
-                return res.status(500).json({ error: 'No image URL in Gradio output' });
-            }
-
-            const imgRes = await fetch(imageUrl, { headers: authHeaders });
-            if (!imgRes.ok) {
-                return res.status(imgRes.status).json({
-                    error: `Image fetch failed: ${imgRes.status}`,
-                });
-            }
-
-            const contentType = imgRes.headers.get('Content-Type') ?? 'image/png';
-            res.setHeader('Content-Type', contentType);
-            res.send(Buffer.from(await imgRes.arrayBuffer()));
-
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
 
     // ── Fal AI: image generation ──────────────────────────────────────────────
     router.post('/fal-generate', async (req, res) => {

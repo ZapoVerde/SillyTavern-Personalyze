@@ -85,7 +85,6 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     engineEnablePollinations: true,
     engineEnableFal:          false,
     engineEnablePiAPI:        false,
-    engineEnableHuggingFace:  true,
     showPortraitStatus:       true,
 });
 
@@ -134,6 +133,15 @@ export function initSettings() {
         if (root.activeState.classifierProfileId && !root.activeState.smartProfileId) {
             root.activeState.smartProfileId = root.activeState.classifierProfileId;
         }
+    }
+
+    // Style Library — global, cross-profile
+    if (!root.styleLibrary) {
+        root.styleLibrary = { 'Default': DEFAULT_VN_STYLE_SUFFIX };
+        root.defaultStyleName = 'Default';
+    }
+    if (!root.defaultStyleName) {
+        root.defaultStyleName = Object.keys(root.styleLibrary)[0] || 'Default';
     }
 
     saveSettingsDebounced();

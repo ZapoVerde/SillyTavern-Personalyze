@@ -103,8 +103,8 @@ export async function detectSubject(message, history, rosterIds, chatCharacters,
  */
 export async function detectChange(message, history, charName, layers, profileId) {
     const layerSummary = Object.entries(layers)
+        .filter(([, v]) => v !== null && v !== undefined)
         .map(([k, v]) => {
-            if (!v) return `${k}: None`;
             if (typeof v === 'string') return `${k}: ${v}`;
             return `${k}: ${v.item} | ${v.modifier || 'None'}`;
         })
@@ -134,8 +134,8 @@ export async function detectChange(message, history, charName, layers, profileId
  */
 export async function detectLayers(message, history, charName, anchor, layers, profileId) {
     const currentState = Object.entries(layers)
+        .filter(([, v]) => v !== null && v !== undefined)
         .map(([k, v]) => {
-            if (!v) return `${k}: None`;
             if (typeof v === 'string') return `${k}: ${v}`;
             return `${k}: ${v.item} | ${v.modifier || 'None'}`;
         })

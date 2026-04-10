@@ -20,6 +20,8 @@
  *     external_io: []
  */
 
+import { META_SLOTS } from '../defaults.js';
+
 /**
  * Parses Phase 1: Subject Detection.
  * Extracts the character name from the result line.
@@ -47,35 +49,27 @@ export function parsePhase2(raw) {
 
 /**
  * Parses Phase 3: Layered State Extraction.
- * Converts a structured Key-Value list into a JS object.
- * Format expected: "Slot: Item | Modifier"
- * 
+ * Key-agnostic: accepts any "Key: Item | Modifier" line the LLM returns.
+ * The key is lowercased and slugified so it matches state slot names.
+ *
  * @param {string} raw - Raw Key-Value list from LLM.
- * @returns {object} Map of slots to {item, modifier}.
+ * @returns {object} Map of slot keys to {item, modifier}.
  */
 export function parsePhase3(raw) {
     const lines = (raw ?? '').split('\n');
     const update = {};
 
-    const mapping = {
-        'outerwear':   /^outerwear/i,
-        'top':         /^top/i,
-        'bottom':      /^bottom/i,
-        'accessories': /^accessories/i,
-        'emotion':     /^emotion/i,
-    };
-
     for (const line of lines) {
-        const parts = line.split(':');
-        if (parts.length < 2) continue;
+        const colonIdx = line.indexOf(':');
+        if (colonIdx === -1) continue;
 
-        const label = parts[0].trim();
-        const content = parts.slice(1).join(':').trim();
-        
-        // Handle pipe splitting for [Item] | [Modifier]
+        const key     = line.slice(0, colonIdx).trim().toLowerCase().replace(/\s+/g, '_');
+        const content = line.slice(colonIdx + 1).trim();
+        if (!key || !content) continue;
+
         const pipeIdx = content.indexOf('|');
         let item, mod;
-        
+
         if (pipeIdx !== -1) {
             item = content.slice(0, pipeIdx).trim();
             mod  = content.slice(pipeIdx + 1).trim();
@@ -84,16 +78,10 @@ export function parsePhase3(raw) {
             mod  = 'None';
         }
 
-        // Match the label to our internal keys
-        for (const [key, regex] of Object.entries(mapping)) {
-            if (regex.test(label)) {
-                update[key] = {
-                    item: item || 'KEEP',
-                    modifier: mod || 'None'
-                };
-                break;
-            }
-        }
+        update[key] = {
+            item: item || 'KEEP',
+            modifier: mod || 'None',
+        };
     }
 
     return update;
@@ -116,7 +104,8 @@ export function mergeLayeredUpdate(current, update) {
         top: null,
         bottom: null,
         accessories: null,
-        emotion: 'neutral'
+        emotion: 'neutral',
+        pose: 'upright',
     });
 
     for (const [slot, val] of Object.entries(update)) {
@@ -129,14 +118,13 @@ export function mergeLayeredUpdate(current, update) {
             // State: Explicitly removed.
             next[slot] = null;
         } else {
-            // State: New item or modification.
-            // Emotion is treated as a single descriptive string/adjective.
-            if (slot === 'emotion') {
+            // Meta-slots (emotion, pose) store a plain string, not {item, modifier}.
+            if (META_SLOTS.includes(slot)) {
                 next[slot] = val.item;
             } else {
-                next[slot] = { 
-                    item: val.item, 
-                    modifier: (val.modifier === 'None' ? null : val.modifier) 
+                next[slot] = {
+                    item: val.item,
+                    modifier: (val.modifier === 'None' ? null : val.modifier),
                 };
             }
         }

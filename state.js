@@ -154,7 +154,7 @@ export function removeFromFileIndex(filenames) {
 
 function _ensureChatChar(id) {
     if (!state.chatCharacters[id]) {
-        state.chatCharacters[id] = { label: id.replace(/_/g, ' '), identityAnchor: '', seed: 1, engine: null, ensembles: {}, aka: [], defaultEnsemble: null };
+        state.chatCharacters[id] = { label: id.replace(/_/g, ' '), identityAnchor: '', seed: 1, engine: null, ensembles: {}, aka: [], defaultEnsemble: null, styleName: null };
     }
     return state.chatCharacters[id];
 }
@@ -203,6 +203,12 @@ export function upsertChatCharacterAka(id, akaList) {
 export function upsertChatDefaultEnsemble(id, key) {
     const char = _ensureChatChar(id);
     char.defaultEnsemble = key ?? null;
+}
+
+/** Updates a character's pinned portrait style name. */
+export function upsertChatCharacterStyle(id, styleName) {
+    const char = _ensureChatChar(id);
+    char.styleName = styleName || null;
 }
 
 // ─── Reverse Lookup ──────────────────────────────────────────────────────────

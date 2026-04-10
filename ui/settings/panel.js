@@ -25,7 +25,7 @@ import { getLogs, getWorkshopLogs } from '../../utils/callLog.js';
 
 // Sub-system imports
 import { buildPanelHTML, buildLogModalHTML } from './templates.js';
-import { openPromptModal } from './prompts.js';
+import { openPromptModal, openStyleModal } from './prompts.js';
 import { bindProfileHandlers, refreshProfileDropdown, updateDirtyIndicator } from '../panel/profiles.js';
 import { refreshConnectionDropdowns } from '../panel/connection.js';
 import { refreshModelDropdown } from '../panel/models.js';
@@ -42,7 +42,7 @@ import {
     FORCE_COSTUME_PROMPT,
 } from '../../logic/prompts.js';
 import { DEFAULT_VN_STYLE_SUFFIX } from '../../defaults.js';
-import { callPopup } from '../../../../../../script.js';
+import { callPopup, saveSettingsDebounced } from '../../../../../../script.js';
 
 const PANEL_ID = 'plz-settings';
 
@@ -97,6 +97,23 @@ function refreshUI() {
     setVerbose(s.verboseLogging);
 }
 
+// ─── Style Library Helpers ────────────────────────────────────────────────────
+
+function refreshStyleDropdown() {
+    const meta = getMetaSettings();
+    const lib = meta.styleLibrary ?? {};
+    const def = meta.defaultStyleName ?? '';
+    const $sel = $('#plz-style-select');
+    if (!$sel.length) return;
+
+    $sel.empty();
+    for (const name of Object.keys(lib)) {
+        $sel.append($('<option>').val(name).text(name + (name === def ? ' ⭐' : '')));
+    }
+    $sel.val(def);
+    $('#plz-style-edit').text(`✏️ Edit "${$sel.val() || ''}"`);
+}
+
 // ─── Event Bindings ───────────────────────────────────────────────────────────
 
 function bindHandlers() {
@@ -149,6 +166,61 @@ function bindHandlers() {
 
     $panel.on('click', '#plz-open-engines', () => openEnginesModal());
 
+    // ─── Style Library ───────────────────────────────────────────────────────
+    $panel.on('change', '#plz-style-select', function () {
+        $('#plz-style-edit').text(`✏️ Edit "${$(this).val()}"`);
+    });
+
+    $panel.on('click', '#plz-style-edit', async function () {
+        const name = $('#plz-style-select').val();
+        if (!name) return;
+        await openStyleModal(name);
+    });
+
+    $panel.on('click', '#plz-style-star', function () {
+        const meta = getMetaSettings();
+        const name = $('#plz-style-select').val();
+        if (!name) return;
+        meta.defaultStyleName = name;
+        saveSettingsDebounced();
+        refreshStyleDropdown();
+        if (window.toastr) window.toastr.success(`"${name}" set as global default style.`, 'PersonaLyze');
+    });
+
+    $panel.on('click', '#plz-style-add', async function () {
+        const meta = getMetaSettings();
+        const rawName = await callPopup('<h3>New style name</h3>', 'input', '');
+        const name = (rawName ?? '').trim();
+        if (!name) return;
+        if (meta.styleLibrary[name]) {
+            if (window.toastr) window.toastr.warning(`Style "${name}" already exists.`);
+            return;
+        }
+        const sourceName = $('#plz-style-select').val();
+        meta.styleLibrary[name] = meta.styleLibrary[sourceName] ?? '';
+        saveSettingsDebounced();
+        refreshStyleDropdown();
+        $('#plz-style-select').val(name).trigger('change');
+    });
+
+    $panel.on('click', '#plz-style-delete', async function () {
+        const meta = getMetaSettings();
+        const name = $('#plz-style-select').val();
+        if (!name) return;
+        if (Object.keys(meta.styleLibrary).length <= 1) {
+            if (window.toastr) window.toastr.warning('Cannot delete the only style.');
+            return;
+        }
+        const confirmed = await callPopup(`<h3>Delete style "${name}"?</h3>Characters pinned to it will fall back to the default.`, 'confirm');
+        if (!confirmed) return;
+        delete meta.styleLibrary[name];
+        if (meta.defaultStyleName === name) {
+            meta.defaultStyleName = Object.keys(meta.styleLibrary)[0] ?? '';
+        }
+        saveSettingsDebounced();
+        refreshStyleDropdown();
+    });
+
     $panel.on('click', '.plz-open-prompt', async function () {
         const key = $(this).data('prompt-key');
         await openPromptModal(key, PROMPT_TITLES[key], PROMPT_DEFAULTS[key]);
@@ -180,6 +252,7 @@ export function injectSettingsPanel() {
     bindHandlers();
     refreshUI();
     refreshProfileDropdown();
+    refreshStyleDropdown();
 
     refreshModelDropdown(settings.imageModel);
 

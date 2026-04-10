@@ -195,6 +195,28 @@ function buildCallRow(id, label, profileKey, historyKey, description, promptButt
     </div>`;
 }
 
+/** Renders the Style Library selector section. */
+function buildStyleManagerHTML(meta) {
+    const lib = meta.styleLibrary ?? {};
+    const defName = meta.defaultStyleName ?? '';
+    const names = Object.keys(lib);
+    const styleOptions = names.map(n =>
+        `<option value="${n}"${n === defName ? ' selected' : ''}>${n}${n === defName ? ' ⭐' : ''}</option>`
+    ).join('');
+
+    return `
+    <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
+        <div style="font-size:0.8em; opacity:0.6; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">Portrait Styles</div>
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+            <select id="plz-style-select" class="text_pole" style="flex:1;">${styleOptions}</select>
+            <button id="plz-style-star" class="menu_button" title="Set as global default">⭐</button>
+            <button id="plz-style-add" class="menu_button" title="New style">➕</button>
+            <button id="plz-style-delete" class="menu_button" style="color:#e05555;" title="Delete style">🗑️</button>
+        </div>
+        <button id="plz-style-edit" class="menu_button" style="width:100%;">✏️ Edit "${names.includes(defName) ? defName : (names[0] ?? '')}"</button>
+    </div>`;
+}
+
 /** Main Settings Panel template. */
 export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
     const s = settings;
@@ -256,11 +278,9 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
 
                 <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
                     <button class="menu_button" id="plz-open-engines" style="width:100%;"><i class="fa-solid fa-gear"></i> Configure Engines</button>
-                    <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
-                        <label style="font-size:0.85em; opacity:0.75; white-space:nowrap;">Prompt:</label>
-                        <button class="menu_button plz-open-prompt plz-btn-left" data-prompt-key="vnStyleSuffix" style="flex:1;">Edit Portrait Prompt Template ${tip('The style suffix appended to every image generation prompt.')}</button>
-                    </div>
                 </div>
+
+                ${buildStyleManagerHTML(meta)}
 
                 <div style="display:flex; gap:8px;">
                     <button class="menu_button" id="plz-open-workshop" style="flex:1;"><i class="fa-solid fa-dna"></i> Workshop</button>

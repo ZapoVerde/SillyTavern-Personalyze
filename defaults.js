@@ -4,12 +4,15 @@
  * @architectural-role Default Configuration
  * @description
  * Default constants for the Layered State Pipeline.
- * 
- * Defines the slots for visual tracking: Outerwear, Top, Bottom, Accessories, and Emotion.
+ *
+ * Defines the slots for visual tracking: Outerwear, Top, Bottom, Accessories, Emotion, and Pose.
  * Establishes the standard for Dual-Engine (Fast/Smart) profile routing.
  *
  * @api-declaration
- * PLZ_SLOTS
+ * DEFAULT_SLOTS
+ * META_SLOT_EMOTION
+ * META_SLOT_POSE
+ * META_SLOTS
  * POLLINATIONS_BASE_URL
  * POLLINATIONS_MODELS
  * DEFAULT_IMAGE_MODEL
@@ -61,16 +64,28 @@ export const DEFAULT_VERBOSE_LOGGING = false;
 export const DEFAULT_DETECTION_HISTORY = 2;
 export const DEFAULT_DESCRIBER_HISTORY = 3;
 
-/** 
- * Layered State Slots.
- * These are the keys used in DNA visual_state and LLM communication.
+/**
+ * Meta-slot keys.
+ * These slots store a plain string value instead of { item, modifier }.
+ * promptCompiler and mergeLayeredUpdate check against META_SLOTS to apply
+ * the correct storage and injection logic.
  */
-export const PLZ_SLOTS = [
+export const META_SLOT_EMOTION = 'emotion';
+export const META_SLOT_POSE    = 'pose';
+export const META_SLOTS        = [META_SLOT_EMOTION, META_SLOT_POSE];
+
+/**
+ * Default Layered State Slots.
+ * These are the keys used in DNA visual_state and LLM communication.
+ * Characters without a slots_definition record fall back to these.
+ */
+export const DEFAULT_SLOTS = [
     'outerwear',
     'top',
     'bottom',
     'accessories',
-    'emotion',
+    META_SLOT_EMOTION,
+    META_SLOT_POSE,
 ];
 
 /** 
@@ -103,13 +118,18 @@ export const PIAPI_MODELS = [
 /** Default PiAPI model. */
 export const DEFAULT_PIAPI_MODEL = 'Qubico/z-image';
 
-/** HuggingFace inference provider → model list map. */
-export const HF_PROVIDER_MODELS = {};
+/** Background removal via PiAPI Image Toolkit. */
+export const DEFAULT_PIAPI_REMOVE_BG  = false;
+export const DEFAULT_PIAPI_RMBG_MODEL = 'BEN2';
 
-/** 
+/** Valid rmbg_model values accepted by Qubico/image-toolkit. */
+export const PIAPI_RMBG_MODELS = ['BEN2', 'RMBG-2.0', 'RMBG-1.4'];
+
+/**
  * Visual Style Suffix.
- * Updated to support slot-based variables.
- * Note the emphasis on 'emotion' including body language and hands.
+ * Supports slot-based variables: {{identity_anchor}}, {{layers_description}},
+ * {{emotion}}, {{pose}}. Meta-slot variables are only injected if the placeholder
+ * exists in this string AND the slot has a non-empty value.
  */
 export const DEFAULT_VN_STYLE_SUFFIX =
     'A highly detailed anime-style character illustration of {{identity_anchor}}. ' +

@@ -105,12 +105,11 @@ export function getDnaRosterHTML(characters, activeRoster, activeId) {
 const ENGINE_OPTIONS = [
     { value: 'pollinations', label: 'Pollinations',  key: 'engineEnablePollinations' },
     { value: 'fal',          label: 'Fal AI',        key: 'engineEnableFal'          },
-    { value: 'huggingface',  label: 'Hugging Face',  key: 'engineEnableHuggingFace'  },
     { value: 'piapi',        label: 'PiAPI',         key: 'engineEnablePiAPI'        },
 ];
 
 /** Renders the Studio dashboard with the Layered Grid. */
-export function getStudioHTML(characterId, character, layers, enabledEngines = {}) {
+export function getStudioHTML(characterId, character, layers, enabledEngines = {}, styleLibrary = {}, defaultStyleName = '') {
     const displayName = character.label || characterId.replace(/_/g, ' ');
     const akaTagsHTML = (character.aka || []).map(alias => `
         <span class="plz-aka-tag" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;background:rgba(255,255,255,0.08);font-size:0.8em;">
@@ -158,9 +157,8 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
         ${getLayerInputHTML('Top', 'top', layers.top)}
         ${getLayerInputHTML('Bottom', 'bottom', layers.bottom)}
         ${getLayerInputHTML('Accessories', 'accessories', layers.accessories)}
-        <div style="grid-column: span 2;">
-            ${getEmotionInputHTML(layers.emotion)}
-        </div>
+        ${getEmotionInputHTML(layers.emotion)}
+        ${getPoseInputHTML(layers.pose)}
     </div>
 
     <div style="display:flex; gap:6px; margin-bottom:20px;">
@@ -175,6 +173,14 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
     </div>
 
     <div style="margin-top:20px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.07);">
+        <label class="plz-studio-label" style="display:block;margin-bottom:6px;">Portrait Style</label>
+        <select id="plz-studio-style" class="text_pole" style="width:100%;margin-bottom:16px;">
+            <option value="" ${!character.styleName ? 'selected' : ''}>Use Default (${escapeHtml(defaultStyleName || 'Default')})</option>
+            ${Object.keys(styleLibrary).map(n =>
+                `<option value="${escapeHtml(n)}" ${character.styleName === n ? 'selected' : ''}>${escapeHtml(n)}</option>`
+            ).join('')}
+        </select>
+
         <label class="plz-studio-label" style="display:block;margin-bottom:6px;">Preferred Image Engine</label>
         <select id="plz-studio-engine" class="text_pole" style="width:100%;margin-bottom:16px;">
             <option value="" ${!pinnedEngine ? 'selected' : ''}>Use Global Default</option>
@@ -206,8 +212,16 @@ function getLayerInputHTML(label, key, val) {
 function getEmotionInputHTML(val) {
     return `
     <div class="plz-layer-input">
-        <label style="font-size:0.75em;opacity:0.6;display:block;margin-bottom:2px;">Emotion & Body Language</label>
+        <label style="font-size:0.75em;opacity:0.6;display:block;margin-bottom:2px;">Emotion</label>
         <input id="plz-layer-emotion" class="text_pole" type="text" placeholder="Mood/Adjective" value="${escapeHtml(val || '')}" style="width:100%;" />
+    </div>`;
+}
+
+function getPoseInputHTML(val) {
+    return `
+    <div class="plz-layer-input">
+        <label style="font-size:0.75em;opacity:0.6;display:block;margin-bottom:2px;">Pose</label>
+        <input id="plz-layer-pose" class="text_pole" type="text" placeholder="Stance/Position" value="${escapeHtml(val || '')}" style="width:100%;" />
     </div>`;
 }
 

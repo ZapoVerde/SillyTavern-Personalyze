@@ -8,8 +8,8 @@
  * 
  * Implements slot-based weighting:
  * - Identity Anchor: Base description.
- * - Emotion: (Weighted 1.2) - Integrated with hands and body language.
- * - Clothes: (Weighted 1.1) - Concatenates modifier and item.
+ * - Meta-slots (emotion, pose): Skipped here; injected via template variables.
+ * - Clothes: Concatenates modifier and item.
  *
  * @api-declaration
  * compilePrompt(identityAnchor, layers) -> string
@@ -25,18 +25,19 @@
  * Compiles a final image generation prompt from the character state.
  * 
  * @param {string} identityAnchor - Permanent physical features.
- * @param {object} layers - The 5-slot visual state object.
+ * @param {object} layers - The visual state object.
  * @returns {string} The formatted, comma-separated prompt string.
  */
+import { META_SLOTS } from '../defaults.js';
+
 export function compilePrompt(identityAnchor, layers) {
     const promptParts = [];
 
-    // 1. Wardrobe: Layered Clothing Slots only
-    // We skip Identity Anchor and Emotion here because they are handled 
-    // by the top-level prompt template tags.
-    const clothingSlots = ['outerwear', 'top', 'bottom', 'accessories'];
-
-    for (const slot of clothingSlots) {
+    // 1. Wardrobe: clothing slots only.
+    // Meta-slots (emotion, pose) are skipped here — they are injected into
+    // the image prompt via {{emotion}} / {{pose}} template variables instead.
+    for (const slot of Object.keys(layers ?? {})) {
+        if (META_SLOTS.includes(slot)) continue;
         const data = layers[slot];
         
         // Skip empty or unknown slots

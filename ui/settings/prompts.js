@@ -17,9 +17,10 @@
  *     external_io: [callPopup, smartResize, settings.js, jQuery]
  */
 
-import { callPopup } from '../../../../../../script.js';
-import { getSettings, updateSetting } from '../../settings.js';
+import { callPopup, saveSettingsDebounced } from '../../../../../../script.js';
+import { getSettings, getMetaSettings, updateSetting } from '../../settings.js';
 import { smartResize } from '../../utils/dom.js';
+import { DEFAULT_VN_STYLE_SUFFIX } from '../../defaults.js';
 
 /** Variables available in each prompt template, with descriptions. */
 const PROMPT_VARIABLES = {
@@ -78,8 +79,76 @@ const PROMPT_VARIABLES = {
 };
 
 /**
+ * Opens a modal to edit a style library entry.
+ * Reads from and writes directly to meta.styleLibrary[styleName].
+ *
+ * @param {string} styleName - Key in meta.styleLibrary to edit.
+ */
+export async function openStyleModal(styleName) {
+    const meta = getMetaSettings();
+    const current = meta.styleLibrary?.[styleName] ?? DEFAULT_VN_STYLE_SUFFIX;
+
+    const vars = PROMPT_VARIABLES['vnStyleSuffix'] ?? [];
+    const varBlock = vars.length
+        ? `<div class="plz-var-list">
+               ${vars.map((entry, i) => {
+                   const copyId = `plz-var-copy-style-${i}`;
+                   const onclickJs = `navigator.clipboard.writeText('${entry.v}').then(function(){`
+                       + `var el=document.getElementById('${copyId}');`
+                       + `el.style.outline='1px solid #4caf50';`
+                       + `setTimeout(function(){el.style.outline='';},900);`
+                       + `});event.stopPropagation();`;
+                   return `<div class="plz-var-row">
+                       <button id="${copyId}" onclick="${onclickJs}" class="menu_button plz-var-copy-btn"
+                               title="Copy to clipboard"><i class="fa-regular fa-copy"></i></button>
+                       <code class="plz-var-code">${entry.v}</code>
+                       <span class="plz-var-desc">— ${entry.d}</span>
+                   </div>`;
+               }).join('')}
+           </div>`
+        : '';
+
+    const popupPromise = callPopup(
+        `<h3 class="plz-modal-title">Portrait Style — ${styleName}</h3>
+         ${varBlock}
+         <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="10"
+                   style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden;"
+                   spellcheck="false">${current.replace(/</g, '&lt;')}</textarea>
+         <div class="plz-modal-actions">
+             <button class="menu_button" id="plz-prompt-reset">Reset to Default</button>
+         </div>`,
+        'confirm',
+    );
+
+    const triggerResize = () => {
+        const el = document.getElementById('plz-prompt-editor');
+        if (el) smartResize(el);
+    };
+    requestAnimationFrame(() => { triggerResize(); setTimeout(triggerResize, 50); });
+
+    $(document).on('input.plz-prompt', '#plz-prompt-editor', function() { smartResize(this); });
+    $(document).on('click.plz-prompt', '#plz-prompt-reset', () => {
+        const $editor = $('#plz-prompt-editor');
+        $editor.val(DEFAULT_VN_STYLE_SUFFIX);
+        smartResize($editor[0]);
+    });
+
+    const result = await popupPromise;
+
+    $(document).off('input.plz-prompt');
+    $(document).off('click.plz-prompt');
+
+    if (result) {
+        const newValue = $('#plz-prompt-editor').val();
+        if (!meta.styleLibrary) meta.styleLibrary = {};
+        meta.styleLibrary[styleName] = newValue;
+        saveSettingsDebounced();
+    }
+}
+
+/**
  * Opens a modal to edit a specific prompt template.
- * 
+ *
  * @param {string} key - The settings key to update.
  * @param {string} title - Human-readable modal title.
  * @param {string} defaultValue - Fallback template for the reset action.

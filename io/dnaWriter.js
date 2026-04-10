@@ -231,6 +231,28 @@ export async function lockedWriteLabel(messageId, characterId, label) {
 }
 
 /**
+ * Writes a character's pinned portrait style name to the DNA chain.
+ */
+export async function lockedWriteCharacterStyle(messageId, characterId, styleName) {
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (message) {
+            ensureArray(message);
+            message.extra.personalyze.push({
+                type: 'style_update',
+                characterId,
+                styleName: styleName || null
+            });
+            await saveChatConditional();
+        }
+    } finally {
+        writeLock.release();
+    }
+}
+
+/**
  * Marks a specific ensemble as the default (everyday wear) for a character.
  */
 export async function lockedWriteDefaultEnsemble(messageId, characterId, ensembleKey) {

@@ -62,7 +62,7 @@ LATEST MESSAGE:
 {{message}}
 
 QUESTION:
-In the LATEST MESSAGE, does the character explicitly change clothes, put something on, take something off, or does an item get dirty/damaged? Has their emotion or body language significantly shifted?
+In the LATEST MESSAGE, does the character explicitly change clothes, put something on, take something off, or does an item get dirty/damaged? Has their emotion, pose, or body language significantly shifted?
 
 Reply ONLY with 'YES' or 'NO'.
 
@@ -88,7 +88,8 @@ RULES:
 3. If an item is explicitly REMOVED (e.g. "took off", "discarded"): None | None
 4. If a slot is UNMENTIONED or UNCHANGED: KEEP | KEEP
 5. EMOTION: Provide one adjective describing their mood and physical expression. Use KEEP if unchanged.
-6. DO NOT OUTPUT JSON.
+6. POSE: Provide a short description of their physical stance or position. Use KEEP if unchanged.
+7. DO NOT OUTPUT JSON.
 
 FORMAT:
 Outerwear: [Item] | [Modifier]
@@ -96,6 +97,7 @@ Top: [Item] | [Modifier]
 Bottom: [Item] | [Modifier]
 Accessories: [Item] | [Modifier]
 Emotion: [Adjective]
+Pose: [Description]
 
 LATEST MESSAGE:
 {{message}}
@@ -181,6 +183,7 @@ Top: [Item] | [Modifier]
 Bottom: [Item] | [Modifier]
 Accessories: [Item] | [Modifier]
 Emotion: [Adjective]
+Pose: [Description]
 
 RESULT:`;
 
@@ -228,5 +231,6 @@ Outerwear: [Item] | [Modifier]
 Top: [Item] | [Modifier]
 Bottom: [Item] | [Modifier]
 Accessories: [Item] | [Modifier]
-Emotion: [Adjective]`;
+Emotion: [Adjective]
+Pose: [Description]`;
 

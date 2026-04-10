@@ -42,7 +42,7 @@ export function reconstruct(chat) {
     
     // Default empty state for the active layers
     let activeLayers = {
-        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral'
+        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral', pose: 'upright'
     };
 
     /** Helper to guarantee a valid character structure exists. */
@@ -55,7 +55,8 @@ export function reconstruct(chat) {
                 engine:          null,
                 ensembles:       {},
                 aka:             [],
-                defaultEnsemble: null
+                defaultEnsemble: null,
+                styleName:       null
             };
         }
         return chatCharacters[id];
@@ -106,6 +107,13 @@ export function reconstruct(chat) {
                     break;
                 }
 
+                case 'style_update': {
+                    if (!rec.characterId) break;
+                    const char = ensureChar(rec.characterId);
+                    char.styleName = rec.styleName || null;
+                    break;
+                }
+
                 case 'ensemble_def': {
                     if (!rec.characterId || !rec.key) break;
                     const char = ensureChar(rec.characterId);
@@ -138,7 +146,8 @@ export function reconstruct(chat) {
                             top: { item: rec.outfit, modifier: null },
                             bottom: null,
                             accessories: null,
-                            emotion: rec.expression ?? 'neutral'
+                            emotion: rec.expression ?? 'neutral',
+                            pose: 'upright',
                         };
                     } else {
                         layers = structuredClone(activeLayers);
