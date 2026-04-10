@@ -231,10 +231,9 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
 
         _dispatchPortraitStatus(characterId, { status: 'generating' });
 
-        let sourceUrl    = null;  // public URL for Stage 2 (RMBG) and Stage 3 (CDN fetch)
-        let imgRes       = null;  // binary Response — set when the binary is already in hand
-        let piapiMeta    = null;
-        let earlyFilename = null; // set when Pollinations image is pre-uploaded as RMBG input
+        let sourceUrl = null;  // CDN URL for Stage 2 (RMBG) and Stage 3 fetch — PiAPI engine only
+        let imgRes    = null;  // binary Response — set when the binary is already in hand (Fal, Pollinations)
+        let piapiMeta = null;
 
         if (provider === 'fal') {
             imgRes = await fetch('/api/plugins/personalyze/fal-generate', {
@@ -262,43 +261,26 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
             piapiMeta = genResult.meta;
 
         } else {
-            // Pollinations: construct the generation URL.
+            // Pollinations: fetch binary directly (RMBG is not available for this engine —
+            // PiAPI's toolkit only accepts public CDN URLs, and Pollinations URLs are live
+            // generation endpoints, not static links).
+            const key = await getAuthKey('pollinations');
             const params = new URLSearchParams({
                 width: String(w), height: String(h),
                 model: s.imageModel ?? DEFAULT_IMAGE_MODEL,
                 nologo: 'true', seed: String(seed), safe: 'false',
             });
-            const polUrl = `${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`;
-
-            if (s.piapiRemoveBackground) {
-                // PiAPI cannot fetch Pollinations generation URLs — they are live endpoints,
-                // not static CDN links. Fetch the image now, upload it to ST, and pass the
-                // resulting public ST URL to PiAPI instead.
-                const key = await getAuthKey('pollinations');
-                const polRes = await fetch(polUrl, { headers: key ? { 'Authorization': `Bearer ${key}` } : {} });
-                await validateImageResponse(polRes);
-                const blob = await polRes.blob();
-                const b64 = await new Promise(r => {
-                    const fr = new FileReader(); fr.onload = () => r(fr.result.split(',')[1]); fr.readAsDataURL(blob);
-                });
-                // Upload now so we have a stable fallback even if RMBG fails
-                earlyFilename = `${buildFilenamePrefix(characterId, tag, emotion)}${Date.now()}.png`;
-                await fetch('/api/images/upload', {
-                    method: 'POST', headers: getRequestHeaders(),
-                    body: JSON.stringify({ image: b64, format: 'png', filename: earlyFilename, ch_name: PLZ_IMAGE_FOLDER }),
-                });
-                sourceUrl = `${window.location.origin}/user/images/${PLZ_IMAGE_FOLDER}/${earlyFilename}`;
-            } else {
-                // Lazy: defer the binary fetch to Stage 3
-                sourceUrl = polUrl;
-            }
+            imgRes = await fetch(
+                `${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`,
+                { headers: key ? { 'Authorization': `Bearer ${key}` } : {} },
+            );
         }
 
-        // ── Stage 2: Background Removal (optional) ────────────────────────────
-        // Available whenever sourceUrl is set (PiAPI CDN URL or pre-uploaded ST URL).
-        // Fal is excluded because it returns a binary rather than a CDN URL.
-        // On failure, logs a warning and falls back gracefully to the Stage 1 result.
-        // For Pollinations, earlyFilename holds the pre-uploaded fallback image.
+        // ── Stage 2: Background Removal (optional, PiAPI engine only) ─────────
+        // PiAPI's image-toolkit accepts only public CDN URLs in the `input.image` field.
+        // Only PiAPI generations produce such a URL (sourceUrl). Fal and Pollinations
+        // return binaries directly (imgRes) and cannot be chained into RMBG.
+        // On failure: logs a warning and falls back to the Stage 1 CDN URL for Stage 3.
 
         if (s.piapiRemoveBackground && sourceUrl) {
             try {
@@ -317,62 +299,23 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
                 const rmbgResult = await _pollPiapiTask(rmbgTaskId, RMBG_TIMEOUT_MS,
                     () => _dispatchPortraitStatus(characterId, { status: 'removing_bg' }));
 
-                // Prefer the base64 payload — avoids a second CDN round-trip entirely.
-                // For Pollinations: delete the pre-uploaded original and save the RMBG result.
-                if (rmbgResult.image_base64) {
-                    if (earlyFilename) {
-                        await fetch('/api/images/delete', {
-                            method: 'POST', headers: getRequestHeaders(),
-                            body: JSON.stringify({ path: `user/images/${PLZ_IMAGE_FOLDER}/${earlyFilename}` }),
-                        });
-                    }
-                    const filename = earlyFilename ?? `${buildFilenamePrefix(characterId, tag, emotion)}${Date.now()}.png`;
-                    await fetch('/api/images/upload', {
-                        method: 'POST', headers: getRequestHeaders(),
-                        body: JSON.stringify({ image: rmbgResult.image_base64, format: 'png', filename, ch_name: PLZ_IMAGE_FOLDER }),
-                    });
-                    logPatchLast(filename, null, piapiMeta);
-                    return filename;
-                }
-
-                // No base64 — Stage 3 will download from the RMBG CDN URL.
-                // Delete the pre-uploaded original since Stage 3 will re-save.
-                if (earlyFilename) {
-                    await fetch('/api/images/delete', {
-                        method: 'POST', headers: getRequestHeaders(),
-                        body: JSON.stringify({ path: `user/images/${PLZ_IMAGE_FOLDER}/${earlyFilename}` }),
-                    });
-                    earlyFilename = null;
-                }
+                // Update sourceUrl to the RMBG result; Stage 3 will fetch it via /piapi-fetch
                 sourceUrl = rmbgResult.image_url;
-                imgRes = null;
 
             } catch (rmbgErr) {
                 warn('ImageCache', `Background removal failed, using source image: ${rmbgErr.message}`);
-                // If Pollinations pre-uploaded a fallback, return it immediately
-                if (earlyFilename) {
-                    logPatchLast(earlyFilename, null, piapiMeta);
-                    return earlyFilename;
-                }
-                // Otherwise sourceUrl from Stage 1 (PiAPI CDN) is still valid — Stage 3 proceeds
+                // sourceUrl still points to the Stage 1 PiAPI CDN URL — Stage 3 proceeds normally
             }
         }
 
         // ── Stage 3: Final Download & Save ────────────────────────────────────
 
         if (!imgRes) {
-            // Route via the concurrency-limited proxy for PiAPI/RMBG CDN URLs;
-            // fetch directly for Pollinations and other public URLs.
-            const isPiapiUrl = sourceUrl.includes('piapi.ai');
-            if (isPiapiUrl) {
-                imgRes = await fetch('/api/plugins/personalyze/piapi-fetch', {
-                    method: 'POST', headers: getRequestHeaders(),
-                    body: JSON.stringify({ image_url: sourceUrl }),
-                });
-            } else {
-                const key = provider === 'pollinations' ? await getAuthKey('pollinations') : null;
-                imgRes = await fetch(sourceUrl, { headers: key ? { 'Authorization': `Bearer ${key}` } : {} });
-            }
+            // sourceUrl is a PiAPI CDN URL (generation or RMBG result) — use the proxy
+            imgRes = await fetch('/api/plugins/personalyze/piapi-fetch', {
+                method: 'POST', headers: getRequestHeaders(),
+                body: JSON.stringify({ image_url: sourceUrl }),
+            });
         }
 
         await validateImageResponse(imgRes);

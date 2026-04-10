@@ -165,7 +165,7 @@ function getPiAPITabHTML(settings) {
         <div style="padding:10px; border:1px solid var(--SmartThemeBorderColor,#444); border-radius:6px; display:flex; flex-direction:column; gap:10px;">
             <label class="checkbox_label" style="font-size:0.9em; cursor:pointer;">
                 <input type="checkbox" id="plz-eng-piapi-rmbg" ${s.piapiRemoveBackground ? 'checked' : ''} />
-                <span>Remove Background <span style="opacity:0.55; font-size:0.88em;">($0.001/img)</span></span>
+                <span>Remove Background <span style="opacity:0.55; font-size:0.88em;">($0.001/img, PiAPI engine only)</span></span>
             </label>
             <div style="display:flex; align-items:center; gap:8px;">
                 <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">RMBG Model:</label>
@@ -173,6 +173,7 @@ function getPiAPITabHTML(settings) {
                     ${rmbgModelOptions}
                 </select>
             </div>
+            <p style="font-size:0.78em; opacity:0.5; margin:0;">Requires PiAPI as the generation engine. Has no effect with Pollinations or Fal.</p>
         </div>
 
         <div style="display:flex; gap:8px; margin-top:10px;">

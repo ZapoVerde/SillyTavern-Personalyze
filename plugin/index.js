@@ -323,10 +323,6 @@ export async function init(router) {
                     });
                 }
                 result.image_url = imageUrl;
-                // Removal tasks also return base64 — pass it through so callers can skip the CDN fetch
-                if (typeof outputObj?.image_base64 === 'string' && outputObj.image_base64.length > 0) {
-                    result.image_base64 = outputObj.image_base64;
-                }
                 result.meta = {
                     task_id:    taskPayload.task_id,
                     model:      taskPayload.model,
@@ -389,6 +385,9 @@ export async function init(router) {
             return res.status(400).json({ error: 'Missing or invalid image_url.' });
         }
 
+        // PiAPI image-toolkit only accepts public CDN URLs in input.image.
+        const imageField = image_url;
+
         try {
             const taskResponse = await withRetry(
                 () => fetchChecked('https://api.piapi.ai/api/v1/task', {
@@ -402,7 +401,7 @@ export async function init(router) {
                         model: 'Qubico/image-toolkit',
                         task_type: 'background-remove',
                         input: {
-                            image:      image_url,
+                            image:      imageField,
                             rmbg_model: rmbg_model ?? 'BEN2',
                         },
                     }),
