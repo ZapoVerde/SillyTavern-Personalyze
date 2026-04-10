@@ -44,6 +44,96 @@ function piapiRelease() {
     else { _piapiActive--; }
 }
 
+// ─── Retry Utility ────────────────────────────────────────────────────────────
+
+/** Network error codes that indicate a transient connectivity failure. */
+const TRANSIENT_NET_CODES = new Set(['EAI_AGAIN', 'ECONNRESET', 'ETIMEDOUT']);
+
+/** HTTP status codes that should never be retried (client/auth errors). */
+const FATAL_HTTP_CODES = new Set([400, 401, 403, 404]);
+
+const MAX_RETRY_ATTEMPTS = 5;
+const RETRY_BASE_MS      = 100;
+
+/**
+ * Performs a fetch and throws a typed error for non-ok HTTP responses.
+ * The thrown error carries `httpStatus` and `responseText` for classification
+ * and frontend passthrough.
+ *
+ * @param {string} url
+ * @param {object} [options]
+ * @returns {Promise<Response>}
+ */
+async function fetchChecked(url, options) {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+        const text = await response.text();
+        const err = new Error(`HTTP ${response.status}: ${text.slice(0, 300)}`);
+        err.httpStatus   = response.status;
+        err.responseText = text;
+        throw err;
+    }
+    return response;
+}
+
+/**
+ * Executes an async task with exponential backoff retry on transient failures.
+ *
+ * Transient (retry): EAI_AGAIN, ECONNRESET, ETIMEDOUT, HTTP 429, HTTP 5xx.
+ * Fatal (abort):     HTTP 400, 401, 403, 404, unknown errors.
+ *
+ * Backoff schedule (±10% jitter):
+ *   Attempt 1 – immediate
+ *   Attempt 2 – 100 ms
+ *   Attempt 3 – 200 ms
+ *   Attempt 4 – 400 ms
+ *   Attempt 5 – 800 ms
+ *   Final throw – after 1 600 ms additional wait
+ *
+ * @param {() => Promise<any>} fn    - Async task to execute (should use fetchChecked).
+ * @param {string}             label - Tag for console warnings.
+ * @returns {Promise<any>}
+ */
+async function withRetry(fn, label) {
+    let lastErr;
+    for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+        try {
+            return await fn();
+        } catch (err) {
+            lastErr = err;
+
+            // Fatal HTTP codes — abort immediately, let the route handle the response
+            const httpStatus = err.httpStatus;
+            if (httpStatus && FATAL_HTTP_CODES.has(httpStatus)) throw err;
+
+            const netCode  = err.cause?.code || err.code;
+            const isTransient =
+                TRANSIENT_NET_CODES.has(netCode)                             ||
+                httpStatus === 429                                            ||
+                (httpStatus !== undefined && httpStatus >= 500 && httpStatus <= 599);
+
+            // Unknown or non-transient errors — abort immediately
+            if (!isTransient) throw err;
+
+            const base  = RETRY_BASE_MS * Math.pow(2, attempt - 1);
+            const delay = Math.round(base * (0.9 + Math.random() * 0.2));
+            const reason = netCode || `HTTP ${httpStatus}`;
+
+            if (attempt < MAX_RETRY_ATTEMPTS) {
+                console.warn(`[PLZ:${label}] Connection blip (${reason}), retrying in ${delay}ms... (attempt ${attempt}/${MAX_RETRY_ATTEMPTS})`);
+                await new Promise(r => setTimeout(r, delay));
+            } else {
+                // All attempts exhausted — wait the final backoff step (1 600 ms) then throw
+                console.warn(`[PLZ:${label}] All ${MAX_RETRY_ATTEMPTS} attempts failed. Last error: ${reason}`);
+                await new Promise(r => setTimeout(r, delay));
+                const exhausted = new Error(`${label} failed after ${MAX_RETRY_ATTEMPTS} attempts: ${lastErr.message}`);
+                exhausted.exhausted = true;
+                throw exhausted;
+            }
+        }
+    }
+}
+
 export const info = {
     id: 'personalyze',
     name: 'PersonaLyze',
@@ -137,28 +227,26 @@ export async function init(router) {
             }
 
             const url = `https://router.huggingface.co/${provider}/models/${model}`;
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    inputs: prompt,
-                    parameters: { width, height },
+            const response = await withRetry(
+                () => fetchChecked(url, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        inputs: prompt,
+                        parameters: { width, height },
+                    }),
                 }),
-            });
-
-            if (!response.ok) {
-                const text = await response.text();
-                return res.status(response.status).send(text);
-            }
+                'HuggingFace'
+            );
 
             const contentType = response.headers.get('Content-Type');
             if (contentType) res.setHeader('Content-Type', contentType);
-            const buffer = await response.arrayBuffer();
-            res.send(Buffer.from(buffer));
+            res.send(Buffer.from(await response.arrayBuffer()));
         } catch (err) {
+            if (err.httpStatus) return res.status(err.httpStatus).send(err.responseText || '');
             res.status(500).json({ error: err.message });
         }
     });
@@ -291,24 +379,22 @@ export async function init(router) {
             }
 
             // Step 1: Request generation (Fal returns JSON with a URL)
-            const falResponse = await fetch(`https://fal.run/${model}`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Key ${apiKey}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    prompt,
-                    image_size: { width: width ?? 512, height: height ?? 768 },
-                    sync_mode: true,
-                    enable_safety_checker: false,
+            const falResponse = await withRetry(
+                () => fetchChecked(`https://fal.run/${model}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Key ${apiKey}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        prompt,
+                        image_size: { width: width ?? 512, height: height ?? 768 },
+                        sync_mode: true,
+                        enable_safety_checker: false,
+                    }),
                 }),
-            });
-
-            if (!falResponse.ok) {
-                const text = await falResponse.text();
-                return res.status(falResponse.status).send(text);
-            }
+                'Fal'
+            );
 
             const data = await falResponse.json();
             const imageUrl = data.images?.[0]?.url || data.image?.url;
@@ -318,17 +404,14 @@ export async function init(router) {
             }
 
             // Step 2: Fetch the actual image binary
-            const imgRes = await fetch(imageUrl);
-            if (!imgRes.ok) {
-                return res.status(imgRes.status).json({ error: `Failed to fetch image from Fal CDN: ${imgRes.status}` });
-            }
+            const imgRes = await withRetry(() => fetchChecked(imageUrl), 'FalCDN');
 
             const contentType = imgRes.headers.get('Content-Type') ?? 'image/png';
             res.setHeader('Content-Type', contentType);
-            const buffer = await imgRes.arrayBuffer();
-            res.send(Buffer.from(buffer));
+            res.send(Buffer.from(await imgRes.arrayBuffer()));
 
         } catch (err) {
+            if (err.httpStatus) return res.status(err.httpStatus).send(err.responseText || '');
             res.status(500).json({ error: err.message });
         }
     });
@@ -352,43 +435,39 @@ export async function init(router) {
 
     // ── PiAPI: submit task, return task_id immediately ────────────────────────
     router.post('/piapi-generate', async (req, res) => {
+        const { model, prompt, negative_prompt, width, height, seed, flow_shift, batch_size } = req.body;
+        const apiKey = readSecret(req.user.directories, 'api_key_piapi');
+        const modelId = model ?? 'Qubico/z-image';
+
+        if (!apiKey) {
+            return res.status(401).json({ error: 'PiAPI key not configured.' });
+        }
+
         try {
-            const { model, prompt, negative_prompt, width, height, seed, flow_shift, batch_size } = req.body;
-            const apiKey = readSecret(req.user.directories, 'api_key_piapi');
-            const modelId = model ?? 'Qubico/z-image';
-
-            if (!apiKey) {
-                return res.status(401).json({ error: 'PiAPI key not configured.' });
-            }
-
-            const taskResponse = await fetch('https://api.piapi.ai/api/v1/task', {
-                method: 'POST',
-                headers: {
-                    'X-API-Key': apiKey,
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (compatible; PersonaLyze/1.0)',
-                },
-                body: JSON.stringify({
-                    model: modelId,
-                    task_type: 'txt2img',
-                    input: {
-                        prompt,
-                        negative_prompt,
-                        width:      width      ?? 1024,
-                        height:     height     ?? 1024,
-                        seed:       seed       ?? -1,
-                        flow_shift: flow_shift ?? 3,
-                        batch_size: batch_size ?? 1,
+            const taskResponse = await withRetry(
+                () => fetchChecked('https://api.piapi.ai/api/v1/task', {
+                    method: 'POST',
+                    headers: {
+                        'X-API-Key': apiKey,
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'Mozilla/5.0 (compatible; PersonaLyze/1.0)',
                     },
+                    body: JSON.stringify({
+                        model: modelId,
+                        task_type: 'txt2img',
+                        input: {
+                            prompt,
+                            negative_prompt,
+                            width:      width      ?? 1024,
+                            height:     height     ?? 1024,
+                            seed:       seed       ?? -1,
+                            flow_shift: flow_shift ?? 3,
+                            batch_size: batch_size ?? 1,
+                        },
+                    }),
                 }),
-            });
-
-            if (!taskResponse.ok) {
-                const text = await taskResponse.text();
-                return res.status(taskResponse.status).json({
-                    error: `PiAPI submit failed (HTTP ${taskResponse.status}) for model "${modelId}": ${text.slice(0, 300)}`,
-                });
-            }
+                'PiAPI'
+            );
 
             const taskData = await taskResponse.json();
             const taskPayload = taskData.data ?? taskData;
@@ -403,6 +482,11 @@ export async function init(router) {
             return res.json({ task_id: taskId });
 
         } catch (err) {
+            if (err.httpStatus) {
+                return res.status(err.httpStatus).json({
+                    error: `PiAPI submit failed (HTTP ${err.httpStatus}) for model "${modelId}": ${err.responseText?.slice(0, 300)}`,
+                });
+            }
             const cause = err.cause?.message || err.cause?.code || '';
             res.status(500).json({ error: `${err.message}${cause ? ` (${cause})` : ''}` });
         }

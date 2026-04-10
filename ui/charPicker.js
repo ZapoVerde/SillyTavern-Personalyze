@@ -87,52 +87,71 @@ export async function openCharPicker() {
 
     const currentLayers = state.characterChain[initId]?.layers || state.activeLayers;
 
-    const charOptions = rosterChars.map(id => 
-        `<option value="${escapeHtml(id)}"${id === initId ? ' selected' : ''}>${escapeHtml(id.replace(/_/g, ' '))}</option>`
-    ).join('');
+    const charOptions = rosterChars.map(id => {
+        const label = state.chatCharacters[id]?.label || id.replace(/_/g, ' ');
+        return `<option value="${escapeHtml(id)}"${id === initId ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
 
     function buildEnsembleOptions(id) {
         const ensembles = Object.entries(state.chatCharacters[id]?.ensembles ?? {});
         if (!ensembles.length) return '<option value="">— No ensembles —</option>';
-        return '<option value="">— Quick Load Ensemble —</option>' + 
+        return '<option value="">— Quick Load Ensemble —</option>' +
             ensembles.map(([k, v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v.label)}</option>`).join('');
     }
 
-    const popupPromise = callPopup(
-        `<h3 style="margin-top:0; margin-bottom:12px;">Change Appearance</h3>
-        <div style="margin-bottom:12px;">
-            <select id="plz-cp-char" class="text_pole" style="width:100%; margin-bottom:8px;">${charOptions}</select>
-            <select id="plz-cp-ensemble" class="text_pole" style="width:100%;">${buildEnsembleOptions(initId)}</select>
-        </div>
-        <div id="plz-cp-grid-container">${buildGridHTML(currentLayers)}</div>`,
-        'confirm'
-    );
+    // Track whether the user requested a forced regeneration
+    let forceRegen = false;
+    let _settled = false;
 
-    // Dynamic Roster Switching
-    $(document).on('change', '#plz-cp-char', function() {
-        const id = $(this).val();
-        $('#plz-cp-ensemble').html(buildEnsembleOptions(id));
-        const layers = state.characterChain[id]?.layers || state.activeLayers;
-        $('#plz-cp-grid-container').html(buildGridHTML(layers));
-    });
+    const confirmed = await new Promise((resolve) => {
+        function finish(result) {
+            if (_settled) return;
+            _settled = true;
+            $(document).off('.plzCp');
+            resolve(result);
+        }
 
-    // Ensemble Quick Load
-    $(document).on('change', '#plz-cp-ensemble', function() {
-        const charId = $('#plz-cp-char').val();
-        const key = $(this).val();
-        if (!key) return;
-        const layers = applyEnsemble(state.activeLayers, state.chatCharacters[charId].ensembles[key].layers);
-        $('#plz-cp-emotion').val(layers.emotion);
-        Object.entries(layers).forEach(([slot, val]) => {
-            if (slot === 'emotion') return;
-            $(`.plz-cp-item[data-slot="${slot}"]`).val(val?.item || '');
-            $(`.plz-cp-mod[data-slot="${slot}"]`).val(val?.modifier || '');
+        callPopup(
+            `<h3 style="margin-top:0; margin-bottom:12px;">Change Appearance</h3>
+            <div style="margin-bottom:12px;">
+                <select id="plz-cp-char" class="text_pole" style="width:100%; margin-bottom:8px;">${charOptions}</select>
+                <select id="plz-cp-ensemble" class="text_pole" style="width:100%;">${buildEnsembleOptions(initId)}</select>
+            </div>
+            <div id="plz-cp-grid-container">${buildGridHTML(currentLayers)}</div>
+            <button id="plz-cp-force-regen" class="menu_button" style="width:100%;margin-top:12px;opacity:0.75;">
+                <i class="fa-solid fa-rotate-right"></i> Force New Generation
+            </button>`,
+            'confirm'
+        ).then(ok => finish(!!ok)).catch(() => finish(false));
+
+        // Dynamic Roster Switching
+        $(document).on('change.plzCp', '#plz-cp-char', function() {
+            const id = $(this).val();
+            $('#plz-cp-ensemble').html(buildEnsembleOptions(id));
+            const layers = state.characterChain[id]?.layers || state.activeLayers;
+            $('#plz-cp-grid-container').html(buildGridHTML(layers));
+        });
+
+        // Ensemble Quick Load
+        $(document).on('change.plzCp', '#plz-cp-ensemble', function() {
+            const charId = $('#plz-cp-char').val();
+            const key = $(this).val();
+            if (!key) return;
+            const layers = applyEnsemble(state.activeLayers, state.chatCharacters[charId].ensembles[key].layers);
+            $('#plz-cp-emotion').val(layers.emotion);
+            Object.entries(layers).forEach(([slot, val]) => {
+                if (slot === 'emotion') return;
+                $(`.plz-cp-item[data-slot="${slot}"]`).val(val?.item || '');
+                $(`.plz-cp-mod[data-slot="${slot}"]`).val(val?.modifier || '');
+            });
+        });
+
+        // Force Regen: set flag then close via OK
+        $(document).on('click.plzCp', '#plz-cp-force-regen', () => {
+            forceRegen = true;
+            $('#dialogue_popup_ok').trigger('click');
         });
     });
-
-    const confirmed = await popupPromise;
-    $(document).off('change', '#plz-cp-char');
-    $(document).off('change', '#plz-cp-ensemble');
 
     if (!confirmed) return;
 
@@ -147,9 +166,13 @@ export async function openCharPicker() {
     });
 
     const character = state.chatCharacters[characterId];
+    const s = getSettings();
+    const engine = character.engine || s.defaultEngine || 'pollinations';
     const prompt = compilePrompt(character.identityAnchor, layers);
     const prefix = buildFilenamePrefix(characterId, 'layered', slugify(layers.emotion));
-    let filename = findCachedImage(prefix, state.fileIndex);
+
+    // Force regen bypasses the cache — always generates a fresh image
+    let filename = forceRegen ? null : findCachedImage(prefix, state.fileIndex);
 
     updateActiveCharacter(characterId);
     updateActiveLayers(layers);
@@ -170,7 +193,7 @@ export async function openCharPicker() {
         filename = await generate(
             characterId, 'layered', slugify(layers.emotion),
             prompt, layers.emotion, character.identityAnchor, character.seed,
-            getSettings().defaultEngine || 'pollinations'
+            engine
         );
         addToFileIndex(filename);
         updateActiveImage(filename);
