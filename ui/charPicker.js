@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-11T16:40:00.000Z"}
+ * @stamp {"utc":"2026-04-11T18:00:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
@@ -8,7 +8,8 @@
  *
  * Updated for Flexible Wardrobe:
  * 1. Dynamically renders inputs based on character.slots.
- * 2. Slot-agnostic data collection and ensemble loading.
+ * 2. Added "Add Category" button for on-the-fly schema updates.
+ * 3. Preserves existing input values when re-rendering the grid.
  *
  * @api-declaration
  * openCharPicker() → Promise<void>
@@ -24,23 +25,21 @@ import { callPopup } from '../../../../../script.js';
 import { getContext } from '../../../../extensions.js';
 import {
     state, updateActiveCharacter, updateActiveLayers, updateActiveImage,
-    addToFileIndex, updateChainLayers,
+    addToFileIndex, updateChainLayers, upsertChatSlots
 } from '../state.js';
 import { compilePrompt } from '../logic/promptCompiler.js';
 import { buildFilenamePrefix, findCachedImage, generate } from '../imageCache.js';
 import { setPortrait } from '../portrait.js';
-import { lockedWriteVisualState, lockedPatchVisualStateImage } from '../io/dnaWriter.js';
+import { lockedWriteVisualState, lockedPatchVisualStateImage, lockedWriteSlots } from '../io/dnaWriter.js';
 import { escapeHtml, slugify } from '../utils/history.js';
 import { error } from '../utils/logger.js';
 import { smartResize } from '../utils/dom.js';
 import { getSettings } from '../settings.js';
 import { applyEnsemble } from '../logic/ensembleEngine.js';
-import { BASE_SLOTS } from '../defaults.js';
+import { BASE_SLOTS, META_SLOTS } from '../defaults.js';
 
 /**
  * Builds the HTML for the dynamic layered grid inside the picker.
- * @param {string[]} slots - The categories to render.
- * @param {object} layers - Current values for those slots.
  */
 function buildGridHTML(slots, layers) {
     const effectiveSlots = slots && slots.length > 0 ? slots : BASE_SLOTS;
@@ -70,7 +69,30 @@ function buildGridHTML(slots, layers) {
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">Pose</label>
             <input id="plz-cp-pose" class="text_pole" type="text" value="${escapeHtml(layers.pose || 'upright')}" style="width:100%;" />
         </div>
+    </div>
+    <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+        <button id="plz-cp-add-slot" class="menu_button" style="font-size:0.75em; opacity:0.7;">
+            <i class="fa-solid fa-plus"></i> Add Category
+        </button>
     </div>`;
+}
+
+/**
+ * Scrapes the current DOM inputs in the picker to preserve state during re-renders.
+ */
+function getPickerCurrentLayers() {
+    const layers = { 
+        emotion: $('#plz-cp-emotion').val()?.trim() || 'neutral',
+        pose:    $('#plz-cp-pose').val()?.trim()    || 'upright'
+    };
+    
+    $('.plz-cp-item').each(function() {
+        const slot = $(this).data('slot');
+        const item = $(this).val().trim();
+        const mod = $(`.plz-cp-mod[data-slot="${slot}"]`).val().trim();
+        layers[slot] = item ? { item, modifier: mod || null } : null;
+    });
+    return layers;
 }
 
 /**
@@ -105,7 +127,6 @@ export async function openCharPicker() {
             ensembles.map(([k, v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v.label)}</option>`).join('');
     }
 
-    // Track whether the user requested a forced regeneration
     let forceRegen = false;
     let _settled = false;
 
@@ -151,13 +172,42 @@ export async function openCharPicker() {
             $('#plz-cp-emotion').val(layers.emotion || 'neutral');
             $('#plz-cp-pose').val(layers.pose || 'upright');
 
-            // Find all inputs in the current grid and update them from the loaded ensemble
             $('#plz-cp-grid-container .plz-cp-item').each(function() {
                 const slot = $(this).data('slot');
                 const val = layers[slot];
                 $(this).val(val?.item || '');
                 $(`#plz-cp-grid-container .plz-cp-mod[data-slot="${slot}"]`).val(val?.modifier || '');
             });
+        });
+
+        // Add Category (On-the-fly schema update)
+        $(document).on('click.plzCp', '#plz-cp-add-slot', async (e) => {
+            e.preventDefault();
+            const id = $('#plz-cp-char').val();
+            const nameRaw = await callPopup('<h3>New Category Name</h3>', 'input', '');
+            const label = (nameRaw ?? '').trim();
+            if (!label) return;
+
+            const key = slugify(label);
+            if (META_SLOTS.includes(key) || BASE_SLOTS.includes(key)) {
+                if (window.toastr) window.toastr.error(`"${label}" is a reserved system keyword.`, 'PersonaLyze');
+                return;
+            }
+
+            const char = state.chatCharacters[id];
+            const currentSlots = char.slots || [...BASE_SLOTS];
+            if (currentSlots.includes(key)) return;
+
+            const newSlots = [...currentSlots, key];
+            
+            // Persist to DNA and State
+            const lastMsgId = Math.max(0, getContext().chat.length - 1);
+            await lockedWriteSlots(lastMsgId, id, newSlots);
+            upsertChatSlots(id, newSlots);
+
+            // Re-render grid while preserving existing typing
+            const preservedLayers = getPickerCurrentLayers();
+            $('#plz-cp-grid-container').html(buildGridHTML(newSlots, preservedLayers));
         });
 
         // Force Regen: set flag then close via OK
@@ -169,19 +219,9 @@ export async function openCharPicker() {
 
     if (!confirmed) return;
 
-    // Collect Layers dynamically from all inputs in the grid
+    // Collect Final Layers
     const characterId = $('#plz-cp-char').val();
-    const layers = { 
-        emotion: $('#plz-cp-emotion').val().trim() || 'neutral',
-        pose:    $('#plz-cp-pose').val().trim()    || 'upright'
-    };
-    
-    $('#plz-cp-grid-container .plz-cp-item').each(function() {
-        const slot = $(this).data('slot');
-        const item = $(this).val().trim();
-        const mod = $(`#plz-cp-grid-container .plz-cp-mod[data-slot="${slot}"]`).val().trim();
-        layers[slot] = item ? { item, modifier: mod || null } : null;
-    });
+    const layers = getPickerCurrentLayers();
 
     const character = state.chatCharacters[characterId];
     const s = getSettings();
@@ -189,14 +229,12 @@ export async function openCharPicker() {
     const prompt = compilePrompt(character.identityAnchor, layers);
     const prefix = buildFilenamePrefix(characterId, 'layered', slugify(layers.emotion));
 
-    // Force regen bypasses the cache — always generates a fresh image
     let filename = forceRegen ? null : findCachedImage(prefix, state.fileIndex);
 
     updateActiveCharacter(characterId);
     updateActiveLayers(layers);
     updateChainLayers(characterId, layers, filename);
 
-    // Write 1
     await lockedWriteVisualState(lastAiIdx, characterId, layers, filename);
 
     if (filename) {
@@ -208,7 +246,6 @@ export async function openCharPicker() {
     if (window.toastr) window.toastr.info('Generating...', 'PersonaLyze');
 
     try {
-        // Randomize seed if forceRegen is true to bypass provider-side caching
         const generationSeed = forceRegen ? Math.floor(Math.random() * 1000000) : (character.seed ?? 1);
 
         filename = await generate(
