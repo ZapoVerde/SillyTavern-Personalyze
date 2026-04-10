@@ -375,22 +375,23 @@ export async function init(router) {
 
     // ── PiAPI: submit background-removal task, return task_id immediately ────
     router.post('/piapi-remove-bg', async (req, res) => {
-        const { image_url, rmbg_model } = req.body;
+        const { image_url, image_base64, rmbg_model } = req.body;
         const apiKey = readSecret(req.user.directories, 'api_key_piapi');
 
         if (!apiKey) {
             return res.status(401).json({ error: 'PiAPI key not configured.' });
         }
-        if (!image_url || !image_url.startsWith('http')) {
-            return res.status(400).json({ error: 'Missing or invalid image_url.' });
+        if (!image_url && !image_base64) {
+            return res.status(400).json({ error: 'Missing image_url or image_base64.' });
         }
 
-        // PiAPI image-toolkit only accepts public CDN URLs in input.image.
-        const imageField = image_url;
-
-        try {
-            const taskResponse = await withRetry(
-                () => fetchChecked('https://api.piapi.ai/api/v1/task', {
+        /**
+         * Submits a single background-removal task with the given image field value.
+         * Resolves with the task_id string; rejects (via fetchChecked) on HTTP errors.
+         */
+        const submitWith = (imageField) => withRetry(
+            async () => {
+                const taskResponse = await fetchChecked('https://api.piapi.ai/api/v1/task', {
                     method: 'POST',
                     headers: {
                         'X-API-Key': apiKey,
@@ -400,23 +401,51 @@ export async function init(router) {
                     body: JSON.stringify({
                         model: 'Qubico/image-toolkit',
                         task_type: 'background-remove',
-                        input: {
-                            image:      imageField,
-                            rmbg_model: rmbg_model ?? 'BEN2',
-                        },
+                        input: { image: imageField, rmbg_model: rmbg_model ?? 'BEN2' },
                     }),
-                }),
-                'PiAPIRmbg'
-            );
-
-            const taskData = await taskResponse.json();
-            const taskPayload = taskData.data ?? taskData;
-            const taskId = taskPayload.task_id;
-
-            if (!taskId) {
-                return res.status(500).json({
-                    error: `PiAPI remove-bg returned no task_id. Response: ${JSON.stringify(taskData).slice(0, 300)}`,
                 });
+                const taskData = await taskResponse.json();
+                const taskId = (taskData.data ?? taskData).task_id;
+                if (!taskId) {
+                    // Treat a missing task_id as a 500 so withRetry handles it correctly
+                    const err = new Error(`PiAPI remove-bg returned no task_id. Response: ${JSON.stringify(taskData).slice(0, 200)}`);
+                    err.httpStatus = 500;
+                    throw err;
+                }
+                return taskId;
+            },
+            'PiAPIRmbg'
+        );
+
+        try {
+            let taskId;
+
+            if (image_base64) {
+                // PiAPI's spec only shows URL examples, but `input.image` is an untyped string.
+                // Try raw base64 first, then a data: URI prefix — whichever PiAPI accepts.
+                // Move to the next format only when withRetry exhausts all attempts (err.exhausted).
+                const formats = [
+                    image_base64,
+                    `data:image/png;base64,${image_base64}`,
+                ];
+                let lastErr;
+                for (const [i, fmt] of formats.entries()) {
+                    try {
+                        console.log(`[PLZ:PiAPIRmbg] Trying base64 format ${i + 1}/${formats.length}…`);
+                        taskId = await submitWith(fmt);
+                        break;
+                    } catch (err) {
+                        lastErr = err;
+                        // Fatal HTTP (401, 400, 403, 404) — no point trying another format
+                        if (err.httpStatus && FATAL_HTTP_CODES.has(err.httpStatus)) throw err;
+                        // Only advance to the next format after withRetry has truly exhausted
+                        if (!err.exhausted) throw err;
+                        console.warn(`[PLZ:PiAPIRmbg] Format ${i + 1} exhausted, trying next format…`);
+                    }
+                }
+                if (taskId === undefined) throw lastErr;
+            } else {
+                taskId = await submitWith(image_url);
             }
 
             return res.json({ task_id: taskId });
