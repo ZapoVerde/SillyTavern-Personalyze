@@ -64,7 +64,7 @@ function buildGridHTML(slots, layers) {
     }).join('');
 
     return `
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+    <div class="plz-layered-grid">
         ${clothingHtml}
         <div>
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">Emotion</label>

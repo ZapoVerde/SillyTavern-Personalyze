@@ -703,3 +703,17 @@ body.plz-vn-active #plz-vn-cycle-btn {
     opacity: 1;
     border-bottom: 2px solid var(--SmartThemeQuoteColor, #f0ad4e) !important;
 }
+
+/* --- Responsive Layered Grid --- */
+.plz-layered-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Default 2 columns */
+    gap: 10px;
+}
+
+/* Mobile Collapse: Break into 1 column for phones/small tablets */
+@media (max-width: 768px) {
+    .plz-layered-grid {
+        grid-template-columns: 1fr;
+    }
+}

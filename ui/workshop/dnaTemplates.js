@@ -177,7 +177,7 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
         </div>
     </div>
 
-    <div style="display:grid;grid-template-columns: 1fr 1fr;gap:10px;margin-bottom:12px;">
+    <div class="plz-layered-grid" style="margin-bottom:12px;">
         ${slotsHTML}
         ${getEmotionInputHTML(layers.emotion)}
         ${getPoseInputHTML(layers.pose)}
