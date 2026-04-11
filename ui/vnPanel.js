@@ -59,10 +59,11 @@ function _syncVisibility() {
 
 /**
  * Renders the VN panel with two zones:
- *  - .plz-vn-left-group  — all cards except the focus card, centered, overlapping
- *  - .plz-vn-focus-slot  — the focus card, always at the right, never overlapped
+ *  - .plz-vn-left-group  — non-focus cards, width set by JS to position the focus card
+ *  - .plz-vn-focus-slot  — the focus card, controls always visible, never overlapped
  *
- * When only one card exists it renders as the focus card only (centred by CSS).
+ * The left group is always rendered (even when empty) so it acts as a spacer
+ * that keeps the focus card centred when there is room.
  */
 function _renderVnRoster() {
     const $panel = $(`#${PANEL_ID}`);
@@ -75,93 +76,111 @@ function _renderVnRoster() {
         _focusCardId = roster.length ? roster[roster.length - 1] : null;
     }
 
-    if (!_focusCardId) {
-        $panel.append(getAddCardHTML());
-        return;
-    }
+    const nonFocusIds = _focusCardId ? roster.filter(id => id !== _focusCardId) : [];
 
-    const nonFocusIds = roster.filter(id => id !== _focusCardId);
+    // ── Left Group (always present — acts as a positioner) ────────────────────
+    const $leftGroup = $('<div class="plz-vn-left-group"></div>');
 
-    // ── Left Group ────────────────────────────────────────────────────────────
-    if (nonFocusIds.length > 0) {
-        const $leftGroup = $('<div class="plz-vn-left-group"></div>');
+    nonFocusIds.forEach(id => {
+        const char = state.chatCharacters[id];
+        if (!char) return;
+        const chain = state.characterChain[id];
+        const ui    = state.uiState[id] || {};
+        $leftGroup.append(
+            getPortraitCardHTML(id, char.label || id, chain?.image || null, ui.flipped)
+        );
+    });
 
-        nonFocusIds.forEach(id => {
-            const char = state.chatCharacters[id];
-            if (!char) return;
-            const chain = state.characterChain[id];
-            const ui    = state.uiState[id] || {};
-            $leftGroup.append(
-                getPortraitCardHTML(id, char.label || id, chain?.image || null, ui.flipped)
-            );
-        });
+    // Clicking a left-group card promotes it to the focus slot
+    $leftGroup.on('click', '.plz-portrait-card', function (e) {
+        if ($(e.target).closest('.plz-card-btn').length) return;
+        const id = $(this).data('id');
+        if (id) {
+            _focusCardId = id;
+            _renderVnRoster();
+        }
+    });
 
-        // Clicking a left-group card promotes it to the focus slot
-        $leftGroup.on('click', '.plz-portrait-card', function (e) {
-            if ($(e.target).closest('.plz-card-btn').length) return; // ignore control buttons
-            const id = $(this).data('id');
-            if (id) {
-                _focusCardId = id;
-                _renderVnRoster();
-            }
-        });
-
-        $panel.append($leftGroup);
-        _applyOverlap($leftGroup, nonFocusIds.length);
-    }
+    $panel.append($leftGroup);
 
     // ── Focus Slot ────────────────────────────────────────────────────────────
     const $focusSlot = $('<div class="plz-vn-focus-slot"></div>');
-    const focusChar  = state.chatCharacters[_focusCardId];
-    if (focusChar) {
-        const chain = state.characterChain[_focusCardId];
-        const ui    = state.uiState[_focusCardId] || {};
-        $focusSlot.append(
-            getPortraitCardHTML(
-                _focusCardId,
-                focusChar.label || _focusCardId,
-                chain?.image || null,
-                ui.flipped
-            )
-        );
+    if (_focusCardId) {
+        const focusChar = state.chatCharacters[_focusCardId];
+        if (focusChar) {
+            const chain = state.characterChain[_focusCardId];
+            const ui    = state.uiState[_focusCardId] || {};
+            $focusSlot.append(
+                getPortraitCardHTML(
+                    _focusCardId,
+                    focusChar.label || _focusCardId,
+                    chain?.image || null,
+                    ui.flipped
+                )
+            );
+        }
     }
     $panel.append($focusSlot);
 
     // ── Add FAB ───────────────────────────────────────────────────────────────
     $panel.append(getAddCardHTML());
+
+    // Position the focus card and compute any overlap
+    _applyLayout($leftGroup, nonFocusIds.length);
 }
 
 /**
- * Computes and applies a CSS --plz-overlap variable so all left-group cards fit
- * within the space to the left of the focus card.
+ * Three-phase layout engine. Sets the left group's explicit width (which
+ * positions the focus card) and the --plz-overlap variable.
  *
- * Cards always maintain full height; they overlap each other rather than
- * compressing. The focus slot is always guaranteed one full card-width.
+ * Phase 1 — plenty of room:
+ *   Cards fit left of centre. Left group = panelWidth/2 - cardWidth/2.
+ *   Focus card sits exactly at the viewport centre.
+ *
+ * Phase 2 — focus pushed right:
+ *   Cards need more space than half the panel. Left group grows to fit them
+ *   naturally, pushing the focus card rightward. No overlap yet.
+ *
+ * Phase 3 — overlap:
+ *   Cards would push focus beyond the right edge. Left group is capped at
+ *   panelWidth - cardWidth and cards start overlapping each other.
  *
  * @param {jQuery} $group     The .plz-vn-left-group element
- * @param {number} cardCount  Number of cards in the group
+ * @param {number} cardCount  Number of non-focus cards in the group
  */
-function _applyOverlap($group, cardCount) {
-    if (cardCount <= 1) {
-        $group.css('--plz-overlap', '0px');
-        return;
+function _applyLayout($group, cardCount) {
+    const panelHeight  = $(`#${PANEL_ID}`).height() || 300;
+    const cardWidth    = panelHeight * (2 / 3);                    // matches aspect-ratio: 2/3
+    const panelWidth   = window.innerWidth;
+    const centeredLeft = Math.max(0, panelWidth / 2 - cardWidth / 2); // focus card x when centred
+    const maxLeftWidth = Math.max(panelWidth - cardWidth, 0);         // focus card at far right
+
+    let leftGroupWidth, overlap;
+
+    if (cardCount === 0) {
+        // No left cards — spacer only, focus card centred
+        leftGroupWidth = centeredLeft;
+        overlap        = 0;
+    } else {
+        const naturalTotal = cardCount * cardWidth;
+
+        if (naturalTotal > maxLeftWidth) {
+            // Phase 3: overlap needed to keep focus card visible
+            const excess = naturalTotal - maxLeftWidth;
+            overlap      = Math.min(excess / (cardCount - 1), cardWidth * 0.85);
+            leftGroupWidth = maxLeftWidth;
+        } else {
+            // Phase 1 or 2: no overlap; left group is whichever is larger —
+            // the cards' natural footprint or the centred-focus position
+            overlap        = 0;
+            leftGroupWidth = Math.max(naturalTotal, centeredLeft);
+        }
     }
 
-    const panelHeight   = $(`#${PANEL_ID}`).height() || 300;
-    const cardWidth     = panelHeight * (2 / 3);         // derives from aspect-ratio: 2/3
-    const leftZoneWidth = Math.max(window.innerWidth - cardWidth, cardWidth);
-    const totalNatural  = cardCount * cardWidth;
-
-    if (totalNatural <= leftZoneWidth) {
-        $group.css('--plz-overlap', '0px');              // cards fit — spread out naturally
-        return;
-    }
-
-    // Overlap just enough so the total footprint equals leftZoneWidth.
-    // Cap at 85% of card width so a sliver of each card is always visible.
-    const excess   = totalNatural - leftZoneWidth;
-    const overlap  = Math.min(excess / (cardCount - 1), cardWidth * 0.85);
-    $group.css('--plz-overlap', `${Math.round(overlap)}px`);
+    $group.css({
+        width:           `${Math.round(leftGroupWidth)}px`,
+        '--plz-overlap': `${Math.round(overlap)}px`,
+    });
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────

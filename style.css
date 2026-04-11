@@ -565,7 +565,7 @@ body.plz-vn-active #plz-vn-panel {
     display: flex;
     flex-direction: row;
     align-items: flex-end;
-    justify-content: center; /* centers single focus card when left group is absent */
+    justify-content: flex-start; /* JS controls focus position via left-group width */
     gap: 0;
     padding: 0;
     /* portrait area = split% of viewport, minus the top bar */
@@ -573,17 +573,17 @@ body.plz-vn-active #plz-vn-panel {
     overflow: visible;
 }
 
-/* ── Left Group: non-focus cards, centered, dynamic overlap via --plz-overlap ── */
+/* ── Left Group: explicit width set by JS — acts as a positioner for the focus card ── */
 
 .plz-vn-left-group {
-    flex: 1;
-    min-width: 0;
+    flex: 0 0 auto; /* width is set explicitly by JS */
     height: 100%;
     display: flex;
     flex-direction: row;
     align-items: flex-end;
-    justify-content: center;
+    justify-content: center; /* centers non-focus cards within their allocated space */
     overflow: visible;
+    transition: width 0.3s ease;
 }
 
 .plz-vn-left-group .plz-portrait-card {
