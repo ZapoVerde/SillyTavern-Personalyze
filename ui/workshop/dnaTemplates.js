@@ -1,21 +1,20 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaTemplates.js
- * @stamp {"utc":"2026-04-11T14:20:00.000Z"}
+ * @stamp {"utc":"2026-04-12T10:20:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Generates the HTML for the Character Workshop Dashboard.
  * 
- * Updated for the Flexible Wardrobe architecture:
- * 1. Dynamic slot rendering based on character.slots.
- * 2. Add Category button.
- * 3. Delete icons for custom slots.
+ * Updated for the "Ghost Studio" architecture:
+ * 1. Removed "Add" tab.
+ * 2. Prepend unconditional "Create New" button to the DNA roster.
+ * 3. Studio template handles the '__new__' ghost state.
  * 
  * @api-declaration
  * getBaseWorkshopHTML()
  * getDnaRosterHTML(characters, activeRoster, activeId)
  * getStudioHTML(characterId, character, layers, enabledEngines, styleLibrary, defaultStyleName)
  * getStudioEmptyHTML()
- * getAddCharacterHTML()
  * 
  * @contract
  *   assertions:
@@ -27,7 +26,7 @@
 import { escapeHtml } from '../../utils/history.js';
 import { BASE_SLOTS } from '../../defaults.js';
 
-/** Main modal shell with DNA, Studio, Library, and Add tabs. */
+/** Main modal shell with DNA, Studio, and Library tabs. */
 export function getBaseWorkshopHTML() {
     return `
     <div id="plz-workshop-overlay" class="plz-overlay plz-hidden">
@@ -41,14 +40,12 @@ export function getBaseWorkshopHTML() {
                     <button class="plz-tab-btn menu_button" data-tab="dna">DNA</button>
                     <button class="plz-tab-btn menu_button" data-tab="studio">Studio</button>
                     <button class="plz-tab-btn menu_button" data-tab="library">Library</button>
-                    <button class="plz-tab-btn menu_button" data-tab="add">Add</button>
                 </div>
             </div>
             <div class="plz-workshop-body">
                 <div id="plz-tab-dna"     class="plz-tab-panel plz-hidden"></div>
                 <div id="plz-tab-studio"  class="plz-tab-panel plz-hidden"></div>
                 <div id="plz-tab-library" class="plz-tab-panel plz-hidden"></div>
-                <div id="plz-tab-add"     class="plz-tab-panel plz-hidden"></div>
             </div>
         </div>
 
@@ -77,30 +74,44 @@ export function getBaseWorkshopHTML() {
 
 /** Renders the character list currently in the chat's DNA history. */
 export function getDnaRosterHTML(characters, activeRoster, activeId) {
+    // 1. Unconditional "Create New" entry
+    const addNewHtml = `
+    <div class="plz-roster-item plz-dna-add-new" style="border: 1px dashed var(--SmartThemeBorderColor); opacity: 0.8; justify-content: center; cursor: pointer; padding: 12px;">
+        <div style="display:flex; align-items:center; gap:8px; font-weight:bold;">
+            <i class="fa-solid fa-plus"></i> Create New Character
+        </div>
+    </div>`;
+
     const entries = Object.entries(characters);
+    
+    // 2. Roster List
+    let rosterHtml = '';
     if (entries.length === 0) {
-        return `<div style="text-align:center;padding:60px;opacity:0.5;">
-            No character DNA found in this chat. Use the <b>Library</b> tab to import one.
+        rosterHtml = `<div style="text-align:center;padding:40px;opacity:0.5;font-size:0.9em;">
+            No character DNA found in this chat.
         </div>`;
+    } else {
+        rosterHtml = entries.map(([id, char]) => {
+            if (id === '__new__') return ''; // Don't show ghost in the list
+            const isEnabled = activeRoster.includes(id);
+            const isActive = id === activeId;
+            const displayName = char.label || id.replace(/_/g, ' ');
+            return `
+            <div class="plz-roster-item ${isActive ? 'plz-active-char' : ''}" data-id="${escapeHtml(id)}">
+                <div class="plz-roster-text">
+                    <strong>${isActive ? '<i class="fa-solid fa-user"></i> ' : ''}${escapeHtml(displayName)}</strong>
+                    <small>${escapeHtml(char.identityAnchor || '—')}</small>
+                </div>
+                <div class="plz-roster-actions">
+                    <i class="fa-solid ${isEnabled ? 'fa-toggle-on' : 'fa-toggle-off'} plz-dna-toggle" 
+                       style="font-size:1.3em; cursor:pointer; color:${isEnabled ? 'var(--SmartThemeQuoteColor)' : 'inherit'};"></i>
+                    <i class="fa-solid fa-pen-to-square plz-dna-edit" title="Edit DNA in Studio"></i>
+                </div>
+            </div>`;
+        }).join('');
     }
 
-    return entries.map(([id, char]) => {
-        const isEnabled = activeRoster.includes(id);
-        const isActive = id === activeId;
-        const displayName = char.label || id.replace(/_/g, ' ');
-        return `
-        <div class="plz-roster-item ${isActive ? 'plz-active-char' : ''}" data-id="${escapeHtml(id)}">
-            <div class="plz-roster-text">
-                <strong>${isActive ? '<i class="fa-solid fa-user"></i> ' : ''}${escapeHtml(displayName)}</strong>
-                <small>${escapeHtml(char.identityAnchor || '—')}</small>
-            </div>
-            <div class="plz-roster-actions">
-                <i class="fa-solid ${isEnabled ? 'fa-toggle-on' : 'fa-toggle-off'} plz-dna-toggle" 
-                   style="font-size:1.3em; cursor:pointer; color:${isEnabled ? 'var(--SmartThemeQuoteColor)' : 'inherit'};"></i>
-                <i class="fa-solid fa-pen-to-square plz-dna-edit" title="Edit DNA in Studio"></i>
-            </div>
-        </div>`;
-    }).join('');
+    return addNewHtml + rosterHtml;
 }
 
 const ENGINE_OPTIONS = [
@@ -111,6 +122,7 @@ const ENGINE_OPTIONS = [
 
 /** Renders the Studio dashboard with the Dynamic Layered Grid. */
 export function getStudioHTML(characterId, character, layers, enabledEngines = {}, styleLibrary = {}, defaultStyleName = '') {
+    const isGhost = characterId === '__new__';
     const displayName = character.label || characterId.replace(/_/g, ' ');
     const akaTagsHTML = (character.aka || []).map(alias => `
         <span class="plz-aka-tag" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;background:rgba(255,255,255,0.08);font-size:0.8em;">
@@ -131,13 +143,18 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
         return getLayerInputHTML(label, key, layers[key], isDeletable);
     }).join('');
 
+    const idLabel = isGhost 
+        ? `<small style="opacity:0.35;"><i>Unsaved Character</i></small>`
+        : `<small style="opacity:0.35;">System ID: ${escapeHtml(characterId)}</small>`;
+
     return `
     <div style="margin-bottom:10px;">
-        <input id="plz-studio-label" class="text_pole" type="text" value="${escapeHtml(displayName)}"
-               style="width:100%;font-size:1em;font-weight:bold;margin-bottom:4px;" />
+        <input id="plz-studio-label" class="text_pole" type="text" value="${isGhost ? '' : escapeHtml(displayName)}"
+               placeholder="Character Name"
+               style="width:100%;font-size:1.1em;font-weight:bold;margin-bottom:4px;" />
         <div style="display:flex;justify-content:space-between;align-items:center;">
-            <small style="opacity:0.35;">System ID: ${escapeHtml(characterId)}</small>
-            <button class="menu_button plz-save-ensemble-btn" style="font-size:0.8em;">Save as Ensemble</button>
+            ${idLabel}
+            <button class="menu_button plz-save-ensemble-btn" style="font-size:0.8em;" ${isGhost ? 'disabled title="Save character first"' : ''}>Save as Ensemble</button>
         </div>
     </div>
 
@@ -146,6 +163,7 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
         <button class="menu_button plz-anchor-scan" data-mode="studio" style="font-size:0.75em;padding:2px 8px;">Scan Chat</button>
     </div>
     <textarea id="plz-studio-anchor" class="text_pole plz-auto-textarea" rows="2"
+              placeholder="Permanent physical features (face, hair, build)..."
               style="width:100%;margin-bottom:12px;font-size:0.88em;">${escapeHtml(character.identityAnchor)}</textarea>
 
     <div style="margin-bottom:12px;">
@@ -170,7 +188,7 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
         <div style="flex:1;"></div>
         <input id="plz-studio-hint" type="text" class="text_pole" placeholder="Hint (e.g. 'Formal')" style="width:120px; font-size:0.85em;" />
         <button id="plz-studio-force-costume" class="menu_button" style="font-size:0.85em;">Scan</button>
-        <button id="plz-studio-layers-save" class="menu_button" style="padding:0 15px;">Apply to Turn</button>
+        ${isGhost ? '<button id="plz-studio-layers-save" class="menu_button" style="padding:0 15px;">Register &amp; Apply</button>' : ''}
     </div>
 
     <div style="margin-bottom:8px;"><strong>Saved Ensembles</strong> <small style="opacity:0.5; font-weight:normal;">(★ = Everyday Wear)</small></div>
@@ -195,7 +213,7 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
 
         <div style="border:1px solid rgba(var(--SmartThemeErrorColor-rgb, 200,60,60),0.3);border-radius:6px;padding:10px 12px;">
             <div style="font-size:0.8em;opacity:0.6;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">Maintenance</div>
-            <button id="plz-studio-purge" class="menu_button" style="width:100%;color:var(--SmartThemeErrorColor, #c83c3c);">
+            <button id="plz-studio-purge" class="menu_button" style="width:100%;color:var(--SmartThemeErrorColor, #c83c3c);" ${isGhost ? 'disabled' : ''}>
                 <i class="fa-solid fa-trash-can"></i> Purge Character Portraits
             </button>
         </div>
@@ -240,7 +258,7 @@ function getPoseInputHTML(val) {
 }
 
 function getEnsembleListHTML(ensembles, defaultKey) {
-    const entries = Object.entries(ensembles);
+    const entries = Object.entries(ensembles || {});
     if (entries.length === 0) return `<p style="opacity:0.4;font-size:0.85em;">No saved ensembles.</p>`;
     
     return entries.map(([key, data]) => {
@@ -262,14 +280,4 @@ function getEnsembleListHTML(ensembles, defaultKey) {
 
 export function getStudioEmptyHTML() {
     return `<div style="text-align:center;padding:60px;opacity:0.5;">Select a character from DNA tab to open Dashboard.</div>`;
-}
-
-export function getAddCharacterHTML() {
-    return `
-    <div style="margin-bottom:20px;">
-        <h4 style="margin:0 0 6px;">Register Character</h4>
-        <input type="text" id="plz-add-name" class="text_pole" placeholder="Name" style="width:100%;margin-bottom:10px;" />
-        <textarea id="plz-add-anchor" class="text_pole plz-auto-textarea" rows="4" placeholder="Identity Anchor (Permanent visual features)" style="width:100%;margin-bottom:16px;"></textarea>
-    </div>
-    <button id="plz-add-submit" class="menu_button" style="width:100%;">Add to DNA</button>`;
 }

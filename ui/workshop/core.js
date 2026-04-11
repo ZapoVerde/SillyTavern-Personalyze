@@ -1,14 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/core.js
- * @stamp {"utc":"2026-04-09T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-12T10:40:00.000Z"}
  * @architectural-role UI Orchestrator (Workshop)
  * @description
  * High-level coordinator for the Personalyze Character Workshop modal.
  *
  * Manages modal injection, tab-switching, and orchestrates the binding
- * of specialized handlers for DNA, Library, and Add views.
+ * of specialized handlers for DNA, Studio, and Library views.
  *
- * Tabs: DNA (chat roster) | Studio (DNA editor) | Library (global templates) | Add (create new)
+ * Updated for the "Ghost Studio" architecture:
+ * 1. Removed the 'Add' tab from the switch logic.
+ * 2. Simplified the renderer to focus on DNA, Studio, and Library.
  *
  * @api-declaration
  * openWorkshop(tab)  — primary entry point; injects modal if needed, then shows it.
@@ -22,14 +24,13 @@
  *     external_io: [jQuery DOM, dnaListeners, libraryListeners, dnaTemplates]
  */
 
-import { state } from '../../state.js';
-import { getBaseWorkshopHTML, getAddCharacterHTML } from './dnaTemplates.js';
+import { getBaseWorkshopHTML } from './dnaTemplates.js';
 import { renderDNAView, renderStudioView, bindDNAHandlers } from './dnaListeners.js';
 import { renderLibraryView, bindLibraryHandlers } from './libraryListeners.js';
 
 /**
  * Switches the active tab and triggers the appropriate sub-renderer.
- * @param {'dna'|'studio'|'library'|'add'} tabName
+ * @param {'dna'|'studio'|'library'} tabName
  */
 export function switchTab(tabName) {
     // 1. Update Tab Button UI
@@ -50,9 +51,6 @@ export function switchTab(tabName) {
             break;
         case 'library':
             renderLibraryView();
-            break;
-        case 'add':
-            $('#plz-tab-add').html(getAddCharacterHTML());
             break;
     }
 }
@@ -97,7 +95,7 @@ export function injectWorkshop() {
  * Primary entry point to display the Character Workshop.
  * Ensures the shell is injected before attempting navigation.
  * 
- * @param {'dna'|'studio'|'library'|'add'} tab  Initial tab to display.
+ * @param {'dna'|'studio'|'library'} tab  Initial tab to display.
  */
 export function openWorkshop(tab = 'dna') {
     injectWorkshop();

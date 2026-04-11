@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/archivist.js
- * @stamp {"utc":"2026-04-10T22:00:00.000Z"}
+ * @stamp {"utc":"2026-04-12T10:10:00.000Z"}
  * @architectural-role Orchestrator (Phase 1.5)
  * @description
  * Manages the resolution of unrecognized characters detected in the narrative.
@@ -8,6 +8,9 @@
  * 1. Extraction of physical identity via Smart Model.
  * 2. User resolution via a 3-way modal (Create, Alias, or Ignore).
  * 3. DNA commitment based on the choice.
+ *
+ * Updated for the "Clean Slate Fix": ensures newly created characters start
+ * with a blank wardrobe.
  *
  * @api-declaration
  * runArchivistPipeline(messageId, detectedName) -> Promise<void>
@@ -38,7 +41,9 @@ import {
     upsertChatCharacterDef,
     upsertChatCharacterLabel,
     upsertChatCharacterAka,
-    setActiveRoster
+    setActiveRoster,
+    updateChainLayers,
+    getCleanLayers
 } from '../../state.js';
 
 /**
@@ -91,6 +96,9 @@ export async function runArchivistPipeline(messageId, detectedName) {
                 await lockedWriteLabel(messageId, newId, detectedName);
                 upsertChatCharacterDef(newId, finalAnchor, 1);
                 upsertChatCharacterLabel(newId, detectedName);
+
+                // CLEAN SLATE FIX: Ensure they don't inherit previous character's clothes
+                updateChainLayers(newId, getCleanLayers(), null);
                 
                 const newRoster = [...new Set([...state.activeRoster, newId])];
                 await lockedWriteRoster(messageId, newRoster);
@@ -98,7 +106,7 @@ export async function runArchivistPipeline(messageId, detectedName) {
                 
                 document.dispatchEvent(new CustomEvent('plz:roster-changed'));
 
-                // FIX: Immediately process their visual state and generate image
+                // Immediately process their visual state and generate image
                 await processKnownSubject(messageId, newId, context.chat[messageId].mes, historyContext, s);
                 break;
             }
@@ -113,7 +121,7 @@ export async function runArchivistPipeline(messageId, detectedName) {
                 await lockedWriteAka(messageId, targetId, newAkaList);
                 upsertChatCharacterAka(targetId, newAkaList);
 
-                // FIX: Immediately process their visual state using the new linked ID
+                // Immediately process their visual state using the new linked ID
                 await processKnownSubject(messageId, targetId, context.chat[messageId].mes, historyContext, s);
                 break;
             }

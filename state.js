@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/state.js
- * @stamp {"utc":"2026-04-11T13:00:00.000Z"}
+ * @stamp {"utc":"2026-04-12T10:00:00.000Z"}
  * @architectural-role Stateful Owner (Runtime State)
  * @description
  * Single source of truth for all PersonaLyze in-memory runtime state.
@@ -8,7 +8,9 @@
  * Tracks the active character, their current layered visual state, 
  * and the local DNA derived from chat history.
  *
- * Updated to support Dynamic Wardrobe Slots per character.
+ * Updated for the "Ghost Studio" architecture:
+ * 1. Added getCleanLayers helper to prevent clothing inheritance bugs.
+ * 2. Supports the reserved '__new__' ID for the creation flow.
  *
  * @api-declaration
  * state                                    — Read-only access to runtime data.
@@ -33,6 +35,7 @@
  * upsertChatDefaultEnsemble(id, key)       — Updates a character's designated default ensemble.
  * upsertChatSlots(id, slots)               — Updates a character's custom slot schema.
  * resolveAliasToId(detectedName)           — Maps a raw name to a canonical character ID.
+ * getCleanLayers(slots)                    — Returns a blank visual state for a new character.
  * 
  * @contract
  *   assertions:
@@ -155,9 +158,28 @@ export function removeFromFileIndex(filenames) {
     for (const f of filenames) state.fileIndex.delete(f);
 }
 
+/**
+ * Generates a blank visual state for a character.
+ * Prevents newly created characters from inheriting the active layers of
+ * the previous character.
+ * 
+ * @param {string[]} slots - The category list for this character.
+ * @returns {object}
+ */
+export function getCleanLayers(slots) {
+    const layers = {
+        emotion: 'neutral',
+        pose:    'upright'
+    };
+    (slots || BASE_SLOTS).forEach(s => {
+        layers[s] = null;
+    });
+    return layers;
+}
+
 // ─── Local DNA Setters ───────────────────────────────────────────────────────
 
-function _ensureChatChar(id) {
+export function _ensureChatChar(id) {
     if (!state.chatCharacters[id]) {
         state.chatCharacters[id] = { 
             label: id.replace(/_/g, ' '), 
