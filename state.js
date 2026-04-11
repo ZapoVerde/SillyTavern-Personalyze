@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/state.js
- * @stamp {"utc":"2026-04-12T10:00:00.000Z"}
+ * @stamp {"utc":"2026-04-14T09:10:00.000Z"}
  * @architectural-role Stateful Owner (Runtime State)
  * @description
  * Single source of truth for all PersonaLyze in-memory runtime state.
@@ -8,12 +8,13 @@
  * Tracks the active character, their current layered visual state, 
  * and the local DNA derived from chat history.
  *
- * Updated for the "Ghost Studio" architecture:
- * 1. Added getCleanLayers helper to prevent clothing inheritance bugs.
- * 2. Supports the reserved '__new__' ID for the creation flow.
+ * Updated for the Multi-Character Architecture:
+ * 1. Added uiState: {} for transient cosmetic preferences (e.g. flipping).
+ * 2. Added toggleCharacterFlip(characterId) to manage mirror-state and trigger UI updates.
  *
  * @api-declaration
  * state                                    — Read-only access to runtime data.
+ * toggleCharacterFlip(characterId)         — Toggles the mirror state for a character.
  * setWorkshopCharacter(characterId)        — Sets the character open in the Workshop.
  * resetState()                             — Restores state to factory defaults.
  * updateActiveCharacter(characterId)       — Sets the currently tracked character.
@@ -41,7 +42,7 @@
  *   assertions:
  *     purity: Stateful Owner
  *     state_ownership: [state]
- *     external_io: []
+ *     external_io: [DOM (CustomEvents)]
  */
 
 import { BASE_SLOTS } from './defaults.js';
@@ -77,7 +78,24 @@ export const state = {
 
     // Workshop (Temporary UI State)
     _workshopCharacterId: null,
+
+    // Transient UI Preferences (Session-only, not saved to DNA)
+    uiState: {}, // { [characterId]: { flipped: boolean } }
 };
+
+/**
+ * Toggles the horizontal flip state for a specific character's portrait.
+ * Dispatches 'plz:roster-render-req' to notify all active UI wrappers.
+ * 
+ * @param {string} characterId 
+ */
+export function toggleCharacterFlip(characterId) {
+    if (!state.uiState[characterId]) {
+        state.uiState[characterId] = { flipped: false };
+    }
+    state.uiState[characterId].flipped = !state.uiState[characterId].flipped;
+    document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
+}
 
 /** Sets the character currently being edited in the Workshop. */
 export function setWorkshopCharacter(characterId) {
@@ -96,6 +114,7 @@ export function resetState() {
     state.characterChain       = {};
     state.fileIndex            = new Set();
     state._workshopCharacterId = null;
+    state.uiState              = {};
 }
 
 /** Sets the character currently being tracked for this chat turn. */

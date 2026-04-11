@@ -1,14 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/defaults.js
- * @stamp {"utc":"2026-04-11T17:00:00.000Z"}
+ * @stamp {"utc":"2026-04-14T12:00:00.000Z"}
  * @architectural-role Default Configuration
  * @description
  * Default constants for the Layered State Pipeline.
  * 
- * Updated to provide BASE_SLOTS for the Flexible Wardrobe architecture.
- *
  * @api-declaration
  * POLLINATIONS_BASE_URL
+ * PLZ_IMAGE_FOLDER
  * BASE_SLOTS
  * DEFAULT_SLOTS
  * META_SLOT_EMOTION
@@ -19,6 +18,9 @@
 
 /** Primary API gateway for Pollinations. */
 export const POLLINATIONS_BASE_URL = 'https://gen.pollinations.ai';
+
+/** Registry folder for all PersonaLyze portraits. */
+export const PLZ_IMAGE_FOLDER = 'personalyze';
 
 /** Available Pollinations image models. */
 export const POLLINATIONS_MODELS = [

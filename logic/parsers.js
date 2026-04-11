@@ -1,18 +1,19 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/parsers.js
- * @stamp {"utc":"2026-04-12T14:00:00.000Z"}
+ * @stamp {"utc":"2026-04-14T10:10:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Pure functions to parse structured text responses from the Layered State Pipeline.
  * Implements the logic for handling "KEEP" (persistence) and "None" (removal) instructions.
  * 
- * Added chunky autonaming logic for the Ensemble Autosave system, including 
- * support for accessories in the identity chain.
+ * Updated for the Multi-Character Architecture:
+ * 1. Added parseSceneRoster for cleaning discovered character lists.
  *
  * @api-declaration
  * parsePhase1(raw) -> string|null
  * parsePhase2(raw) -> boolean
  * parsePhase3(raw) -> object
+ * parseSceneRoster(raw) -> string[]
  * mergeLayeredUpdate(current, update) -> object
  * generateEnsembleLabel(layers) -> string
  * generateEnsembleKey(layers) -> string
@@ -90,6 +91,21 @@ export function parsePhase3(raw) {
     }
 
     return update;
+}
+
+/**
+ * Parses the output of SCENE_ROSTER_PROMPT.
+ * 
+ * @param {string} raw - Comma separated list of names/IDs.
+ * @returns {string[]}
+ */
+export function parseSceneRoster(raw) {
+    const text = (raw ?? '').trim().replace(/^RESULT:\s*/i, '');
+    if (!text || /^none$/i.test(text)) return [];
+
+    return text.split(',')
+        .map(s => s.trim())
+        .filter(s => s.length > 0 && !/^none$/i.test(s));
 }
 
 /**

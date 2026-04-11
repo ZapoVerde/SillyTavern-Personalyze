@@ -1,14 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-12T14:10:00.000Z"}
+ * @stamp {"utc":"2026-04-14T12:50:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
  * visual state for the current turn using the 5-slot architecture.
  *
- * Updated for Ensemble Autosave: Automatically generates and saves an 
- * ensemble whenever manual changes are confirmed, including accessories.
- * Fixed critical reference bug in async image completion.
+ * Updated for the Multi-Character Architecture:
+ * 1. Automatically adds the selected character to the activeRoster if missing.
+ * 2. Persists roster changes to DNA and triggers UI refreshes via 'plz:roster-changed'.
  *
  * @api-declaration
  * openCharPicker() → Promise<void>
@@ -17,23 +17,24 @@
  *   assertions:
  *     purity: IO Executor
  *     state_ownership: [state (via setters)]
- *     external_io: [callPopup, dnaWriter.js, promptCompiler.js, imageCache.js, portrait.js]
+ *     external_io: [callPopup, dnaWriter.js, promptCompiler.js, imageCache.js]
  */
 
 import { callPopup } from '../../../../../script.js';
 import { getContext } from '../../../../extensions.js';
 import {
     state, updateActiveCharacter, updateActiveLayers, updateActiveImage,
-    addToFileIndex, updateChainLayers, upsertChatSlots, upsertChatEnsemble
+    addToFileIndex, updateChainLayers, upsertChatSlots, upsertChatEnsemble,
+    setActiveRoster
 } from '../state.js';
 import { compilePrompt } from '../logic/promptCompiler.js';
 import { buildFilenamePrefix, findCachedImage, generate } from '../imageCache.js';
-import { setPortrait } from '../portrait.js';
 import { 
     lockedWriteVisualState, 
     lockedPatchVisualStateImage, 
     lockedWriteSlots,
-    lockedWriteEnsemble
+    lockedWriteEnsemble,
+    lockedWriteRoster
 } from '../io/dnaWriter.js';
 import { escapeHtml, slugify } from '../utils/history.js';
 import { error, log } from '../utils/logger.js';
@@ -111,27 +112,29 @@ export async function openCharPicker() {
         return;
     }
 
-    const rosterChars = state.activeRoster.filter(id => state.chatCharacters[id]);
-    if (rosterChars.length === 0) return;
+    // Include all characters defined in the DNA, not just those in the roster
+    const dnaChars = Object.keys(state.chatCharacters);
+    if (dnaChars.length === 0) {
+        if (window.toastr) window.toastr.info('No character DNA found in this chat.', 'PersonaLyze');
+        return;
+    }
 
-    const initId = (state.activeCharacterId && rosterChars.includes(state.activeCharacterId))
-        ? state.activeCharacterId : rosterChars[0];
+    const initId = (state.activeCharacterId && dnaChars.includes(state.activeCharacterId))
+        ? state.activeCharacterId : dnaChars[0];
 
     const currentLayers = state.characterChain[initId]?.layers || state.activeLayers;
     const currentSlots = state.chatCharacters[initId]?.slots || [...BASE_SLOTS];
 
-    const charOptions = rosterChars.map(id => {
+    const charOptions = dnaChars.map(id => {
         const label = state.chatCharacters[id]?.label || id.replace(/_/g, ' ');
-        return `<option value="${escapeHtml(id)}"${id === initId ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+        const isOnScreen = state.activeRoster.includes(id) ? ' (On Screen)' : '';
+        return `<option value="${escapeHtml(id)}"${id === initId ? ' selected' : ''}>${escapeHtml(label)}${isOnScreen}</option>`;
     }).join('');
 
     function buildEnsembleOptions(id) {
         const ensembles = Object.entries(state.chatCharacters[id]?.ensembles ?? {});
         if (!ensembles.length) return '<option value="">— No ensembles —</option>';
-        
-        // Return latest ensembles first (Reverse-chronological sort)
         const sorted = [...ensembles].reverse();
-
         return '<option value="">— Quick Load Ensemble —</option>' +
             sorted.map(([k, v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v.label)}</option>`).join('');
     }
@@ -160,7 +163,6 @@ export async function openCharPicker() {
             'confirm'
         ).then(ok => finish(!!ok)).catch(() => finish(false));
 
-        // Dynamic Roster Switching
         $(document).on('change.plzCp', '#plz-cp-char', function() {
             const id = $(this).val();
             $('#plz-cp-ensemble').html(buildEnsembleOptions(id));
@@ -170,17 +172,14 @@ export async function openCharPicker() {
             $('#plz-cp-grid-container').html(buildGridHTML(slots, layers));
         });
 
-        // Ensemble Quick Load
         $(document).on('change.plzCp', '#plz-cp-ensemble', function() {
             const charId = $('#plz-cp-char').val();
             const key = $(this).val();
             if (!key) return;
             const ensemble = state.chatCharacters[charId].ensembles[key];
             const layers = applyEnsemble(state.activeLayers, ensemble.layers);
-            
             $('#plz-cp-emotion').val(layers.emotion || 'neutral');
             $('#plz-cp-pose').val(layers.pose || 'upright');
-
             $('#plz-cp-grid-container .plz-cp-item').each(function() {
                 const slot = $(this).data('slot');
                 const val = layers[slot];
@@ -189,37 +188,28 @@ export async function openCharPicker() {
             });
         });
 
-        // Add Category (On-the-fly schema update)
         $(document).on('click.plzCp', '#plz-cp-add-slot', async (e) => {
             e.preventDefault();
             const id = $('#plz-cp-char').val();
             const nameRaw = await callPopup('<h3>New Category Name</h3>', 'input', '');
             const label = (nameRaw ?? '').trim();
             if (!label) return;
-
             const key = slugify(label);
             if (META_SLOTS.includes(key) || BASE_SLOTS.includes(key)) {
                 if (window.toastr) window.toastr.error(`"${label}" is a reserved system keyword.`, 'PersonaLyze');
                 return;
             }
-
             const char = state.chatCharacters[id];
             const currentSlots = char.slots || [...BASE_SLOTS];
             if (currentSlots.includes(key)) return;
-
             const newSlots = [...currentSlots, key];
-            
-            // Persist to DNA and State
             const lastMsgId = Math.max(0, getContext().chat.length - 1);
             await lockedWriteSlots(lastMsgId, id, newSlots);
             upsertChatSlots(id, newSlots);
-
-            // Re-render grid while preserving existing typing
             const preservedLayers = getPickerCurrentLayers();
             $('#plz-cp-grid-container').html(buildGridHTML(newSlots, preservedLayers));
         });
 
-        // Force Regen: set flag then close via OK
         $(document).on('click.plzCp', '#plz-cp-force-regen', () => {
             forceRegen = true;
             $('#dialogue_popup_ok').trigger('click');
@@ -228,17 +218,24 @@ export async function openCharPicker() {
 
     if (!confirmed) return;
 
-    // Collect Final Layers
+    // ─── Post-Confirmation Logic ───
+
     const characterId = $('#plz-cp-char').val();
     const layers = getPickerCurrentLayers();
 
-    // ─── Ensemble Autosave (Manual Tweak) ───
+    // 1. Ensemble Autosave
     const ensembleLabel = generateEnsembleLabel(layers);
     const ensembleKey   = generateEnsembleKey(layers);
-    
     await lockedWriteEnsemble(lastAiIdx, characterId, ensembleKey, ensembleLabel, layers);
     upsertChatEnsemble(characterId, ensembleKey, ensembleLabel, layers);
-    log('CharPicker', `Autosaved manual tweak as ensemble: ${ensembleLabel}`);
+
+    // 2. Roster Sync (Crucial for Multi-Character Layout)
+    if (!state.activeRoster.includes(characterId)) {
+        const nextRoster = [...state.activeRoster, characterId];
+        await lockedWriteRoster(lastAiIdx, nextRoster);
+        setActiveRoster(nextRoster);
+        document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+    }
 
     const character = state.chatCharacters[characterId];
     const s = getSettings();
@@ -256,7 +253,7 @@ export async function openCharPicker() {
 
     if (filename) {
         updateActiveImage(filename);
-        setPortrait(filename);
+        document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
         return;
     }
 
@@ -277,10 +274,11 @@ export async function openCharPicker() {
             engine
         );
         addToFileIndex(filename);
-        updateActiveImage(filename); // FIX: was 'file'
+        updateActiveImage(filename);
         updateChainLayers(characterId, layers, filename);
         await lockedPatchVisualStateImage(lastAiIdx, characterId, filename, recordId);
-        setPortrait(filename);
+        
+        document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
     } catch (err) {
         const reason = err.cause?.message || err.message;
         if (window.toastr) window.toastr.warning(`Image generation failed — ${reason}`, 'PersonaLyze');

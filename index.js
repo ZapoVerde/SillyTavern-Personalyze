@@ -1,13 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/index.js
- * @stamp {"utc":"2026-04-10T23:50:00.000Z"}
- * @version 0.4.27
+ * @stamp {"utc":"2026-04-14T14:00:00.000Z"}
+ * @version 0.5.0
  * @architectural-role Feature Entry Point / Orchestrator
  * @description
  * SillyTavern Personalyze extension entry point.
  *
- * Coordinates the initialization of the DNA-first architecture, binding 
- * SillyTavern lifecycle events to the Master Pipeline.
+ * Coordinates the initialization of the Multi-Character Hybrid architecture, 
+ * binding SillyTavern lifecycle events to the Master Pipeline.
  * 
  * @api-declaration
  * handleMessageReceived(messageId) — routes new AI messages to the Master Pipeline.
@@ -18,7 +18,7 @@
  *   assertions:
  *     purity: Event Orchestration
  *     state_ownership: [none]
- *     external_io: [eventSource, UI Injections, Bootstrapper, Master Pipeline]
+ *     external_io: [eventSource, UI Injections, Bootstrapper, Master Pipeline, Roster Controls]
  */
 
 import { eventSource, event_types } from '../../../../script.js';
@@ -34,6 +34,8 @@ import { injectSettingsPanel } from './ui/settings/panel.js';
 import { injectMessageBadge, reinjectAllBadges } from './ui/badge.js';
 import { injectPortraitContainer } from './portrait.js';
 import { injectVnPanel } from './ui/vnPanel.js';
+import { bindRosterControls } from './ui/roster/controls.js';
+import { initRenderer } from './ui/roster/renderer.js';
 import { openWorkshop } from './ui/workshop/core.js';
 import { smartResize } from './utils/dom.js';
 
@@ -102,22 +104,24 @@ async function init() {
         injectVnPanel();
         injectToolbarButton();
 
-        // 3. Global Responsiveness
+        // 3. Control & Rendering Layer — Bind global roster interactions
+        bindRosterControls();
+        initRenderer();
+
+        // 4. Global Responsiveness
         window.addEventListener('resize', () => {
             $('.plz-auto-textarea:visible').each(function() {
                 smartResize(this);
             });
         });
 
-        // 4. Host Events — Bind SillyTavern lifecycle events
+        // 5. Host Events — Bind SillyTavern lifecycle events
         eventSource.on(event_types.MESSAGE_RECEIVED, handleMessageReceived);
         eventSource.on(event_types.MESSAGE_SWIPED, handleMessageReceived);
         eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, injectMessageBadge);
         
-        // Localyze Integration: When Localyze confirms a scene change it broadcasts
-        // this event with the triggering messageId. We clear the session blacklist
-        // (new scene = fresh slate) and run the wardrobe redress pipeline.
+        // Localyze Integration
         document.addEventListener('localyze:location-changed', async (e) => {
             const context = getContext();
             if (!context?.chatId) return;
@@ -131,7 +135,7 @@ async function init() {
 
         log('Core', 'Listeners active.');
 
-        // 5. Conditional Initial Boot
+        // 6. Conditional Initial Boot
         const context = getContext();
         if (context && context.chatId) {
             log('Core', 'Active chat detected on init. Running DNA boot sequence...');

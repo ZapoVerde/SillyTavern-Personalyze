@@ -1,18 +1,20 @@
 /**
  * @file data/default-user/extensions/personalyze/io/llm/scene.js
- * @stamp {"utc":"2026-04-10T20:20:00.000Z"}
+ * @stamp {"utc":"2026-04-14T13:10:00.000Z"}
  * @architectural-role IO Executor (LLM)
  * @description
  * LLM interface for proactive scene and wardrobe management.
  * 
  * Functions:
  * 1. Scene Exit Detection (YES/NO)
- * 2. Batched Wardrobe Validity (Multi-character check)
- * 3. Redress Extraction (supports USE_DEFAULT)
+ * 2. Scene Roster Discovery (Identify who followed/stayed/arrived)
+ * 3. Redress Requirement Check (Identify characters needing an outfit change)
+ * 4. Redress Extraction (supports USE_DEFAULT)
  *
  * @api-declaration
  * detectSceneChange(currentLoc, history, currentTurn, profileId, template?) -> Promise<boolean>
- * detectWardrobeValidity(history, currentTurn, rosterItems, profileId, template?) -> Promise<object>
+ * detectSceneRoster(history, currentTurn, rosterIds, chatCharacters, profileId, template?) -> Promise<string>
+ * detectRedressRequirement(history, currentTurn, rosterItems, profileId, template?) -> Promise<object>
  * detectRedress(charName, history, currentTurn, profileId, template?) -> Promise<string>
  * 
  * @contract
@@ -27,6 +29,7 @@ import { log, warn, error } from '../../utils/logger.js';
 import { logCall } from '../../utils/callLog.js';
 import { 
     SCENE_CHANGE_PROMPT, 
+    SCENE_ROSTER_PROMPT,
     WARDROBE_VALIDITY_PROMPT, 
     REDRESS_PROMPT 
 } from '../../logic/prompts.js';
@@ -70,7 +73,32 @@ export async function detectSceneChange(currentLoc, history, currentTurn, profil
     return /^yes(?:[^a-zA-Z]|$)/i.test(raw);
 }
 
-// ─── Wardrobe Validity ────────────────────────────────────────────────────────
+/**
+ * Identifies characters present in the new scene based on the transition text.
+ * 
+ * @param {string} history
+ * @param {string} currentTurn - The scene transition message.
+ * @param {string[]} rosterIds - IDs of characters previously in the scene.
+ * @param {Object} chatCharacters - Registry for name resolution.
+ * @param {string} profileId
+ * @returns {Promise<string>} Raw comma-separated list from LLM.
+ */
+export async function detectSceneRoster(history, currentTurn, rosterIds, chatCharacters, profileId, template = SCENE_ROSTER_PROMPT) {
+    const formattedRoster = rosterIds.map(id => {
+        const char = chatCharacters[id];
+        const displayName = char?.label || id.replace(/_/g, ' ');
+        return `${displayName} (ID: ${id})`;
+    }).join('\n');
+
+    const prompt = template
+        .replace('{{active_roster}}', formattedRoster || 'None')
+        .replace('{{history}}', history || 'None')
+        .replace('{{current_turn}}', currentTurn);
+
+    return await dispatch(prompt, profileId, 'SceneRoster', { temperature: 0.1 });
+}
+
+// ─── Redress Requirement ──────────────────────────────────────────────────────
 
 /**
  * Batches a check for the entire active roster to see if their outfits
@@ -79,9 +107,9 @@ export async function detectSceneChange(currentLoc, history, currentTurn, profil
  * @param {string} history - Preceding turns for context.
  * @param {string} currentTurn - The scene transition message.
  * @param {Array<{name: string, layers: object}>} rosterItems
- * @returns {Promise<Record<string, boolean>>} Map of charName to validity (true = needs redress).
+ * @returns {Promise<Record<string, boolean>>} Map of charName to requirement (true = needs redress).
  */
-export async function detectWardrobeValidity(history, currentTurn, rosterItems, profileId, template = WARDROBE_VALIDITY_PROMPT) {
+export async function detectRedressRequirement(history, currentTurn, rosterItems, profileId, template = WARDROBE_VALIDITY_PROMPT) {
     const characterNames = rosterItems
         .map(item => `- ${item.name}`)
         .join('\n');

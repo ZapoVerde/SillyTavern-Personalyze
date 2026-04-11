@@ -1,12 +1,10 @@
 /**
  * @file data/default-user/extensions/personalyze/imageCache.js
- * @stamp {"utc":"2026-04-11T09:00:00.000Z"}
+ * @stamp {"utc":"2026-04-14T12:10:00.000Z"}
  * @architectural-role IO Executor (Image)
  * @description
  * Owns all image-related network and filesystem IO for Personalyze.
  * Supports Multi-Engine architecture (Pollinations, Fal, PiAPI).
- * 
- * Updated to support the {{pose}} variable in portrait style templates.
  * 
  * @api-declaration
  * buildFilenamePrefix(characterId, tag, emotion) → string
@@ -26,6 +24,7 @@ import { getRequestHeaders } from '../../../../script.js';
 import { findSecret } from '../../../secrets.js';
 import {
     POLLINATIONS_BASE_URL,
+    PLZ_IMAGE_FOLDER,
     DEFAULT_IMAGE_MODEL,
     DEFAULT_IMAGE_WIDTH,
     DEFAULT_IMAGE_HEIGHT,
@@ -42,8 +41,6 @@ const SECRET_POLLINATIONS = 'api_key_pollinations';
 const SECRET_FAL          = 'api_key_fal';
 const SECRET_PIAPI        = 'api_key_piapi';
 const FILE_PREFIX         = 'plz_';
-
-export const PLZ_IMAGE_FOLDER = 'personalyze';
 
 // ─── Naming ───────────────────────────────────────────────────────────────────
 
@@ -359,6 +356,7 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
         });
 
         logPatchLast(filename, null, piapiMeta);
+        _dispatchPortraitStatus(characterId, { status: 'success' });
         return filename;
 
     } catch (err) {

@@ -1,12 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/scene.js
- * @stamp {"utc":"2026-04-12T14:20:00.000Z"}
+ * @stamp {"utc":"2026-04-14T13:00:00.000Z"}
  * @architectural-role Orchestrator (Scene Logic)
  * @description
  * Manages the wardrobe "Redress" flow triggered by location changes.
  * 
- * Updated for Ensemble Autosave: Automatically saves the new redress state
- * as an ensemble snapshot in the character's local wardrobe.
+ * Updated for the Multi-Character Architecture:
+ * 1. Implements Roster Discovery: Uses heuristics and LLM fallback to identify
+ *    who is present in the new scene.
+ * 2. Anchors discovery to existing roster to prevent accidental "roster wipes".
+ * 3. Continues with batched wardrobe validity and redress extraction.
  *
  * @api-declaration
  * runScenePipeline(messageId) -> Promise<void>
@@ -15,7 +18,7 @@
  *   assertions:
  *     purity: Stateful Orchestrator
  *     state_ownership: [state (via setters)]
- *     external_io: [LLM, dnaWriter.js, ensembleEngine.js, imageCache.js, portrait.js]
+ *     external_io: [LLM, dnaWriter.js, ensembleEngine.js, imageCache.js]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -26,24 +29,30 @@ import {
     state,
     updateChainLayers,
     addToFileIndex,
-    upsertChatEnsemble
+    upsertChatEnsemble,
+    setActiveRoster,
+    resolveAliasToId
 } from '../../state.js';
-import { setPortrait } from '../../portrait.js';
-import { detectWardrobeValidity, detectRedress } from '../../io/llm/scene.js';
+import { detectRedress, detectSceneRoster, detectRedressRequirement } from '../../io/llm/scene.js';
 import { getDefaultEnsembleLayers } from '../ensembleEngine.js';
 import { 
     parsePhase3, 
     mergeLayeredUpdate,
     generateEnsembleLabel,
-    generateEnsembleKey
+    generateEnsembleKey,
+    parseSceneRoster
 } from '../parsers.js';
 import { compilePrompt } from '../promptCompiler.js';
 import { generate } from '../../imageCache.js';
 import { 
     lockedWriteVisualState, 
     lockedPatchVisualStateImage,
-    lockedWriteEnsemble
+    lockedWriteEnsemble,
+    lockedWriteRoster
 } from '../../io/dnaWriter.js';
+import { detectNamesInText } from '../heuristics.js';
+import { isIgnored, isPending } from '../blacklist.js';
+import { runArchivistPipeline } from './archivist.js';
 
 /**
  * Executes proactive wardrobe management for the entire active roster.
@@ -54,14 +63,65 @@ export async function runScenePipeline(messageId) {
     const context = getContext();
     const message = context.chat[messageId];
     const s = getSettings();
+    const history = buildHistoryText(context.chat, messageId, s.detectionHistory ?? 4);
 
-    // 1. Prepare Batch Data
+    // ─── Phase 1: Roster Discovery ──────────────────────────────────────────
+
+    // discoveredEntities holds character IDs (heuristics) or raw Names (LLM)
+    let discoveredEntities = detectNamesInText(message.mes, state.chatCharacters);
+    
+    if (discoveredEntities.length === 0) {
+        log('Scene', 'Heuristics found no names in transition. Calling LLM Roster Discovery...');
+        try {
+            const raw = await detectSceneRoster(
+                history, 
+                message.mes, 
+                state.activeRoster, 
+                state.chatCharacters, 
+                s.fastProfileId
+            );
+            discoveredEntities = parseSceneRoster(raw);
+        } catch (err) {
+            error('Scene', 'Roster discovery failed:', err.message);
+            // On failure, we stick with the current roster to avoid accidental wipes
+            discoveredEntities = state.activeRoster;
+        }
+    }
+
+    // Resolve Entities to canonical IDs and handle unknowns
+    const resolvedIds = [];
+    for (const entity of discoveredEntities) {
+        // If it's already a known canonical ID (heuristic path), use it directly
+        if (state.chatCharacters[entity]) {
+            resolvedIds.push(entity);
+            continue;
+        }
+
+        const id = resolveAliasToId(entity);
+        if (id) {
+            resolvedIds.push(id);
+        } else {
+            if (!isIgnored(entity) && !isPending(entity)) {
+                await runArchivistPipeline(messageId, entity);
+            }
+        }
+    }
+
+    // Sync Roster
+    const nextRoster = [...new Set(resolvedIds)];
+    if (JSON.stringify(nextRoster.sort()) !== JSON.stringify(state.activeRoster.sort())) {
+        log('Scene', `Roster updated via discovery: ${nextRoster.join(', ')}`);
+        await lockedWriteRoster(messageId, nextRoster);
+        setActiveRoster(nextRoster);
+        document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+    }
+
+    // ─── Phase 2: Redress Flow ──────────────────────────────────────────────
+
     const rosterItems = state.activeRoster.map(id => {
         const char = state.chatCharacters[id];
         const chain = state.characterChain[id];
         const layers = chain?.layers || state.activeLayers;
-        
-        // Simple summary of current top-level clothes for the LLM
         const clothes = layers.outerwear?.item || layers.top?.item || 'standard clothes';
         
         return {
@@ -78,37 +138,30 @@ export async function runScenePipeline(messageId) {
     if (rosterItems.length === 0) return;
 
     try {
-        // 2. Batched Wardrobe Validity Check (O(1) LLM Call)
-        const currentTurn = message.mes;
-        const history = buildHistoryText(context.chat, messageId, s.detectionHistory ?? 4);
-
-        const validityMap = await detectWardrobeValidity(
+        const needsRedressMap = await detectRedressRequirement(
             history,
-            currentTurn,
+            message.mes,
             rosterItems,
             s.booleanProfileId || s.fastProfileId,
             s.wardrobeValidityPrompt
         );
 
-        // 3. Process each character that needs a change
         for (const item of rosterItems) {
-            const needsRedress = validityMap[item.name] === true;
+            const needsRedress = needsRedressMap[item.name] === true;
             if (!needsRedress) continue;
 
             log('Scene', `Character "${item.name}" requires redress for the new scene.`);
 
-            // A. Extract Redress (Smart Model)
             const rawRedress = await detectRedress(
                 item.name,
                 history,
-                currentTurn,
+                message.mes,
                 s.describerProfileId || s.smartProfileId,
                 s.redressPrompt
             );
 
             let nextLayers;
 
-            // B. Resolve Redress Strategy
             if (rawRedress.trim().toUpperCase() === 'USE_DEFAULT') {
                 log('Scene', `Applying designated Default Ensemble for: ${item.id}`);
                 nextLayers = getDefaultEnsembleLayers(item.id, state);
@@ -117,19 +170,15 @@ export async function runScenePipeline(messageId) {
                 nextLayers = mergeLayeredUpdate(item.layers, parsed);
             }
 
-            // C. Ensemble Autosave
             const ensembleLabel = generateEnsembleLabel(nextLayers);
             const ensembleKey   = generateEnsembleKey(nextLayers);
             
             await lockedWriteEnsemble(messageId, item.id, ensembleKey, ensembleLabel, nextLayers);
             upsertChatEnsemble(item.id, ensembleKey, ensembleLabel, nextLayers);
-            log('Scene', `Autosaved ensemble: ${ensembleLabel}`);
 
-            // D. Commit DNA (Intent)
             const recordId = await lockedWriteVisualState(messageId, item.id, nextLayers, null);
             updateChainLayers(item.id, nextLayers, null);
 
-            // E. Background Generation (Async)
             processSceneGeneration(messageId, item, nextLayers, s, recordId);
         }
 
@@ -140,7 +189,6 @@ export async function runScenePipeline(messageId) {
 
 /**
  * Handles image generation for a scene redress.
- * Separated to prevent blocking the main pipeline flow.
  */
 async function processSceneGeneration(messageId, item, layers, s, recordId) {
     try {
@@ -160,14 +208,10 @@ async function processSceneGeneration(messageId, item, layers, s, recordId) {
 
         addToFileIndex(filename);
         updateChainLayers(item.id, layers, filename);
-
-        // Write 2: Asset Completion
         await lockedPatchVisualStateImage(messageId, item.id, filename, recordId);
 
-        // Update the portrait if this character is currently active.
-        if (state.activeCharacterId === item.id) {
-            setPortrait(filename);
-        }
+        // Notify UI to redraw cards
+        document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
 
         log('Scene', `Redress portrait complete for ${item.id}: ${filename}`);
     } catch (err) {

@@ -1,16 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/turn.js
- * @stamp {"utc":"2026-04-12T13:10:00.000Z"}
+ * @stamp {"utc":"2026-04-14T13:20:00.000Z"}
  * @architectural-role Orchestrator (Turn Logic)
  * @description
- * Implements the standard 3-Phase Turn pipeline.
- * Handles the 3-state Phase 1 routing:
- * 1. None/Narrator (Abort)
- * 2. Known Subject (Proceed to change gate)
- * 3. Unknown Subject (Delegate to Archivist)
- *
- * Updated for Ensemble Autosave: Automatically generates and saves an ensemble
- * based on the extracted visual state.
+ * Implements the Hybrid Multi-Character Turn pipeline.
+ * 
+ * Updated for Event Optimization:
+ * 1. Removed redundant setPortrait calls to prevent double-rendering.
+ * 2. Standardized on plz:roster-render-req for all visual syncs.
  *
  * @api-declaration
  * runTurnPipeline(messageId) -> Promise<void>
@@ -20,7 +17,7 @@
  *   assertions:
  *     purity: Stateful Orchestrator
  *     state_ownership: [state (via setters)]
- *     external_io: [LLM, resolveAliasToId, archivist.js, dnaWriter.js, imageCache.js]
+ *     external_io: [LLM, heuristics.js, heuristicModal.js, TaskQueue, dnaWriter.js]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -34,7 +31,8 @@ import {
     getChainEntry, 
     updateChainLayers,
     resolveAliasToId,
-    upsertChatEnsemble
+    upsertChatEnsemble,
+    setActiveRoster
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
 import { slugify, buildHistoryText } from '../../utils/history.js';
@@ -47,70 +45,116 @@ import {
 } from '../parsers.js';
 import { compilePrompt } from '../promptCompiler.js';
 import { generate } from '../../imageCache.js';
-import { setPortrait } from '../../portrait.js';
 import { 
     lockedWriteVisualState, 
     lockedPatchVisualStateImage,
-    lockedWriteEnsemble 
+    lockedWriteEnsemble,
+    lockedWriteRoster
 } from '../../io/dnaWriter.js';
 import { isIgnored, isPending } from '../blacklist.js';
 import { runArchivistPipeline } from './archivist.js';
+import { detectNamesInText } from '../heuristics.js';
+import { showHeuristicApprovalModal } from '../../ui/heuristicModal.js';
+import { TaskQueue } from '../../utils/queue.js';
+
+/** Singleton queue for pipeline concurrency control. */
+const pipelineQueue = new TaskQueue(2);
 
 /**
- * Standard turn-based processing for a single message.
+ * Hybrid multi-character processing for a single message.
  * @param {number} messageId
  */
 export async function runTurnPipeline(messageId) {
     const context = getContext();
     const message = context.chat[messageId];
     const s = getSettings();
-
-    // ─── Phase 1: Subject Detection (3-State Routing) ─────────────────────
     const history = buildHistoryText(context.chat, messageId, s.detectionHistory ?? 4);
 
-    let detectedString;
-    try {
-        detectedString = await detectSubject(
-            message.mes,
-            history,
-            state.activeRoster,
-            state.chatCharacters,
-            s.fastProfileId
-        );
-    } catch (err) {
-        error('Turn', 'Phase 1 failed:', err.message);
-        return;
-    }
+    let targetSubjects = [];
 
-    // 1. State: None/Narrator
-    if (!detectedString) {
-        log('Turn', 'No specific subject detected. Skipping turn extraction.');
-        return;
-    }
-
-    // 2. State: Known Subject (Canonical ID or AKA)
-    const resolvedId = resolveAliasToId(detectedString);
-
-    if (resolvedId) {
-        await processKnownSubject(messageId, resolvedId, message.mes, history, s);
-        return;
-    }
-
-    // 3. State: Unknown Subject
-    log('Turn', `Unknown subject detected: "${detectedString}". Checking resolution guards...`);
+    // ─── Phase 1a: Heuristics ───
+    const heuristicIds = detectNamesInText(message.mes, state.chatCharacters);
     
-    if (isIgnored(detectedString)) {
-        log('Turn', `Subject "${detectedString}" is blacklisted for this scene.`);
+    if (heuristicIds.length > 0) {
+        log('Turn', `Heuristics found: ${heuristicIds.join(', ')}`);
+        
+        const alreadyActive = heuristicIds.filter(id => state.activeRoster.includes(id));
+        const newlyDetected = heuristicIds.filter(id => !state.activeRoster.includes(id));
+        
+        let approvedNew = [];
+        if (newlyDetected.length > 0) {
+            approvedNew = await showHeuristicApprovalModal(newlyDetected);
+        }
+        
+        targetSubjects = [...alreadyActive, ...approvedNew];
+    }
+
+    // ─── Phase 1b: Fallback LLM ───
+    if (targetSubjects.length === 0) {
+        log('Turn', 'Heuristics found nothing. Falling back to Phase 1 LLM.');
+        
+        let detectedString;
+        try {
+            detectedString = await detectSubject(
+                message.mes,
+                history,
+                state.activeRoster,
+                state.chatCharacters,
+                s.fastProfileId
+            );
+        } catch (err) {
+            error('Turn', 'Phase 1 fallback failed:', err.message);
+            return;
+        }
+
+        if (detectedString) {
+            const resolvedId = resolveAliasToId(detectedString);
+            if (resolvedId) {
+                targetSubjects = [resolvedId];
+            } else {
+                // Route to Archivist for unknown subject
+                log('Turn', `Unknown subject: "${detectedString}". Checking resolution guards...`);
+                if (!isIgnored(detectedString) && !isPending(detectedString)) {
+                    await runArchivistPipeline(messageId, detectedString);
+                }
+                return;
+            }
+        }
+    }
+
+    if (targetSubjects.length === 0) {
+        log('Turn', 'No subjects identified. Skipping turn extraction.');
         return;
     }
 
-    if (isPending(detectedString)) {
-        log('Turn', `Resolution modal for "${detectedString}" is already active.`);
-        return;
+    // ─── Phase 1c: Roster Sync ───
+    const currentRoster = new Set(state.activeRoster);
+    let rosterChanged = false;
+    
+    for (const id of targetSubjects) {
+        if (!currentRoster.has(id)) {
+            currentRoster.add(id);
+            rosterChanged = true;
+        }
     }
 
-    // Delegate to the Archivist (Phase 1.5)
-    await runArchivistPipeline(messageId, detectedString);
+    if (rosterChanged) {
+        const nextRoster = Array.from(currentRoster);
+        await lockedWriteRoster(messageId, nextRoster);
+        setActiveRoster(nextRoster);
+        document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+    }
+
+    // ─── Phases 2-4: Parallel Execution ───
+    log('Turn', `Enqueuing ${targetSubjects.length} character updates.`);
+    
+    const tasks = targetSubjects.map(id => {
+        return pipelineQueue.enqueue(() => 
+            processKnownSubject(messageId, id, message.mes, history, s)
+        );
+    });
+
+    await Promise.all(tasks);
 }
 
 /**
@@ -118,14 +162,14 @@ export async function runTurnPipeline(messageId) {
  */
 export async function processKnownSubject(messageId, characterId, text, history, s) {
     const character = state.chatCharacters[characterId];
-    if (!character) return; // Safety
+    if (!character) return;
 
+    // Track last active for breadcrumb/badge logic
     updateActiveCharacter(characterId);
 
     // ─── Phase 2: Change Gate ───
     const chainEntry = getChainEntry(characterId);
     const currentLayers = chainEntry?.layers || state.activeLayers;
-
     const charName = character.label || characterId.replace(/_/g, ' ');
 
     let hasChanged;
@@ -138,13 +182,13 @@ export async function processKnownSubject(messageId, characterId, text, history,
             s.fastProfileId
         );
     } catch (err) {
-        error('Turn', 'Phase 2 failed:', err.message);
+        error('Turn', `Phase 2 failed for ${characterId}:`, err.message);
         return;
     }
 
     if (!hasChanged) {
-        log('Turn', 'No visual change detected.');
-        if (chainEntry?.image) setPortrait(chainEntry.image);
+        log('Turn', `${characterId}: No visual change detected.`);
+        // Optimization: Removed redundant re-render call on no-change path.
         return;
     }
 
@@ -157,11 +201,11 @@ export async function processKnownSubject(messageId, characterId, text, history,
             charName,
             character.identityAnchor,
             currentLayers,
-            character.slots, // Flexible Wardrobe: pass character-specific category list
+            character.slots,
             s.smartProfileId
         );
     } catch (err) {
-        error('Turn', 'Phase 3 failed:', err.message);
+        error('Turn', `Phase 3 failed for ${characterId}:`, err.message);
         return;
     }
 
@@ -171,11 +215,8 @@ export async function processKnownSubject(messageId, characterId, text, history,
     const ensembleLabel = generateEnsembleLabel(nextLayers);
     const ensembleKey   = generateEnsembleKey(nextLayers);
     
-    // Burn the new combination into DNA as an ensemble and update memory.
-    // If the clothes/mood match an existing key, the new pose/label will overwrite it.
     await lockedWriteEnsemble(messageId, characterId, ensembleKey, ensembleLabel, nextLayers);
     upsertChatEnsemble(characterId, ensembleKey, ensembleLabel, nextLayers);
-    log('Turn', `Autosaved ensemble: ${ensembleLabel}`);
 
     // ─── Phase 4: Compile & Commit ───
     updateActiveLayers(nextLayers);
@@ -183,7 +224,6 @@ export async function processKnownSubject(messageId, characterId, text, history,
 
     const prompt = compilePrompt(character.identityAnchor, nextLayers);
     const recordId = await lockedWriteVisualState(messageId, characterId, nextLayers, null);
-
     const engine = character.engine || s.defaultEngine || 'pollinations';
 
     try {
@@ -203,8 +243,11 @@ export async function processKnownSubject(messageId, characterId, text, history,
         updateActiveImage(file);
         updateChainLayers(characterId, nextLayers, file);
         await lockedPatchVisualStateImage(messageId, characterId, file, recordId);
-        setPortrait(file);
+        
+        // Notify UI to redraw cards
+        document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
+        
     } catch (err) {
-        error('Turn', 'Generation failed:', err.message);
+        error('Turn', `Generation failed for ${characterId}:`, err.message);
     }
 }

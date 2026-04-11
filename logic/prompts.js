@@ -1,20 +1,20 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/prompts.js
- * @stamp {"utc":"2026-04-11T15:00:00.000Z"}
+ * @stamp {"utc":"2026-04-14T09:50:00.000Z"}
  * @architectural-role Pipeline Templates
  * @description
  * Defines the strict Key-Value templates for the Layered State Pipeline.
  * Optimized for Dual-Model routing (Fast/Smart).
  * 
- * Updated for Flexible Wardrobe:
- * 1. Replaced hardcoded slot lists with {{slot_format_instructions}}.
- * 2. Added Full-body item distribution logic.
+ * Updated for the Multi-Character Architecture:
+ * 1. Added SCENE_ROSTER_PROMPT for stable character discovery during transitions.
  * 
  * @api-declaration
  * PHASE_1_SUBJECT_PROMPT
  * PHASE_2_CHANGE_PROMPT
  * PHASE_3_LAYERED_PROMPT
  * SCENE_CHANGE_PROMPT
+ * SCENE_ROSTER_PROMPT
  * WARDROBE_VALIDITY_PROMPT
  * REDRESS_PROMPT
  * ANCHOR_SCAN_PROMPT
@@ -125,6 +125,30 @@ Rules:
 - Intent to leave does NOT count; the exit must be completed.
 
 Answer:`;
+
+/** Identifies which characters are present in the new scene. */
+export const SCENE_ROSTER_PROMPT =
+`[SYSTEM: SCENE ROSTER DISCOVERY]
+Identify which characters are present in the narrative's new location.
+
+CURRENT ROSTER (Previously present):
+{{active_roster}}
+
+CONTEXT (Previous Turns):
+{{history}}
+
+LATEST MESSAGE (The transition):
+{{current_turn}}
+
+INSTRUCTIONS:
+1. Identify all characters who have arrived at or are present in the new location.
+2. Use the CURRENT ROSTER to determine if existing characters followed the protagonist or stayed behind.
+3. If the transition text explicitly mentions a character leaving or staying behind, remove them.
+4. If new characters are introduced in the new location, include their names.
+5. If the protagonist is clearly alone, return 'None'.
+6. Return the result as a comma-separated list of Names or System IDs.
+
+RESULT:`;
 
 /** Batched check for multiple characters. Output: Name: YES/NO. */
 export const WARDROBE_VALIDITY_PROMPT =
