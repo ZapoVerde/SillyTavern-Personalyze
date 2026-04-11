@@ -78,14 +78,11 @@
 
 /* ─── Fluid Multi-Character Roster ────────────────────────────────────────── */
 
-#plz-portrait-container, 
+#plz-portrait-container,
 #plz-vn-panel {
     display: flex !important;
-    flex-direction: row !important;
-    align-items: flex-end;
     justify-content: center;
     gap: 12px;
-    padding: 0 40px 20px;
     pointer-events: none;
     position: fixed;
     left: 0;
@@ -93,7 +90,12 @@
     z-index: 1000;
 }
 
-#plz-portrait-container { bottom: 0; }
+#plz-portrait-container {
+    flex-direction: row;
+    align-items: flex-end;
+    padding: 0 40px 20px;
+    bottom: 0;
+}
 
 /* ─── The Add Character FAB (Top Left) ────────────────────────────────────── */
 
