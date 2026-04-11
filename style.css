@@ -629,8 +629,8 @@ body.plz-vn-active #plz-vn-panel {
     min-width: 0;
 }
 
-.plz-vn-focus-slot .plz-card-controls {
-    opacity: 1; /* always visible on focus card */
+.plz-vn-focus-slot .plz-portrait-card.plz-controls-pinned .plz-card-controls {
+    opacity: 1;
 }
 
 .plz-vn-focus-slot .plz-card-frame {

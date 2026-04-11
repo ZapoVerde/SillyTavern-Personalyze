@@ -120,6 +120,17 @@ function _renderVnRoster() {
             );
         }
     }
+    // Tap the focus card body (not a button) to toggle controls pin
+    $focusSlot.on('click', '.plz-portrait-card', function (e) {
+        if ($(e.target).closest('.plz-card-btn').length) return;
+        $(this).toggleClass('plz-controls-pinned');
+    });
+
+    // Hovering in always unpins (hover handles visibility itself)
+    $focusSlot.on('mouseenter', '.plz-portrait-card', function () {
+        $(this).removeClass('plz-controls-pinned');
+    });
+
     $panel.append($focusSlot);
 
     // ── Add FAB ───────────────────────────────────────────────────────────────
