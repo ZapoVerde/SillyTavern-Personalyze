@@ -187,7 +187,8 @@
     transition: opacity 0.2s;
 }
 
-.plz-portrait-card:hover .plz-card-controls { opacity: 1; }
+.plz-portrait-card:hover .plz-card-controls,
+.plz-portrait-card:focus-within .plz-card-controls { opacity: 1; }
 
 .plz-card-btn {
     background: rgba(0,0,0,0.7);
@@ -562,9 +563,45 @@ body.plz-modal-open #extensions_settings {
 
 body.plz-vn-active #plz-vn-panel {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 0 0 0 12px;
     /* portrait area = split% of viewport, minus the top bar */
     height: calc(var(--plz-vn-split, 40) * 1dvh - var(--topBarBlockSize, 50px));
+    overflow: visible;
+}
+
+/* ── VN Panel Card Overrides: full height, overlap on small screens ── */
+
+#plz-vn-panel .plz-portrait-card {
+    flex: 0 0 auto;
+    height: 100%;
+    max-width: none;
+    min-width: 0;
+}
+
+/* Each subsequent card overlaps the previous by 50px */
+#plz-vn-panel .plz-portrait-card + .plz-portrait-card {
+    margin-left: -50px;
+}
+
+/* Active card lifts to front */
+#plz-vn-panel .plz-portrait-card:hover,
+#plz-vn-panel .plz-portrait-card:focus-within {
+    z-index: 5;
+    transform: translateY(-6px);
+}
+
+/* ── VN Panel Frame: height-driven sizing, no border or fill ── */
+
+#plz-vn-panel .plz-card-frame {
+    height: 100%;
+    width: auto;  /* aspect-ratio computes width from height */
+    border: none;
+    background: transparent;
+    box-shadow: none;
 }
 
 /* ── Portrait area ── */
