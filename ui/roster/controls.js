@@ -18,7 +18,7 @@
 
 import { state, setActiveRoster, toggleCharacterFlip } from '../../state.js';
 import { lockedWriteRoster } from '../../io/dnaWriter.js';
-import { getContext } from '../../../../extensions.js';
+import { getContext } from '../../../../../extensions.js';
 import { error } from '../../utils/logger.js';
 
 /**
