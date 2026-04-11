@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/turn.js
- * @stamp {"utc":"2026-04-11T16:20:00.000Z"}
+ * @stamp {"utc":"2026-04-12T13:10:00.000Z"}
  * @architectural-role Orchestrator (Turn Logic)
  * @description
  * Implements the standard 3-Phase Turn pipeline.
@@ -9,7 +9,8 @@
  * 2. Known Subject (Proceed to change gate)
  * 3. Unknown Subject (Delegate to Archivist)
  *
- * Updated for Flexible Wardrobe: passes character.slots to Phase 3 extraction.
+ * Updated for Ensemble Autosave: Automatically generates and saves an ensemble
+ * based on the extracted visual state.
  *
  * @api-declaration
  * runTurnPipeline(messageId) -> Promise<void>
@@ -32,16 +33,26 @@ import {
     addToFileIndex, 
     getChainEntry, 
     updateChainLayers,
-    resolveAliasToId
+    resolveAliasToId,
+    upsertChatEnsemble
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
 import { slugify, buildHistoryText } from '../../utils/history.js';
 import { detectSubject, detectChange, detectLayers } from '../../io/llm/subject.js';
-import { parsePhase3, mergeLayeredUpdate } from '../parsers.js';
+import { 
+    parsePhase3, 
+    mergeLayeredUpdate,
+    generateEnsembleLabel,
+    generateEnsembleKey
+} from '../parsers.js';
 import { compilePrompt } from '../promptCompiler.js';
 import { generate } from '../../imageCache.js';
 import { setPortrait } from '../../portrait.js';
-import { lockedWriteVisualState, lockedPatchVisualStateImage } from '../../io/dnaWriter.js';
+import { 
+    lockedWriteVisualState, 
+    lockedPatchVisualStateImage,
+    lockedWriteEnsemble 
+} from '../../io/dnaWriter.js';
 import { isIgnored, isPending } from '../blacklist.js';
 import { runArchivistPipeline } from './archivist.js';
 
@@ -155,6 +166,16 @@ export async function processKnownSubject(messageId, characterId, text, history,
     }
 
     const nextLayers = mergeLayeredUpdate(currentLayers, parsePhase3(rawUpdate));
+
+    // ─── Phase 3.5: Ensemble Autosave ───
+    const ensembleLabel = generateEnsembleLabel(nextLayers);
+    const ensembleKey   = generateEnsembleKey(nextLayers);
+    
+    // Burn the new combination into DNA as an ensemble and update memory.
+    // If the clothes/mood match an existing key, the new pose/label will overwrite it.
+    await lockedWriteEnsemble(messageId, characterId, ensembleKey, ensembleLabel, nextLayers);
+    upsertChatEnsemble(characterId, ensembleKey, ensembleLabel, nextLayers);
+    log('Turn', `Autosaved ensemble: ${ensembleLabel}`);
 
     // ─── Phase 4: Compile & Commit ───
     updateActiveLayers(nextLayers);

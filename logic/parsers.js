@@ -1,19 +1,21 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/parsers.js
- * @stamp {"utc":"2026-04-11T12:20:00.000Z"}
+ * @stamp {"utc":"2026-04-12T14:00:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Pure functions to parse structured text responses from the Layered State Pipeline.
- * Implements the logic for handling "KEEP" (persistence) and "None" (removal) instructions
- * without side effects.
- *
- * Updated to robustly handle the 'pose' meta-slot during state merging.
+ * Implements the logic for handling "KEEP" (persistence) and "None" (removal) instructions.
+ * 
+ * Added chunky autonaming logic for the Ensemble Autosave system, including 
+ * support for accessories in the identity chain.
  *
  * @api-declaration
  * parsePhase1(raw) -> string|null
  * parsePhase2(raw) -> boolean
  * parsePhase3(raw) -> object
  * mergeLayeredUpdate(current, update) -> object
+ * generateEnsembleLabel(layers) -> string
+ * generateEnsembleKey(layers) -> string
  * 
  * @contract
  *   assertions:
@@ -23,6 +25,7 @@
  */
 
 import { META_SLOTS } from '../defaults.js';
+import { slugify } from '../utils/history.js';
 
 /**
  * Parses Phase 1: Subject Detection.
@@ -104,7 +107,6 @@ export function parsePhase3(raw) {
  */
 export function mergeLayeredUpdate(current, update) {
     // 1. Initialize next state with full standard slot template
-    // This ensures all keys exist even when merging against legacy or partial objects.
     const next = Object.assign({
         outerwear:   null,
         top:         null,
@@ -117,15 +119,12 @@ export function mergeLayeredUpdate(current, update) {
     // 2. Iterate through the LLM-derived updates
     for (const [slot, val] of Object.entries(update)) {
         if (!val || val.item === 'KEEP') {
-            // Instruction: Unknown/Unchanged. Persist existing value from 'next'.
             continue;
         }
 
         if (val.item === 'None') {
-            // Instruction: Explicitly removed/cleared.
             next[slot] = null;
         } else {
-            // Meta-slots (emotion, pose) store a plain string, not {item, modifier}.
             if (META_SLOTS.includes(slot)) {
                 next[slot] = val.item;
             } else {
@@ -138,4 +137,62 @@ export function mergeLayeredUpdate(current, update) {
     }
 
     return next;
+}
+
+/**
+ * Helper to limit a string to the first three words.
+ * @param {string|object} val 
+ * @returns {string|null}
+ */
+function limitToThreeWords(val) {
+    if (!val) return null;
+    const str = (typeof val === 'object' ? val.item : val) || '';
+    const words = str.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return null;
+    return words.slice(0, 3).join(' ');
+}
+
+/**
+ * Generates a descriptive, chunky label for an ensemble based on current layers.
+ * Format: [Outerwear + Top + Bottom + Accessories] | [Emotion] | [Pose]
+ * Each category is limited to its first 3 words.
+ * 
+ * @param {object} layers 
+ * @returns {string}
+ */
+export function generateEnsembleLabel(layers) {
+    const outerwear   = limitToThreeWords(layers.outerwear);
+    const top         = limitToThreeWords(layers.top);
+    const bottom      = limitToThreeWords(layers.bottom);
+    const accessories = limitToThreeWords(layers.accessories);
+    const emotion     = limitToThreeWords(layers.emotion);
+    const pose        = limitToThreeWords(layers.pose);
+
+    const clothes = [outerwear, top, bottom, accessories].filter(Boolean).join(' + ');
+    
+    return [
+        clothes || 'Base Identity',
+        emotion || 'neutral',
+        pose    || 'upright'
+    ].join(' | ');
+}
+
+/**
+ * Generates a stable unique key for an ensemble.
+ * Includes accessories in the identity chain to ensure that changes in equipment
+ * create distinct ensemble entries.
+ * 
+ * @param {object} layers 
+ * @returns {string}
+ */
+export function generateEnsembleKey(layers) {
+    const components = [
+        limitToThreeWords(layers.outerwear),
+        limitToThreeWords(layers.top),
+        limitToThreeWords(layers.bottom),
+        limitToThreeWords(layers.accessories),
+        limitToThreeWords(layers.emotion)
+    ].filter(Boolean).join('_');
+
+    return slugify(components || 'base_identity');
 }

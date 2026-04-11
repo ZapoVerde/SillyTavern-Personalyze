@@ -1,11 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/scene.js
- * @stamp {"utc":"2026-04-11T09:20:00.000Z"}
+ * @stamp {"utc":"2026-04-12T14:20:00.000Z"}
  * @architectural-role Orchestrator (Scene Logic)
  * @description
  * Manages the wardrobe "Redress" flow triggered by location changes.
  * 
- * Updated to pass the pose label to the portrait generator.
+ * Updated for Ensemble Autosave: Automatically saves the new redress state
+ * as an ensemble snapshot in the character's local wardrobe.
  *
  * @api-declaration
  * runScenePipeline(messageId) -> Promise<void>
@@ -24,15 +25,25 @@ import { slugify, buildHistoryText } from '../../utils/history.js';
 import {
     state,
     updateChainLayers,
-    addToFileIndex
+    addToFileIndex,
+    upsertChatEnsemble
 } from '../../state.js';
 import { setPortrait } from '../../portrait.js';
 import { detectWardrobeValidity, detectRedress } from '../../io/llm/scene.js';
 import { getDefaultEnsembleLayers } from '../ensembleEngine.js';
-import { parsePhase3, mergeLayeredUpdate } from '../parsers.js';
+import { 
+    parsePhase3, 
+    mergeLayeredUpdate,
+    generateEnsembleLabel,
+    generateEnsembleKey
+} from '../parsers.js';
 import { compilePrompt } from '../promptCompiler.js';
 import { generate } from '../../imageCache.js';
-import { lockedWriteVisualState, lockedPatchVisualStateImage } from '../../io/dnaWriter.js';
+import { 
+    lockedWriteVisualState, 
+    lockedPatchVisualStateImage,
+    lockedWriteEnsemble
+} from '../../io/dnaWriter.js';
 
 /**
  * Executes proactive wardrobe management for the entire active roster.
@@ -106,13 +117,19 @@ export async function runScenePipeline(messageId) {
                 nextLayers = mergeLayeredUpdate(item.layers, parsed);
             }
 
-            // C. Commit DNA (Intent)
+            // C. Ensemble Autosave
+            const ensembleLabel = generateEnsembleLabel(nextLayers);
+            const ensembleKey   = generateEnsembleKey(nextLayers);
+            
+            await lockedWriteEnsemble(messageId, item.id, ensembleKey, ensembleLabel, nextLayers);
+            upsertChatEnsemble(item.id, ensembleKey, ensembleLabel, nextLayers);
+            log('Scene', `Autosaved ensemble: ${ensembleLabel}`);
+
+            // D. Commit DNA (Intent)
             const recordId = await lockedWriteVisualState(messageId, item.id, nextLayers, null);
             updateChainLayers(item.id, nextLayers, null);
 
-            // D. Background Generation (Async)
-            // Note: We don't await this inside the loop so the UI remains responsive,
-            // but the intent is already written to DNA.
+            // E. Background Generation (Async)
             processSceneGeneration(messageId, item, nextLayers, s, recordId);
         }
 
@@ -144,8 +161,7 @@ async function processSceneGeneration(messageId, item, layers, s, recordId) {
         addToFileIndex(filename);
         updateChainLayers(item.id, layers, filename);
 
-        // Write 2: Asset Completion — use recordId to patch the exact intent record,
-        // not the turn pipeline's record which may have been written after this one.
+        // Write 2: Asset Completion
         await lockedPatchVisualStateImage(messageId, item.id, filename, recordId);
 
         // Update the portrait if this character is currently active.

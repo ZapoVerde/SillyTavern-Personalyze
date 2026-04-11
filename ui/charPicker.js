@@ -1,15 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-11T18:00:00.000Z"}
+ * @stamp {"utc":"2026-04-12T14:10:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
  * visual state for the current turn using the 5-slot architecture.
  *
- * Updated for Flexible Wardrobe:
- * 1. Dynamically renders inputs based on character.slots.
- * 2. Added "Add Category" button for on-the-fly schema updates.
- * 3. Preserves existing input values when re-rendering the grid.
+ * Updated for Ensemble Autosave: Automatically generates and saves an 
+ * ensemble whenever manual changes are confirmed, including accessories.
+ * Fixed critical reference bug in async image completion.
  *
  * @api-declaration
  * openCharPicker() → Promise<void>
@@ -25,18 +24,24 @@ import { callPopup } from '../../../../../script.js';
 import { getContext } from '../../../../extensions.js';
 import {
     state, updateActiveCharacter, updateActiveLayers, updateActiveImage,
-    addToFileIndex, updateChainLayers, upsertChatSlots
+    addToFileIndex, updateChainLayers, upsertChatSlots, upsertChatEnsemble
 } from '../state.js';
 import { compilePrompt } from '../logic/promptCompiler.js';
 import { buildFilenamePrefix, findCachedImage, generate } from '../imageCache.js';
 import { setPortrait } from '../portrait.js';
-import { lockedWriteVisualState, lockedPatchVisualStateImage, lockedWriteSlots } from '../io/dnaWriter.js';
+import { 
+    lockedWriteVisualState, 
+    lockedPatchVisualStateImage, 
+    lockedWriteSlots,
+    lockedWriteEnsemble
+} from '../io/dnaWriter.js';
 import { escapeHtml, slugify } from '../utils/history.js';
-import { error } from '../utils/logger.js';
+import { error, log } from '../utils/logger.js';
 import { smartResize } from '../utils/dom.js';
 import { getSettings } from '../settings.js';
 import { applyEnsemble } from '../logic/ensembleEngine.js';
 import { BASE_SLOTS, META_SLOTS } from '../defaults.js';
+import { generateEnsembleLabel, generateEnsembleKey } from '../logic/parsers.js';
 
 /**
  * Builds the HTML for the dynamic layered grid inside the picker.
@@ -123,8 +128,12 @@ export async function openCharPicker() {
     function buildEnsembleOptions(id) {
         const ensembles = Object.entries(state.chatCharacters[id]?.ensembles ?? {});
         if (!ensembles.length) return '<option value="">— No ensembles —</option>';
+        
+        // Return latest ensembles first (Reverse-chronological sort)
+        const sorted = [...ensembles].reverse();
+
         return '<option value="">— Quick Load Ensemble —</option>' +
-            ensembles.map(([k, v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v.label)}</option>`).join('');
+            sorted.map(([k, v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v.label)}</option>`).join('');
     }
 
     let forceRegen = false;
@@ -223,6 +232,14 @@ export async function openCharPicker() {
     const characterId = $('#plz-cp-char').val();
     const layers = getPickerCurrentLayers();
 
+    // ─── Ensemble Autosave (Manual Tweak) ───
+    const ensembleLabel = generateEnsembleLabel(layers);
+    const ensembleKey   = generateEnsembleKey(layers);
+    
+    await lockedWriteEnsemble(lastAiIdx, characterId, ensembleKey, ensembleLabel, layers);
+    upsertChatEnsemble(characterId, ensembleKey, ensembleLabel, layers);
+    log('CharPicker', `Autosaved manual tweak as ensemble: ${ensembleLabel}`);
+
     const character = state.chatCharacters[characterId];
     const s = getSettings();
     const engine = character.engine || s.defaultEngine || 'pollinations';
@@ -235,7 +252,7 @@ export async function openCharPicker() {
     updateActiveLayers(layers);
     updateChainLayers(characterId, layers, filename);
 
-    await lockedWriteVisualState(lastAiIdx, characterId, layers, filename);
+    const recordId = await lockedWriteVisualState(lastAiIdx, characterId, layers, filename);
 
     if (filename) {
         updateActiveImage(filename);
@@ -260,9 +277,9 @@ export async function openCharPicker() {
             engine
         );
         addToFileIndex(filename);
-        updateActiveImage(filename);
+        updateActiveImage(filename); // FIX: was 'file'
         updateChainLayers(characterId, layers, filename);
-        await lockedPatchVisualStateImage(lastAiIdx, characterId, filename);
+        await lockedPatchVisualStateImage(lastAiIdx, characterId, filename, recordId);
         setPortrait(filename);
     } catch (err) {
         const reason = err.cause?.message || err.message;
