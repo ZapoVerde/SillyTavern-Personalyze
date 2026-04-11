@@ -76,15 +76,12 @@ export function getPortraitCardHTML(characterId, label, filename, isFlipped = fa
 }
 
 /**
- * Builds the HTML for the "Add Character" placeholder card.
+ * Builds the HTML for the "Add Character" Floating Action Button.
  * @returns {string}
  */
 export function getAddCardHTML() {
     return `
-    <div class="plz-portrait-card plz-card-add-trigger">
-        <div class="plz-card-frame plz-card-add-frame">
-            <i class="fa-solid fa-plus"></i>
-            <span>Add Character</span>
-        </div>
+    <div class="plz-card-add-trigger" title="Add Character to Scene">
+        <i class="fa-solid fa-plus"></i>
     </div>`;
 }
