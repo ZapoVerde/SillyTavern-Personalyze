@@ -565,40 +565,77 @@ body.plz-vn-active #plz-vn-panel {
     display: flex;
     flex-direction: row;
     align-items: flex-end;
-    justify-content: flex-start;
+    justify-content: center; /* centers single focus card when left group is absent */
     gap: 0;
-    padding: 0 0 0 12px;
+    padding: 0;
     /* portrait area = split% of viewport, minus the top bar */
     height: calc(var(--plz-vn-split, 40) * 1dvh - var(--topBarBlockSize, 50px));
     overflow: visible;
 }
 
-/* ── VN Panel Card Overrides: full height, overlap on small screens ── */
+/* ── Left Group: non-focus cards, centered, dynamic overlap via --plz-overlap ── */
 
-#plz-vn-panel .plz-portrait-card {
+.plz-vn-left-group {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: center;
+    overflow: visible;
+}
+
+.plz-vn-left-group .plz-portrait-card {
+    flex: 0 0 auto;
+    height: 100%;
+    max-width: none;
+    min-width: 0;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.plz-vn-left-group .plz-portrait-card + .plz-portrait-card {
+    margin-left: calc(-1 * var(--plz-overlap, 0px));
+    transition: margin-left 0.3s ease;
+}
+
+.plz-vn-left-group .plz-portrait-card:hover {
+    z-index: 5;
+    transform: translateY(-8px);
+}
+
+.plz-vn-left-group .plz-card-frame {
+    height: 100%;
+    width: auto;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+/* ── Focus Slot: rightmost card, controls always visible, never overlapped ── */
+
+.plz-vn-focus-slot {
+    flex: 0 0 auto;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+}
+
+.plz-vn-focus-slot .plz-portrait-card {
     flex: 0 0 auto;
     height: 100%;
     max-width: none;
     min-width: 0;
 }
 
-/* Each subsequent card overlaps the previous by 50px */
-#plz-vn-panel .plz-portrait-card + .plz-portrait-card {
-    margin-left: -50px;
+.plz-vn-focus-slot .plz-card-controls {
+    opacity: 1; /* always visible on focus card */
 }
 
-/* Active card lifts to front */
-#plz-vn-panel .plz-portrait-card:hover,
-#plz-vn-panel .plz-portrait-card:focus-within {
-    z-index: 5;
-    transform: translateY(-6px);
-}
-
-/* ── VN Panel Frame: height-driven sizing, no border or fill ── */
-
-#plz-vn-panel .plz-card-frame {
+.plz-vn-focus-slot .plz-card-frame {
     height: 100%;
-    width: auto;  /* aspect-ratio computes width from height */
+    width: auto;
     border: none;
     background: transparent;
     box-shadow: none;
