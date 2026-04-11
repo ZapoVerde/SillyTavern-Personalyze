@@ -78,30 +78,34 @@ function _renderVnRoster() {
 
     const nonFocusIds = _focusCardId ? roster.filter(id => id !== _focusCardId) : [];
 
-    // ── Left Group (always present — acts as a positioner) ────────────────────
-    const $leftGroup = $('<div class="plz-vn-left-group"></div>');
+    // ── Left Group (only rendered when there are non-focus cards) ────────────
+    let $leftGroup = null;
 
-    nonFocusIds.forEach(id => {
-        const char = state.chatCharacters[id];
-        if (!char) return;
-        const chain = state.characterChain[id];
-        const ui    = state.uiState[id] || {};
-        $leftGroup.append(
-            getPortraitCardHTML(id, char.label || id, chain?.image || null, ui.flipped)
-        );
-    });
+    if (nonFocusIds.length > 0) {
+        $leftGroup = $('<div class="plz-vn-left-group"></div>');
 
-    // Clicking a left-group card promotes it to the focus slot
-    $leftGroup.on('click', '.plz-portrait-card', function (e) {
-        if ($(e.target).closest('.plz-card-btn').length) return;
-        const id = $(this).data('id');
-        if (id) {
-            _focusCardId = id;
-            _renderVnRoster();
-        }
-    });
+        nonFocusIds.forEach(id => {
+            const char = state.chatCharacters[id];
+            if (!char) return;
+            const chain = state.characterChain[id];
+            const ui    = state.uiState[id] || {};
+            $leftGroup.append(
+                getPortraitCardHTML(id, char.label || id, chain?.image || null, ui.flipped)
+            );
+        });
 
-    $panel.append($leftGroup);
+        // Clicking a left-group card promotes it to the focus slot
+        $leftGroup.on('click', '.plz-portrait-card', function (e) {
+            if ($(e.target).closest('.plz-card-btn').length) return;
+            const id = $(this).data('id');
+            if (id) {
+                _focusCardId = id;
+                _renderVnRoster();
+            }
+        });
+
+        $panel.append($leftGroup);
+    }
 
     // ── Focus Slot ────────────────────────────────────────────────────────────
     const $focusSlot = $('<div class="plz-vn-focus-slot"></div>');
@@ -137,55 +141,47 @@ function _renderVnRoster() {
     $panel.append(getAddCardHTML());
 
     // Position the focus card and compute any overlap
-    _applyLayout($leftGroup, nonFocusIds.length);
+    if ($leftGroup) _applyLayout($leftGroup, nonFocusIds.length);
 }
 
 /**
- * Three-phase layout engine. Sets the left group's explicit width (which
- * positions the focus card) and the --plz-overlap variable.
+ * Two-phase layout engine. The panel uses justify-content:center + gap so the
+ * whole row (left group + gap + focus card) is always centered as a unit.
  *
- * Phase 1 — plenty of room:
- *   Cards fit left of centre. Left group = panelWidth/2 - cardWidth/2.
- *   Focus card sits exactly at the viewport centre.
+ * Phase 1 — fits:
+ *   Left group = natural card footprint. Everything centers with room to spare.
  *
- * Phase 2 — focus pushed right:
- *   Cards need more space than half the panel. Left group grows to fit them
- *   naturally, pushing the focus card rightward. No overlap yet.
- *
- * Phase 3 — overlap:
- *   Cards would push focus beyond the right edge. Left group is capped at
- *   panelWidth - cardWidth and cards start overlapping each other.
+ * Phase 2 — overflow:
+ *   [leftNatural + GAP + cardWidth] > panelWidth.
+ *   Left group is capped and cards start overlapping each other.
  *
  * @param {jQuery} $group     The .plz-vn-left-group element
  * @param {number} cardCount  Number of non-focus cards in the group
  */
+const VN_GAP = 20; // must match the gap value in CSS
+
 function _applyLayout($group, cardCount) {
+    if (cardCount === 0) return; // focus card alone — CSS centers it, nothing to do
+
     const panelHeight  = $(`#${PANEL_ID}`).height() || 300;
-    const cardWidth    = panelHeight * (2 / 3);                    // matches aspect-ratio: 2/3
+    const cardWidth    = panelHeight * (2 / 3); // matches aspect-ratio: 2/3
     const panelWidth   = window.innerWidth;
-    const centeredLeft = Math.max(0, panelWidth / 2 - cardWidth / 2); // focus card x when centred
-    const maxLeftWidth = Math.max(panelWidth - cardWidth, 0);         // focus card at far right
+    const leftNatural  = cardCount * cardWidth;
+    const totalNatural = leftNatural + VN_GAP + cardWidth;
 
     let leftGroupWidth, overlap;
 
-    if (cardCount === 0) {
-        // No left cards — spacer only, focus card centred
-        leftGroupWidth = centeredLeft;
+    if (totalNatural <= panelWidth) {
+        // Phase 1: everything fits — natural widths, CSS centering does the rest
+        leftGroupWidth = leftNatural;
         overlap        = 0;
     } else {
-        const naturalTotal = cardCount * cardWidth;
-
-        if (naturalTotal > maxLeftWidth) {
-            // Phase 3: overlap needed to keep focus card visible
-            const excess = naturalTotal - maxLeftWidth;
-            overlap      = Math.min(excess / (cardCount - 1), cardWidth * 0.85);
-            leftGroupWidth = maxLeftWidth;
-        } else {
-            // Phase 1 or 2: no overlap; left group is whichever is larger —
-            // the cards' natural footprint or the centred-focus position
-            overlap        = 0;
-            leftGroupWidth = Math.max(naturalTotal, centeredLeft);
-        }
+        // Phase 2: cap left group, compute overlap to make it fit
+        leftGroupWidth = Math.max(panelWidth - VN_GAP - cardWidth, cardWidth);
+        const excess   = leftNatural - leftGroupWidth;
+        overlap        = cardCount > 1
+            ? Math.min(excess / (cardCount - 1), cardWidth * 0.85)
+            : 0;
     }
 
     $group.css({

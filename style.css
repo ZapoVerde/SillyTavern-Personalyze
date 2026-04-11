@@ -565,8 +565,8 @@ body.plz-vn-active #plz-vn-panel {
     display: flex;
     flex-direction: row;
     align-items: flex-end;
-    justify-content: flex-start; /* JS controls focus position via left-group width */
-    gap: 0;
+    justify-content: center; /* whole row (left group + gap + focus card) is centered */
+    gap: 20px;               /* fixed spacer between left group and focus card */
     padding: 0;
     /* portrait area = split% of viewport, minus the top bar */
     height: calc(var(--plz-vn-split, 40) * 1dvh - var(--topBarBlockSize, 50px));
