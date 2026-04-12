@@ -1,14 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaTemplates.js
- * @stamp {"utc":"2026-04-12T10:20:00.000Z"}
+ * @stamp {"utc":"2026-04-14T21:30:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Generates the HTML for the Character Workshop Dashboard.
  * 
- * Updated for the "Ghost Studio" architecture:
- * 1. Removed "Add" tab.
- * 2. Prepend unconditional "Create New" button to the DNA roster.
- * 3. Studio template handles the '__new__' ghost state.
+ * Fixes:
+ * 1. Removed hardcoded positioning from textarea clear button.
+ * 2. Ensured Ensemble button class consistency.
  * 
  * @api-declaration
  * getBaseWorkshopHTML()
@@ -48,33 +47,42 @@ export function getBaseWorkshopHTML() {
                 <div id="plz-tab-library" class="plz-tab-panel plz-hidden"></div>
             </div>
         </div>
-
-        <datalist id="plz-items-list">
-            <option value="Shirt">
-            <option value="Pants">
-            <option value="Dress">
-            <option value="Armor">
-            <option value="Coat">
-            <option value="Boots">
-            <option value="Hat">
-            <option value="Cape">
-        </datalist>
-        <datalist id="plz-mods-list">
-            <option value="Red">
-            <option value="Black">
-            <option value="White">
-            <option value="Leather">
-            <option value="Silk">
-            <option value="Dirty">
-            <option value="Torn">
-            <option value="Glowing">
-        </datalist>
     </div>`;
+}
+
+/** 
+ * Scans character ensembles to build unique datalists for each wardrobe slot.
+ */
+function buildWardrobeDatalists(characterId, character) {
+    const ensembles = Object.values(character.ensembles || {});
+    const slots = character.slots || [...BASE_SLOTS];
+    const lists = {};
+
+    ensembles.forEach(e => {
+        const layers = e.layers || {};
+        slots.forEach(s => {
+            if (!lists[`${s}-item`]) lists[`${s}-item`] = new Set();
+            if (!lists[`${s}-mod`])  lists[`${s}-mod`]  = new Set();
+            if (layers[s]?.item)     lists[`${s}-item`].add(layers[s].item);
+            if (layers[s]?.modifier) lists[`${s}-mod`].add(layers[s].modifier);
+        });
+        if (!lists['emotion']) lists['emotion'] = new Set();
+        if (!lists['pose'])    lists['pose']    = new Set();
+        if (layers.emotion)    lists['emotion'].add(layers.emotion);
+        if (layers.pose)       lists['pose'].add(layers.pose);
+    });
+
+    return Object.entries(lists).map(([key, values]) => {
+        const options = Array.from(values)
+            .filter(v => v && v !== 'None' && v !== 'KEEP')
+            .map(v => `<option value="${escapeHtml(v)}">`)
+            .join('');
+        return `<datalist id="plz-list-${characterId}-${key}">${options}</datalist>`;
+    }).join('');
 }
 
 /** Renders the character list currently in the chat's DNA history. */
 export function getDnaRosterHTML(characters, activeRoster, activeId) {
-    // 1. Unconditional "Create New" entry
     const addNewHtml = `
     <div class="plz-roster-item plz-dna-add-new" style="border: 1px dashed var(--SmartThemeBorderColor); opacity: 0.8; justify-content: center; cursor: pointer; padding: 12px;">
         <div style="display:flex; align-items:center; gap:8px; font-weight:bold;">
@@ -84,7 +92,6 @@ export function getDnaRosterHTML(characters, activeRoster, activeId) {
 
     const entries = Object.entries(characters);
     
-    // 2. Roster List
     let rosterHtml = '';
     if (entries.length === 0) {
         rosterHtml = `<div style="text-align:center;padding:40px;opacity:0.5;font-size:0.9em;">
@@ -92,7 +99,7 @@ export function getDnaRosterHTML(characters, activeRoster, activeId) {
         </div>`;
     } else {
         rosterHtml = entries.map(([id, char]) => {
-            if (id === '__new__') return ''; // Don't show ghost in the list
+            if (id === '__new__') return ''; 
             const isEnabled = activeRoster.includes(id);
             const isActive = id === activeId;
             const displayName = char.label || id.replace(/_/g, ' ');
@@ -135,12 +142,11 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
         .map(e => `<option value="${e.value}" ${pinnedEngine === e.value ? 'selected' : ''}>${escapeHtml(e.label)}</option>`)
         .join('');
 
-    // Generate dynamic rows for clothing slots
     const slots = character.slots || [...BASE_SLOTS];
     const slotsHTML = slots.map(key => {
         const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
         const isDeletable = !BASE_SLOTS.includes(key);
-        return getLayerInputHTML(label, key, layers[key], isDeletable);
+        return getLayerInputHTML(characterId, label, key, layers[key], isDeletable);
     }).join('');
 
     const idLabel = isGhost 
@@ -149,9 +155,12 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
 
     return `
     <div style="margin-bottom:10px;">
-        <input id="plz-studio-label" class="text_pole" type="text" value="${isGhost ? '' : escapeHtml(displayName)}"
-               placeholder="Character Name"
-               style="width:100%;font-size:1.1em;font-weight:bold;margin-bottom:4px;" />
+        <div class="plz-input-wrapper">
+            <input id="plz-studio-label" class="text_pole" type="text" value="${isGhost ? '' : escapeHtml(displayName)}"
+                   placeholder="Character Name"
+                   style="width:100%;font-size:1.1em;font-weight:bold;margin-bottom:4px;" />
+            <div class="plz-input-clear plz-studio-clear" title="Clear Name">✕</div>
+        </div>
         <div style="display:flex;justify-content:space-between;align-items:center;">
             ${idLabel}
             <button class="menu_button plz-save-ensemble-btn" style="font-size:0.8em;" ${isGhost ? 'disabled title="Save character first"' : ''}>Save as Ensemble</button>
@@ -162,9 +171,12 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
         <label class="plz-studio-label">Identity Anchor</label>
         <button class="menu_button plz-anchor-scan" data-mode="studio" style="font-size:0.75em;padding:2px 8px;">Scan Chat</button>
     </div>
-    <textarea id="plz-studio-anchor" class="text_pole plz-auto-textarea" rows="2"
-              placeholder="Permanent physical features (face, hair, build)..."
-              style="width:100%;margin-bottom:12px;font-size:0.88em;">${escapeHtml(character.identityAnchor)}</textarea>
+    <div class="plz-input-wrapper" style="margin-bottom:12px;">
+        <textarea id="plz-studio-anchor" class="text_pole plz-auto-textarea" rows="2"
+                  placeholder="Permanent physical features (face, hair, build)..."
+                  style="width:100%;font-size:0.88em;">${escapeHtml(character.identityAnchor)}</textarea>
+        <div class="plz-input-clear plz-studio-clear plz-clear-textarea" title="Clear Identity">✕</div>
+    </div>
 
     <div style="margin-bottom:12px;">
         <label class="plz-studio-label" style="display:block;margin-bottom:5px;">Aliases (AKAs)</label>
@@ -179,8 +191,8 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
 
     <div class="plz-layered-grid" style="margin-bottom:12px;">
         ${slotsHTML}
-        ${getEmotionInputHTML(layers.emotion)}
-        ${getPoseInputHTML(layers.pose)}
+        ${getEmotionInputHTML(characterId, layers.emotion)}
+        ${getPoseInputHTML(characterId, layers.pose)}
     </div>
 
     <div style="display:flex; gap:6px; margin-bottom:20px;">
@@ -217,10 +229,12 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
                 <i class="fa-solid fa-trash-can"></i> Purge Character Portraits
             </button>
         </div>
-    </div>`;
+    </div>
+    
+    ${buildWardrobeDatalists(characterId, character)}`;
 }
 
-function getLayerInputHTML(label, key, val, deletable = false) {
+function getLayerInputHTML(charId, label, key, val, deletable = false) {
     const item = val?.item ?? '';
     const mod  = val?.modifier ?? '';
     const deleteBtn = deletable 
@@ -234,26 +248,42 @@ function getLayerInputHTML(label, key, val, deletable = false) {
             <label style="font-size:0.75em;opacity:0.6;flex:1;">${label}</label>
             ${deleteBtn}
         </div>
-        <div style="display:flex;gap:4px;">
-            <input class="plz-layer-item text_pole" data-slot="${key}" type="text" placeholder="Item" list="plz-items-list" value="${escapeHtml(item)}" style="flex:2;" />
-            <input class="plz-layer-mod text_pole" data-slot="${key}" type="text" placeholder="Mod" list="plz-mods-list" value="${escapeHtml(mod)}" style="flex:1;" />
+        <div class="plz-layer-row">
+            <div class="plz-input-wrapper" style="flex:2;">
+                <input class="plz-layer-item text_pole" data-slot="${key}" type="text" placeholder="Item" 
+                       list="plz-list-${charId}-${key}-item" value="${escapeHtml(item)}" style="width:100%;" />
+                <div class="plz-input-clear" title="Clear Item">✕</div>
+            </div>
+            <div class="plz-input-wrapper" style="flex:1;">
+                <input class="plz-layer-mod text_pole" data-slot="${key}" type="text" placeholder="Mod" 
+                       list="plz-list-${charId}-${key}-mod" value="${escapeHtml(mod)}" style="width:100%;" />
+                <div class="plz-input-clear" title="Clear Mod">✕</div>
+            </div>
         </div>
     </div>`;
 }
 
-function getEmotionInputHTML(val) {
+function getEmotionInputHTML(charId, val) {
     return `
     <div class="plz-layer-input">
         <label style="font-size:0.75em;opacity:0.6;display:block;margin-bottom:2px;">Emotion</label>
-        <input id="plz-layer-emotion" class="text_pole" type="text" placeholder="Mood/Adjective" value="${escapeHtml(val || '')}" style="width:100%;" />
+        <div class="plz-input-wrapper">
+            <input id="plz-layer-emotion" class="text_pole" type="text" placeholder="Mood/Adjective" 
+                   list="plz-list-${charId}-emotion" value="${escapeHtml(val || '')}" style="width:100%;" />
+            <div class="plz-input-clear" title="Clear Emotion">✕</div>
+        </div>
     </div>`;
 }
 
-function getPoseInputHTML(val) {
+function getPoseInputHTML(charId, val) {
     return `
     <div class="plz-layer-input">
         <label style="font-size:0.75em;opacity:0.6;display:block;margin-bottom:2px;">Pose</label>
-        <input id="plz-layer-pose" class="text_pole" type="text" placeholder="Stance/Position" value="${escapeHtml(val || '')}" style="width:100%;" />
+        <div class="plz-input-wrapper">
+            <input id="plz-layer-pose" class="text_pole" type="text" placeholder="Stance/Position" 
+                   list="plz-list-${charId}-pose" value="${escapeHtml(val || '')}" style="width:100%;" />
+            <div class="plz-input-clear" title="Clear Pose">✕</div>
+        </div>
     </div>`;
 }
 

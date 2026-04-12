@@ -1,16 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaCommit.js
- * @stamp {"utc":"2026-04-12T12:00:00.000Z"}
+ * @stamp {"utc":"2026-04-14T21:10:00.000Z"}
  * @architectural-role UI Sub-module (Promotion & Generation)
  * @description
  * The final commitment gateway for the Studio dashboard. 
  * Handles 'Apply to Turn' and the promotion of ghost characters ('__new__') 
  * into permanent DNA entries.
  * 
- * Orchestrates:
- * 1. Ghost-to-Permanent promotion (Slugification & Bulk Writing).
- * 2. Visual State intent writing.
- * 3. Portrait generation and asset patching.
+ * Fixes:
+ * 1. Removed dead setPortrait import.
+ * 2. Refined lastMsgId logic to use verified indices.
+ * 3. Added concurrency clarification for the write lock.
  * 
  * @api-declaration
  * bindCommitHandlers($overlay)
@@ -19,13 +19,15 @@
  *   assertions:
  *     purity: IO / Stateful UI
  *     state_ownership: [state.chatCharacters, state._workshopCharacterId]
- *     external_io: [dnaWriter.js, imageCache.js, promptCompiler.js, state.js, DOM]
+ *     external_io: [dnaWriter.js, imageCache.js, promptCompiler.js, state.js, callPopup, DOM]
  */
 
 import { getContext } from '../../../../../extensions.js';
+import { callPopup } from '../../../../../../script.js';
 import {
     state, setWorkshopCharacter, updateActiveCharacter, updateActiveLayers,
-    updateActiveImage, addToFileIndex, updateChainLayers, setActiveRoster
+    updateActiveImage, addToFileIndex, updateChainLayers, setActiveRoster,
+    upsertChatEnsemble
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
 import { BASE_SLOTS } from '../../defaults.js';
@@ -34,11 +36,12 @@ import { error } from '../../utils/logger.js';
 import {
     lockedWriteCharacterDef, lockedWriteLabel, lockedWriteAka,
     lockedWriteVisualState, lockedPatchVisualStateImage, 
-    lockedWriteRoster, lockedWriteCharacterStyle, lockedWriteSlots
+    lockedWriteRoster, lockedWriteCharacterStyle, lockedWriteSlots,
+    lockedWriteEnsemble
 } from '../../io/dnaWriter.js';
 import { compilePrompt as compile } from '../../logic/promptCompiler.js';
+import { generateEnsembleLabel, generateEnsembleKey } from '../../logic/parsers.js';
 import { generate } from '../../imageCache.js';
-import { setPortrait } from '../../portrait.js';
 import { getGridLayers, renderStudioView, renderDNAView } from './dnaListeners.js';
 
 let layerSaveTimeout = null;
@@ -55,11 +58,16 @@ export function bindCommitHandlers($overlay) {
         layerSaveTimeout = setTimeout(async () => {
             const id = state._workshopCharacterId;
             if (!id || id === '__new__') return; // Ghost Guard
+
             const layers = getGridLayers();
             const lastAiIdx = getContext().chat.findLastIndex(m => !m.is_user);
             if (lastAiIdx === -1) return;
+
             updateActiveLayers(layers);
             updateChainLayers(id, layers, state.characterChain[id]?.image ?? null);
+            
+            // NOTE: No explicit lock needed here as lockedWriteVisualState 
+            // inside dnaWriter.js internally acquires the singleton writeLock.
             await lockedWriteVisualState(lastAiIdx, id, layers, state.characterChain[id]?.image ?? null);
         }, 600);
     });
@@ -74,7 +82,22 @@ export function bindCommitHandlers($overlay) {
             return;
         }
 
+        // ─── Phase 0: Buffer & Guard ───
+        const layers = getGridLayers();
         const labelInput = $('#plz-studio-label').val().trim();
+        const anchorInput = $('#plz-studio-anchor').val().trim();
+
+        // Bracket Guard: Check for LLM placeholders like [Leather] or [Adjective]
+        const fullSerializedState = JSON.stringify(layers) + labelInput + anchorInput;
+        if (fullSerializedState.includes('[') || fullSerializedState.includes(']')) {
+            const confirmed = await callPopup(
+                '<h3>Potential Placeholder Detected</h3>' +
+                'Brackets <b style="color:var(--SmartThemeErrorColor);">[ ]</b> were found in your character details. ' +
+                'Are you sure you want to save this state?',
+                'confirm'
+            );
+            if (!confirmed) return;
+        }
 
         // ─── Phase 1: Ghost Promotion ───
         if (id === '__new__') {
@@ -92,50 +115,52 @@ export function bindCommitHandlers($overlay) {
             const charData = state.chatCharacters['__new__'];
             charData.label = labelInput;
 
-            // Step 1: Promote via DNA Bulk Write
-            const lastMsgId = Math.max(0, getContext().chat.length - 1);
+            // Step 1: Promote via DNA Bulk Write (using verified lastAiIdx)
             
             // Definition & Label
-            await lockedWriteCharacterDef(lastMsgId, targetId, charData.identityAnchor, charData.seed, charData.engine);
-            await lockedWriteLabel(lastMsgId, targetId, labelInput);
+            await lockedWriteCharacterDef(lastAiIdx, targetId, charData.identityAnchor, charData.seed, charData.engine);
+            await lockedWriteLabel(lastAiIdx, targetId, labelInput);
             
             // Roster Membership
             const newRoster = [...new Set([...state.activeRoster, targetId])];
-            await lockedWriteRoster(lastMsgId, newRoster);
+            await lockedWriteRoster(lastAiIdx, newRoster);
             setActiveRoster(newRoster);
             
             // Schema & Metadata
             if (charData.slots && charData.slots.length !== BASE_SLOTS.length) {
-                await lockedWriteSlots(lastMsgId, targetId, charData.slots);
+                await lockedWriteSlots(lastAiIdx, targetId, charData.slots);
             }
             if (charData.aka && charData.aka.length > 0) {
-                await lockedWriteAka(lastMsgId, targetId, charData.aka);
+                await lockedWriteAka(lastAiIdx, targetId, charData.aka);
             }
             if (charData.styleName) {
-                await lockedWriteCharacterStyle(lastMsgId, targetId, charData.styleName);
+                await lockedWriteCharacterStyle(lastAiIdx, targetId, charData.styleName);
             }
 
             // Step 2: Migrate In-Memory Registry
             state.chatCharacters[targetId] = charData;
             delete state.chatCharacters['__new__'];
             
-            state.characterChain[targetId] = state.characterChain['__new__'];
+            // Inject buffered layers
+            state.characterChain[targetId] = { layers: structuredClone(layers), image: null };
             delete state.characterChain['__new__'];
 
-            // Step 3: Switch context to new permanent ID
+            // Step 3: Switch context
             id = targetId;
             setWorkshopCharacter(id);
             
-            // Notify UI
             document.dispatchEvent(new CustomEvent('plz:roster-changed'));
-            renderDNAView();
-            renderStudioView();
         }
 
         // ─── Phase 2: Visual State Commitment ───
-        const layers = getGridLayers();
         const char = state.chatCharacters[id];
         const prompt = compile(char.identityAnchor, layers);
+
+        // Auto-Create Ensemble for the applied outfit
+        const ensembleLabel = generateEnsembleLabel(layers);
+        const ensembleKey   = generateEnsembleKey(layers);
+        upsertChatEnsemble(id, ensembleKey, ensembleLabel, layers);
+        await lockedWriteEnsemble(lastAiIdx, id, ensembleKey, ensembleLabel, layers);
 
         updateActiveCharacter(id);
         updateActiveLayers(layers);
@@ -143,6 +168,10 @@ export function bindCommitHandlers($overlay) {
 
         // Record the narrative intent in DNA
         const recordId = await lockedWriteVisualState(lastAiIdx, id, layers, null);
+
+        // Render UI
+        renderDNAView();
+        renderStudioView();
 
         // ─── Phase 3: Background Generation ───
         const s = getSettings();
@@ -166,7 +195,6 @@ export function bindCommitHandlers($overlay) {
             updateActiveImage(file);
             updateChainLayers(id, layers, file);
             await lockedPatchVisualStateImage(lastAiIdx, id, file, recordId);
-            setPortrait(file);
             
         } catch (err) {
             error('Commit', 'Manual generation failed:', err);

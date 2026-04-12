@@ -1,24 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaListeners.js
- * @stamp {"utc":"2026-04-12T12:10:00.000Z"}
+ * @stamp {"utc":"2026-04-14T21:20:00.000Z"}
  * @architectural-role UI Coordinator (Workshop DNA)
  * @description
  * Coordinator hub for the Workshop DNA and Studio tabs. 
- * Manages the high-level rendering of the roster and character dashboard,
- * and delegates all DOM event handling to specialized sub-modules.
  * 
- * Architectural Note on Circular Dependencies:
- * Sub-modules (like dnaCommit.js) import `getGridLayers` and `renderStudioView` 
- * from this file, while this file imports their `bind*` functions. This is safe 
- * in ES Modules because the DOM handlers are evaluated lazily (after initialization).
- * 
- * Decomposed Modules:
- * - dnaRoster.js     (Navigation & Creation)
- * - dnaIdentity.js   (Metadata & Identity)
- * - dnaSlots.js      (Wardrobe Schema)
- * - dnaEnsembles.js  (Snapshots)
- * - dnaScanning.js   (LLM Tools)
- * - dnaCommit.js     (Promotion & Generation)
+ * Updated for the Smart Wardrobe:
+ * 1. Fixed Orphan Sweeping to explicitly check for empty strings.
+ * 2. Added delegated clear button logic for the (x) pinned overlays.
  * 
  * @api-declaration
  * renderDNAView()
@@ -56,7 +45,6 @@ export function renderDNAView() {
 
 /** 
  * Renders the active character's dashboard grid. 
- * Handles both permanent characters and the '__new__' ghost state.
  */
 export function renderStudioView() {
     const id = state._workshopCharacterId;
@@ -87,7 +75,7 @@ export function renderStudioView() {
 
 /** 
  * Shared Utility: Collects values from the Layered Grid into a standardized layers object. 
- * Consumed by dnaEnsembles, dnaScanning, and dnaCommit.
+ * Implements ORPHAN SWEEPING: If an item is blank, its modifier is automatically set to null.
  * @returns {object} The layered visual state.
  */
 export function getGridLayers() {
@@ -98,8 +86,15 @@ export function getGridLayers() {
     
     $('.plz-layer-item').each(function() {
         const slot = $(this).data('slot');
-        const item = $(this).val().trim();
-        const mod = $(`.plz-layer-mod[data-slot="${slot}"]`).val().trim();
+        let item = $(this).val().trim();
+        let mod = $(`.plz-layer-mod[data-slot="${slot}"]`).val().trim();
+
+        // Orphan Sweeping Logic (Fixed: explicit check for empty string/None)
+        if (item === '' || item.toLowerCase() === 'none') {
+            item = null;
+            mod  = null;
+        }
+
         layers[slot] = item ? { item, modifier: mod || null } : null;
     });
     
@@ -108,10 +103,30 @@ export function getGridLayers() {
 
 /** 
  * Central entry point for binding all DNA-related DOM handlers.
- * Called once during Workshop overlay injection via core.js.
  */
 export function bindDNAHandlers() {
     const $overlay = $('#plz-workshop-overlay');
+
+    // --- Pinned Clear Button Logic ---
+    $overlay.on('click', '.plz-input-clear', function(e) {
+        e.stopPropagation();
+        const $wrapper = $(this).closest('.plz-input-wrapper');
+        const $input = $wrapper.find('input, textarea');
+        
+        // Clear the primary target
+        $input.val('').trigger('input');
+
+        // Cascade Clear: If an item is cleared, clear its modifier too
+        if ($input.hasClass('plz-layer-item')) {
+            const slot = $input.data('slot');
+            $(`.plz-layer-mod[data-slot="${slot}"]`).val('').trigger('input');
+        }
+
+        // Special case for identity anchor (resize)
+        if ($input.attr('id') === 'plz-studio-anchor') {
+            smartResize($input[0]);
+        }
+    });
 
     // Delegate to specialized, single-purpose modules
     bindRosterHandlers($overlay);

@@ -1,17 +1,20 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-14T12:50:00.000Z"}
+ * @stamp {"utc":"2026-04-14T21:00:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
  * visual state for the current turn using the 5-slot architecture.
  *
- * Updated for the Multi-Character Architecture:
- * 1. Automatically adds the selected character to the activeRoster if missing.
- * 2. Persists roster changes to DNA and triggers UI refreshes via 'plz:roster-changed'.
+ * Updated for the Smart Wardrobe:
+ * 1. State Preservation: Bracket Guard now recurses with captured layers.
+ * 2. Defensive Lookup: Added null guards for character and ensemble access.
+ * 3. Character-specific Wardrobe Dictionary datalists.
+ * 4. Mobile-friendly stacked/indented modifier layout.
+ * 5. Orphan Sweeping: Clears modifiers when items are blanked.
  *
  * @api-declaration
- * openCharPicker() → Promise<void>
+ * openCharPicker(initialOverride) → Promise<void>
  *
  * @contract
  *   assertions:
@@ -45,9 +48,40 @@ import { BASE_SLOTS, META_SLOTS } from '../defaults.js';
 import { generateEnsembleLabel, generateEnsembleKey } from '../logic/parsers.js';
 
 /**
+ * Scans character ensembles to build unique datalists for each wardrobe slot.
+ */
+function buildDatalistsHTML(charId, character) {
+    const ensembles = Object.values(character?.ensembles || {});
+    const slots = character?.slots || [...BASE_SLOTS];
+    const lists = {};
+
+    ensembles.forEach(e => {
+        const layers = e.layers || {};
+        slots.forEach(s => {
+            if (!lists[`${s}-item`]) lists[`${s}-item`] = new Set();
+            if (!lists[`${s}-mod`])  lists[`${s}-mod`]  = new Set();
+            if (layers[s]?.item)     lists[`${s}-item`].add(layers[s].item);
+            if (layers[s]?.modifier) lists[`${s}-mod`].add(layers[s].modifier);
+        });
+        if (!lists['emotion']) lists['emotion'] = new Set();
+        if (!lists['pose'])    lists['pose']    = new Set();
+        if (layers.emotion)    lists['emotion'].add(layers.emotion);
+        if (layers.pose)       lists['pose'].add(layers.pose);
+    });
+
+    return Object.entries(lists).map(([key, values]) => {
+        const options = Array.from(values)
+            .filter(v => v && v !== 'None' && v !== 'KEEP')
+            .map(v => `<option value="${escapeHtml(v)}">`)
+            .join('');
+        return `<datalist id="plz-cp-list-${charId}-${key}">${options}</datalist>`;
+    }).join('');
+}
+
+/**
  * Builds the HTML for the dynamic layered grid inside the picker.
  */
-function buildGridHTML(slots, layers) {
+function buildGridHTML(slots, layers, charId) {
     const effectiveSlots = slots && slots.length > 0 ? slots : BASE_SLOTS;
 
     const clothingHtml = effectiveSlots.map(key => {
@@ -57,9 +91,17 @@ function buildGridHTML(slots, layers) {
         return `
         <div style="margin-bottom:10px;">
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">${escapeHtml(label)}</label>
-            <div style="display:flex; gap:4px;">
-                <input class="plz-cp-item text_pole" data-slot="${key}" type="text" placeholder="Item" value="${escapeHtml(item)}" style="flex:2;" />
-                <input class="plz-cp-mod text_pole" data-slot="${key}" type="text" placeholder="Mod" value="${escapeHtml(mod)}" style="flex:1;" />
+            <div class="plz-layer-row">
+                <div class="plz-input-wrapper" style="flex:2;">
+                    <input class="plz-cp-item text_pole" data-slot="${key}" type="text" placeholder="Item" 
+                           list="plz-cp-list-${charId}-${key}-item" value="${escapeHtml(item)}" style="width:100%;" />
+                    <div class="plz-input-clear" title="Clear Item">✕</div>
+                </div>
+                <div class="plz-input-wrapper" style="flex:1;">
+                    <input class="plz-cp-mod text_pole" data-slot="${key}" type="text" placeholder="Mod" 
+                           list="plz-cp-list-${charId}-${key}-mod" value="${escapeHtml(mod)}" style="width:100%;" />
+                    <div class="plz-input-clear" title="Clear Mod">✕</div>
+                </div>
             </div>
         </div>`;
     }).join('');
@@ -69,11 +111,19 @@ function buildGridHTML(slots, layers) {
         ${clothingHtml}
         <div>
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">Emotion</label>
-            <input id="plz-cp-emotion" class="text_pole" type="text" value="${escapeHtml(layers.emotion || 'neutral')}" style="width:100%;" />
+            <div class="plz-input-wrapper">
+                <input id="plz-cp-emotion" class="text_pole" type="text" list="plz-cp-list-${charId}-emotion" 
+                       value="${escapeHtml(layers.emotion || 'neutral')}" style="width:100%;" />
+                <div class="plz-input-clear" title="Clear Emotion">✕</div>
+            </div>
         </div>
         <div>
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">Pose</label>
-            <input id="plz-cp-pose" class="text_pole" type="text" value="${escapeHtml(layers.pose || 'upright')}" style="width:100%;" />
+            <div class="plz-input-wrapper">
+                <input id="plz-cp-pose" class="text_pole" type="text" list="plz-cp-list-${charId}-pose" 
+                       value="${escapeHtml(layers.pose || 'upright')}" style="width:100%;" />
+                <div class="plz-input-clear" title="Clear Pose">✕</div>
+            </div>
         </div>
     </div>
     <div style="margin-top:10px; display:flex; justify-content:flex-end;">
@@ -84,7 +134,7 @@ function buildGridHTML(slots, layers) {
 }
 
 /**
- * Scrapes the current DOM inputs in the picker to preserve state during re-renders.
+ * Scrapes the current DOM inputs. Implements Orphan Sweeping.
  */
 function getPickerCurrentLayers() {
     const layers = { 
@@ -94,8 +144,15 @@ function getPickerCurrentLayers() {
     
     $('.plz-cp-item').each(function() {
         const slot = $(this).data('slot');
-        const item = $(this).val().trim();
-        const mod = $(`.plz-cp-mod[data-slot="${slot}"]`).val().trim();
+        let item = $(this).val().trim();
+        let mod = $(`.plz-cp-mod[data-slot="${slot}"]`).val().trim();
+
+        // Orphan Sweeping (Fix: Check specifically for empty string or None)
+        if (item === '' || item === null || item.toLowerCase() === 'none') {
+            item = null;
+            mod  = null;
+        }
+
         layers[slot] = item ? { item, modifier: mod || null } : null;
     });
     return layers;
@@ -103,8 +160,10 @@ function getPickerCurrentLayers() {
 
 /**
  * Opens the manual character/layer picker.
+ * 
+ * @param {object|null} initialOverride - Optional layers object to restore state on guard re-open.
  */
-export async function openCharPicker() {
+export async function openCharPicker(initialOverride = null) {
     const context = getContext();
     const lastAiIdx = context.chat.findLastIndex(m => !m.is_user);
     if (lastAiIdx === -1) {
@@ -112,7 +171,6 @@ export async function openCharPicker() {
         return;
     }
 
-    // Include all characters defined in the DNA, not just those in the roster
     const dnaChars = Object.keys(state.chatCharacters);
     if (dnaChars.length === 0) {
         if (window.toastr) window.toastr.info('No character DNA found in this chat.', 'PersonaLyze');
@@ -122,7 +180,8 @@ export async function openCharPicker() {
     const initId = (state.activeCharacterId && dnaChars.includes(state.activeCharacterId))
         ? state.activeCharacterId : dnaChars[0];
 
-    const currentLayers = state.characterChain[initId]?.layers || state.activeLayers;
+    // Priority: 1. Manual Override (Guard recovery) 2. Character History 3. Active Session
+    const currentLayers = initialOverride || state.characterChain[initId]?.layers || state.activeLayers;
     const currentSlots = state.chatCharacters[initId]?.slots || [...BASE_SLOTS];
 
     const charOptions = dnaChars.map(id => {
@@ -156,27 +215,42 @@ export async function openCharPicker() {
                 <select id="plz-cp-char" class="text_pole" style="width:100%; margin-bottom:8px;">${charOptions}</select>
                 <select id="plz-cp-ensemble" class="text_pole" style="width:100%;">${buildEnsembleOptions(initId)}</select>
             </div>
-            <div id="plz-cp-grid-container">${buildGridHTML(currentSlots, currentLayers)}</div>
+            <div id="plz-cp-grid-container">${buildGridHTML(currentSlots, currentLayers, initId)}</div>
+            <div id="plz-cp-datalists-container">${buildDatalistsHTML(initId, state.chatCharacters[initId])}</div>
             <button id="plz-cp-force-regen" class="menu_button" style="width:100%;margin-top:12px;opacity:0.75;">
                 <i class="fa-solid fa-rotate-right"></i> Force New Generation
             </button>`,
             'confirm'
         ).then(ok => finish(!!ok)).catch(() => finish(false));
 
+        // Pinned Clear Button Handler
+        $(document).on('click.plzCp', '.plz-input-clear', function(e) {
+            e.stopPropagation();
+            const $wrapper = $(this).closest('.plz-input-wrapper');
+            const $input = $wrapper.find('input');
+            $input.val('').trigger('input');
+            if ($input.hasClass('plz-cp-item')) {
+                const slot = $input.data('slot');
+                $(`.plz-cp-mod[data-slot="${slot}"]`).val('').trigger('input');
+            }
+        });
+
         $(document).on('change.plzCp', '#plz-cp-char', function() {
             const id = $(this).val();
-            $('#plz-cp-ensemble').html(buildEnsembleOptions(id));
             const charData = state.chatCharacters[id];
+            $('#plz-cp-ensemble').html(buildEnsembleOptions(id));
             const layers = state.characterChain[id]?.layers || state.activeLayers;
             const slots = charData?.slots || [...BASE_SLOTS];
-            $('#plz-cp-grid-container').html(buildGridHTML(slots, layers));
+            $('#plz-cp-grid-container').html(buildGridHTML(slots, layers, id));
+            $('#plz-cp-datalists-container').html(buildDatalistsHTML(id, charData));
         });
 
         $(document).on('change.plzCp', '#plz-cp-ensemble', function() {
             const charId = $('#plz-cp-char').val();
             const key = $(this).val();
             if (!key) return;
-            const ensemble = state.chatCharacters[charId].ensembles[key];
+            const ensemble = state.chatCharacters[charId]?.ensembles?.[key];
+            if (!ensemble) return;
             const layers = applyEnsemble(state.activeLayers, ensemble.layers);
             $('#plz-cp-emotion').val(layers.emotion || 'neutral');
             $('#plz-cp-pose').val(layers.pose || 'upright');
@@ -207,7 +281,7 @@ export async function openCharPicker() {
             await lockedWriteSlots(lastMsgId, id, newSlots);
             upsertChatSlots(id, newSlots);
             const preservedLayers = getPickerCurrentLayers();
-            $('#plz-cp-grid-container').html(buildGridHTML(newSlots, preservedLayers));
+            $('#plz-cp-grid-container').html(buildGridHTML(newSlots, preservedLayers, id));
         });
 
         $(document).on('click.plzCp', '#plz-cp-force-regen', () => {
@@ -219,17 +293,28 @@ export async function openCharPicker() {
     if (!confirmed) return;
 
     // ─── Post-Confirmation Logic ───
-
     const characterId = $('#plz-cp-char').val();
     const layers = getPickerCurrentLayers();
 
-    // 1. Ensemble Autosave
+    // Bracket Guard Check (Priority 1 Fix: Recurse with captured layers)
+    const serialized = JSON.stringify(layers);
+    if (serialized.includes('[') || serialized.includes(']')) {
+        const guardOk = await callPopup(
+            '<h3>Potential Placeholder Detected</h3>' +
+            'Brackets <b style="color:var(--SmartThemeErrorColor);">[ ]</b> were found in the outfit details. ' +
+            'Are you sure you want to save this state?',
+            'confirm'
+        );
+        if (!guardOk) {
+            return openCharPicker(layers);
+        }
+    }
+
     const ensembleLabel = generateEnsembleLabel(layers);
     const ensembleKey   = generateEnsembleKey(layers);
     await lockedWriteEnsemble(lastAiIdx, characterId, ensembleKey, ensembleLabel, layers);
     upsertChatEnsemble(characterId, ensembleKey, ensembleLabel, layers);
 
-    // 2. Roster Sync (Crucial for Multi-Character Layout)
     if (!state.activeRoster.includes(characterId)) {
         const nextRoster = [...state.activeRoster, characterId];
         await lockedWriteRoster(lastAiIdx, nextRoster);
