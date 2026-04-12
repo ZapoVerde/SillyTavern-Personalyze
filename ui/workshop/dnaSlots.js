@@ -1,12 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaSlots.js
- * @stamp {"utc":"2026-04-12T11:30:00.000Z"}
+ * @stamp {"utc":"2026-04-14T23:40:00.000Z"}
  * @architectural-role UI Sub-module (Wardrobe Schema)
  * @description
  * Handles wardrobe category (slot) management in the Studio.
  * Allows for adding custom slots and deleting non-base slots.
  * 
- * Implements the Ghost Guard Policy: Blocks DNA writes for '__new__'.
+ * Updated to ensure all category keys are strictly slugified for 
+ * deterministic DOM linkage.
  * 
  * @api-declaration
  * bindSlotHandlers($overlay)
@@ -41,7 +42,9 @@ export function bindSlotHandlers($overlay) {
         const label = (nameRaw ?? '').trim();
         if (!label) return;
 
+        // INDUSTRIAL FIX: Strict slugification of the technical key
         const key = slugify(label);
+        
         if (META_SLOTS.includes(key) || BASE_SLOTS.includes(key)) {
             if (window.toastr) window.toastr.error(`"${label}" is a reserved system keyword.`, 'PersonaLyze');
             return;
@@ -95,7 +98,7 @@ export function bindSlotHandlers($overlay) {
             await lockedWriteSlots(lastMsgId, id, newSlots);
         }
 
-        // 3. Optional: clear orphaned data from active state for this session
+        // 3. Clean up session-active state if necessary
         if (state.activeLayers && state.activeLayers[key] !== undefined && state.activeCharacterId === id) {
             state.activeLayers[key] = null;
         }

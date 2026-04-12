@@ -1,13 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaListeners.js
- * @stamp {"utc":"2026-04-14T21:20:00.000Z"}
+ * @stamp {"utc":"2026-04-14T23:30:00.000Z"}
  * @architectural-role UI Coordinator (Workshop DNA)
  * @description
  * Coordinator hub for the Workshop DNA and Studio tabs. 
  * 
  * Updated for the Smart Wardrobe:
- * 1. Fixed Orphan Sweeping to explicitly check for empty strings.
- * 2. Added delegated clear button logic for the (x) pinned overlays.
+ * 1. JIT Harvesting: Integrated vocabularyService to fill Studio suggestions.
+ * 2. Pinned Clear Logic: Handled delegated (x) button events.
  * 
  * @api-declaration
  * renderDNAView()
@@ -19,13 +19,14 @@
  *   assertions:
  *     purity: UI Coordinator
  *     state_ownership: [state]
- *     external_io: [dnaTemplates.js, specialized sub-modules, DOM]
+ *     external_io: [dnaTemplates.js, specialized sub-modules, vocabularyService.js, DOM]
  */
 
 import { state } from '../../state.js';
 import { getSettings, getMetaSettings } from '../../settings.js';
 import { getDnaRosterHTML, getStudioHTML, getStudioEmptyHTML } from './dnaTemplates.js';
 import { smartResize } from '../../utils/dom.js';
+import { buildVocabularyDatalists } from '../../logic/vocabularyService.js';
 
 // Sub-module binders
 import { bindRosterHandlers } from './dnaRoster.js';
@@ -56,7 +57,8 @@ export function renderStudioView() {
         return;
     }
 
-    const layers = state.characterChain[id]?.layers || state.activeLayers;
+    const chain = state.characterChain[id];
+    const layers = chain?.layers || state.activeLayers;
     const s = getSettings();
     const meta = getMetaSettings();
     
@@ -66,8 +68,14 @@ export function renderStudioView() {
         engineEnablePiAPI:        s.engineEnablePiAPI,
     };
     
+    // 1. Render base Studio HTML
     $panel.html(getStudioHTML(id, char, layers, enabledEngines, meta.styleLibrary ?? {}, meta.defaultStyleName ?? ''));
 
+    // 2. Inject JIT Vocabulary into the placeholder container
+    const vocabHtml = buildVocabularyDatalists(id, char, chain);
+    $panel.find('#plz-studio-datalists-container').html(vocabHtml);
+
+    // 3. Size textareas
     $panel.find('.plz-auto-textarea').each(function() { 
         smartResize(this); 
     });
@@ -113,22 +121,18 @@ export function bindDNAHandlers() {
         const $wrapper = $(this).closest('.plz-input-wrapper');
         const $input = $wrapper.find('input, textarea');
         
-        // Clear the primary target
         $input.val('').trigger('input');
 
-        // Cascade Clear: If an item is cleared, clear its modifier too
         if ($input.hasClass('plz-layer-item')) {
             const slot = $input.data('slot');
             $(`.plz-layer-mod[data-slot="${slot}"]`).val('').trigger('input');
         }
 
-        // Special case for identity anchor (resize)
         if ($input.attr('id') === 'plz-studio-anchor') {
             smartResize($input[0]);
         }
     });
 
-    // Delegate to specialized, single-purpose modules
     bindRosterHandlers($overlay);
     bindIdentityHandlers($overlay);
     bindSlotHandlers($overlay);
