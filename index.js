@@ -116,7 +116,7 @@ async function init() {
 
         // 5. Host Events — Bind SillyTavern lifecycle events
         eventSource.on(event_types.MESSAGE_RECEIVED, handleMessageReceived);
-        eventSource.on(event_types.MESSAGE_SWIPED, handleMessageReceived);
+        //eventSource.on(event_types.MESSAGE_SWIPED, handleMessageReceived);
         eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, injectMessageBadge);
         
