@@ -29,7 +29,7 @@
  *     external_io: [message.extra.personalyze (write), saveChatConditional()]
  */
 
-import { saveChatConditional } from '../../../../../script.js';
+import { saveChatConditional } from '../../../../../../script.js';
 import { getContext } from '../../../../extensions.js';
 import { AsyncLock } from '../utils/lock.js';
 
