@@ -1,14 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/routes/runware.js
- * @stamp {"utc":"2026-04-16T15:00:00.000Z"}
+ * @stamp {"utc":"2026-04-16T16:30:00.000Z"}
  * @architectural-role Server-Side Route Handler
  * @description
  * Implements proxy routes for the Runware.ai API. 
  * Supports high-performance image inference with native transparency (LayerDiffuse),
- * character-specific LoRAs, and standalone background removal.
+ * visual preset LoRAs, and standalone background removal.
  * 
  * Updated:
- * 1. Switched taskUUID generation to crypto.randomUUID() to satisfy UUID v4 validation.
+ * 1. Fixed Schema: Switched 'lora' to plural 'loras'.
+ * 2. Fixed Schema: Switched 'outputType' to array ["URL"].
  * 
  * @api-declaration
  * registerRunwareRoutes(router) -> void
@@ -32,7 +33,7 @@ export function registerRunwareRoutes(router) {
     // ─── Runware: Image Generation ────────────────────────────────────────────
     router.post('/runware-generate', async (req, res) => {
         try {
-            const { positivePrompt, model, width, height, seed, lora, useLayerDiffuse } = req.body;
+            const { positivePrompt, model, width, height, seed, loras, useLayerDiffuse } = req.body;
             const apiKey = readSecret(req.user.directories, 'api_key_runware');
 
             if (!apiKey) {
@@ -56,10 +57,10 @@ export function registerRunwareRoutes(router) {
                 width: width || 512,
                 height: height || 768,
                 numberResults: 1,
-                outputType: "URL",
+                outputType: ["URL"], // Schema Fix: Must be array
                 outputFormat: useLayerDiffuse ? "PNG" : "JPG",
                 seed: seed || -1,
-                lora: lora || [], 
+                loras: loras || [], // Schema Fix: Must be plural 'loras'
                 layerDiffuse: !!useLayerDiffuse, 
                 checkNSFW: false
             }];

@@ -1,15 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/executor.js
- * @stamp {"utc":"2026-04-16T15:15:00.000Z"}
+ * @stamp {"utc":"2026-04-16T16:20:00.000Z"}
  * @architectural-role IO Executor (Generation Logic)
  * @description
  * Primary execution engine for PersonaLyze image generation.
  * Coordinates multi-provider routing (Runware, Fal, PiAPI, Pollinations),
  * manages asynchronous task polling, and handles the post-processing pipeline.
  * 
- * Updated:
- * 1. Restored safe: 'false' for Pollinations (User requested).
- * 2. Restored findSecret and Authorization headers to support authenticated safe:false calls.
+ * Updated for Visual Presets:
+ * 1. Pulls LoRA stacks directly from the Style Package.
+ * 2. Fixed Runware plural schema mismatch (lora -> loras).
+ * 3. Fixed ReferenceError by ensuring style-derived variables are scoped correctly.
  * 
  * @api-declaration
  * fetchPreviewBlob(prompt, characterId, provider, seed, emotion, pose) -> Promise<string>
@@ -75,7 +76,8 @@ async function _pollPiapiTask(taskId, timeoutMs, onStatus) {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinations', seed = 1, emotion = '', pose = '') {
-    const fullPrompt = finalizePrompt(prompt, '', emotion, pose, resolveStyle(characterId));
+    const styleObj = resolveStyle(characterId);
+    const fullPrompt = finalizePrompt(prompt, '', emotion, pose, styleObj.template);
     const s = getSettings();
     let res;
 
@@ -93,11 +95,19 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
         const genResult = await _pollPiapiTask(task_id, 120000, () => { });
         res = await fetch('/api/plugins/personalyze/piapi-fetch', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ image_url: genResult.image_url }) });
     } else if (provider === 'runware') {
-        const char = state.chatCharacters[characterId];
-        const lora = char?.runwareLoraAir ? [{ model: char.runwareLoraAir, weight: char.runwareLoraWeight ?? 0.8 }] : [];
+        // Pull LoRAs from the style package
+        const loras = styleObj.loras || [];
         res = await fetch('/api/plugins/personalyze/runware-generate', {
             method: 'POST', headers: getRequestHeaders(),
-            body: JSON.stringify({ positivePrompt: fullPrompt, model: s.runwareModel, width: DEV_IMAGE_WIDTH, height: DEV_IMAGE_HEIGHT, seed, lora, useLayerDiffuse: s.runwareUseLayerDiffuse }),
+            body: JSON.stringify({ 
+                positivePrompt: fullPrompt, 
+                model: s.runwareModel, 
+                width: DEV_IMAGE_WIDTH, 
+                height: DEV_IMAGE_HEIGHT, 
+                seed, 
+                loras, 
+                useLayerDiffuse: s.runwareUseLayerDiffuse 
+            }),
         });
     } else {
         const key = await findSecret('api_key_pollinations');
@@ -112,7 +122,9 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
 }
 
 export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed = 1, provider = 'pollinations', forceCacheBust = false) {
-    const fullPrompt = finalizePrompt(subjectPrompt, anchor, emotionLabel, poseLabel, resolveStyle(characterId));
+    const styleObj = resolveStyle(characterId);
+    const fullPrompt = finalizePrompt(subjectPrompt, anchor, emotionLabel, poseLabel, styleObj.template);
+    
     logCall('PortraitGenerate', `[${provider}]\n${fullPrompt}`, null, null);
     const s = getSettings();
     const { width: w, height: h } = resolveDimensions(characterId);
@@ -129,9 +141,21 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
             const resData = await _pollPiapiTask(task_id, 120000, st => _dispatchPortraitStatus(characterId, { status: st }));
             sourceUrl = resData.image_url; meta = resData.meta;
         } else if (provider === 'runware') {
-            const char = state.chatCharacters[characterId];
-            const lora = char?.runwareLoraAir ? [{ model: char.runwareLoraAir, weight: char.runwareLoraWeight ?? 0.8 }] : [];
-            imgRes = await fetch('/api/plugins/personalyze/runware-generate', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ positivePrompt: fullPrompt, model: s.runwareModel, width: w, height: h, seed, lora, useLayerDiffuse: s.runwareUseLayerDiffuse }) });
+            // Pull LoRAs from the style package
+            const loras = styleObj.loras || [];
+            imgRes = await fetch('/api/plugins/personalyze/runware-generate', { 
+                method: 'POST', 
+                headers: getRequestHeaders(), 
+                body: JSON.stringify({ 
+                    positivePrompt: fullPrompt, 
+                    model: s.runwareModel, 
+                    width: w, 
+                    height: h, 
+                    seed, 
+                    loras, 
+                    useLayerDiffuse: s.runwareUseLayerDiffuse 
+                }) 
+            });
             if (s.runwareUseLayerDiffuse) nativeTransparency = true;
         } else {
             const key = await findSecret('api_key_pollinations');

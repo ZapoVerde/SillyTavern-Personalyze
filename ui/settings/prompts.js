@@ -1,16 +1,18 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/prompts.js
- * @stamp {"utc":"2026-04-11T19:00:00.000Z"}
- * @architectural-role UI Logic (Prompt Editor)
+ * @stamp {"utc":"2026-04-16T16:40:00.000Z"}
+ * @architectural-role UI Logic (Prompt & Style Editor)
  * @description
- * Orchestrates the multi-line Prompt Editor modal. 
- * Provides unlimited auto-resize for large textareas and manages reset/save 
- * lifecycle for LLM prompt templates.
- *
- * Updated with robust auto-expansion logic for mobile and high-frequency input.
+ * Orchestrates the multi-line Prompt Editor and Style Package Editor modals.
+ * 
+ * Updated for Visual Presets:
+ * 1. overhauled openStyleModal to manage Style Packages (Template + LoRAs).
+ * 2. Added dynamic LoRA stack editor with weight sliders and Civitai links.
+ * 3. Implemented Case-Insensitive variable descriptions.
  *
  * @api-declaration
  * openPromptModal(key, title, defaultValue) -> Promise<void>
+ * openStyleModal(styleName) -> Promise<void>
  *
  * @contract
  *   assertions:
@@ -22,7 +24,8 @@
 import { callPopup, saveSettingsDebounced } from '../../../../../../script.js';
 import { getSettings, getMetaSettings, updateSetting } from '../../settings.js';
 import { smartResize } from '../../utils/dom.js';
-import { DEFAULT_VN_STYLE_SUFFIX } from '../../defaults.js';
+import { DEFAULT_VN_STYLE_SUFFIX, RUNWARE_LORA_REGISTRY } from '../../defaults.js';
+import { escapeHtml } from '../../utils/history.js';
 
 /** Variables available in each prompt template, with descriptions. */
 const PROMPT_VARIABLES = {
@@ -81,80 +84,170 @@ const PROMPT_VARIABLES = {
     ],
 };
 
-/**
- * Handles initialization and event binding for the dynamic textarea in the prompt modals.
- */
+// ─── Shared Helpers ───────────────────────────────────────────────────────────
+
 function initTextareaAutoResize() {
     const selector = '#plz-prompt-editor';
-    
-    // Robust listener for input changes (works for mobile keyboards, autocomplete, and paste)
     $(document).on('input.plz-prompt keyup.plz-prompt change.plz-prompt', selector, function() {
         smartResize(this);
     });
-
-    // Handle initial sizing after SillyTavern injects the modal into the DOM
     const triggerResize = () => {
         const el = document.querySelector(selector);
         if (el) smartResize(el);
     };
-
-    // Multiple attempts to ensure height is calculated after layout is settled
     requestAnimationFrame(triggerResize);
-    setTimeout(triggerResize, 50);
     setTimeout(triggerResize, 200);
 }
 
-/**
- * Cleanup function for shared prompt modal listeners.
- */
 function cleanupPromptListeners() {
     $(document).off('.plz-prompt');
 }
 
 /**
- * Opens a modal to edit a style library entry.
- * Reads from and writes directly to meta.styleLibrary[styleName].
- *
- * @param {string} styleName - Key in meta.styleLibrary to edit.
+ * Parses a Civitai AIR into a clickable URL.
+ */
+function getCivitaiUrl(air) {
+    if (!air || !air.startsWith('civitai:')) return null;
+    const match = air.match(/civitai:(\d+)(?:@(\d+))?/);
+    if (!match) return null;
+    const modelId = match[1];
+    const versionId = match[2];
+    let url = `https://civitai.com/models/${modelId}`;
+    if (versionId) url += `?modelVersionId=${versionId}`;
+    return url;
+}
+
+// ─── Style Editor ──────────────────────────────────────────────────────────────
+
+/**
+ * Renders the LoRA stack list for the Style Modal.
+ */
+function renderLoraList(loras) {
+    const registryOptions = RUNWARE_LORA_REGISTRY.map(l => 
+        `<option value="${escapeHtml(l.air)}">${escapeHtml(l.label)}</option>`
+    ).join('');
+
+    if (!loras || loras.length === 0) {
+        return `<p style="opacity:0.4; font-size:0.85em; margin:10px 0;">No LoRAs added to this style yet.</p>`;
+    }
+
+    return loras.map((lora, idx) => {
+        const civitaiUrl = getCivitaiUrl(lora.air);
+        const linkHtml = civitaiUrl 
+            ? `<a href="${civitaiUrl}" target="_blank" class="menu_button" style="padding:4px 8px; font-size:0.8em;" title="View on Civitai">
+                 <i class="fa-solid fa-external-link"></i>
+               </a>`
+            : `<button class="menu_button" disabled style="padding:4px 8px; font-size:0.8em; opacity:0.3;"><i class="fa-solid fa-link-slash"></i></button>`;
+
+        return `
+        <div class="plz-lora-row" data-idx="${idx}" style="display:flex; align-items:center; gap:8px; margin-bottom:8px; padding:6px; background:rgba(255,255,255,0.03); border-radius:4px;">
+            <select class="plz-lora-air text_pole" style="flex:2; font-size:0.85em;">
+                <option value="">— Select LoRA —</option>
+                ${registryOptions.replace(`value="${escapeHtml(lora.air)}"`, `value="${escapeHtml(lora.air)}" selected`)}
+            </select>
+            <div style="display:flex; align-items:center; gap:6px; flex:1;">
+                <input type="number" class="plz-lora-weight text_pole" step="0.1" value="${lora.weight ?? 0.8}" style="width:50px; font-size:0.85em;" />
+                <span style="font-size:0.7em; opacity:0.5;">W</span>
+            </div>
+            ${linkHtml}
+            <button class="plz-lora-remove menu_button" style="color:var(--SmartThemeErrorColor); padding:4px 8px;"><i class="fa-solid fa-trash-can"></i></button>
+        </div>`;
+    }).join('');
+}
+
+/**
+ * Updates the read-only summary of LoRAs displayed above the prompt.
+ */
+function updateStyleBreadcrumb(loras) {
+    const $bread = $('#plz-style-breadcrumb');
+    if (!$bread.length) return;
+
+    if (!loras || loras.length === 0) {
+        $bread.html('<span style="opacity:0.4;">Clean Style (No LoRAs)</span>');
+        return;
+    }
+
+    const tags = loras.map(l => {
+        const regEntry = RUNWARE_LORA_REGISTRY.find(r => r.air === l.air);
+        const label = regEntry ? regEntry.label : 'Unknown';
+        return `<span style="display:inline-block; padding:2px 8px; border-radius:10px; background:var(--SmartThemeQuoteColor); color:white; font-size:0.75em; margin-right:4px;">${escapeHtml(label)} (${l.weight})</span>`;
+    }).join('');
+
+    $bread.html(`<strong>Active technical style:</strong> ${tags}`);
+}
+
+/**
+ * Opens the Style Package Editor.
  */
 export async function openStyleModal(styleName) {
     const meta = getMetaSettings();
-    const current = meta.styleLibrary?.[styleName] ?? DEFAULT_VN_STYLE_SUFFIX;
-
-    const vars = PROMPT_VARIABLES['vnStyleSuffix'] ?? [];
-    const varBlock = vars.length
-        ? `<div class="plz-var-list">
-               ${vars.map((entry, i) => {
-                   const copyId = `plz-var-copy-style-${i}`;
-                   const onclickJs = `navigator.clipboard.writeText('${entry.v}').then(function(){`
-                       + `var el=document.getElementById('${copyId}');`
-                       + `el.style.outline='1px solid #4caf50';`
-                       + `setTimeout(function(){el.style.outline='';},900);`
-                       + `});event.stopPropagation();`;
-                   return `<div class="plz-var-row">
-                       <button id="${copyId}" onclick="${onclickJs}" class="menu_button plz-var-copy-btn"
-                               title="Copy to clipboard"><i class="fa-regular fa-copy"></i></button>
-                       <code class="plz-var-code">${entry.v}</code>
-                       <span class="plz-var-desc">— ${entry.d}</span>
-                   </div>`;
-               }).join('')}
-           </div>`
-        : '';
+    const styleObj = structuredClone(meta.styleLibrary?.[styleName] ?? { template: DEFAULT_VN_STYLE_SUFFIX, loras: [] });
 
     const popupPromise = callPopup(
-        `<h3 class="plz-modal-title">Portrait Style — ${styleName}</h3>
-         ${varBlock}
-         <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="1"
-                   style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden; min-height:100px;"
-                   spellcheck="false">${current.replace(/</g, '&lt;')}</textarea>
+        `<h3 class="plz-modal-title">Edit Style: ${escapeHtml(styleName)}</h3>
+         
+         <div style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px solid rgba(255,255,255,0.1);">
+             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                 <label style="font-size:0.85em; opacity:0.7;">LoRA Stack (Runware/Fal)</label>
+                 <button id="plz-lora-add" class="menu_button" style="font-size:0.75em; padding:2px 10px;"><i class="fa-solid fa-plus"></i> Add LoRA</button>
+             </div>
+             <div id="plz-lora-container">${renderLoraList(styleObj.loras)}</div>
+         </div>
+
+         <div id="plz-style-breadcrumb" style="font-size:0.8em; margin-bottom:10px; min-height:1.5em;"></div>
+
+         <div class="plz-var-list" style="margin-bottom:10px;">
+             ${PROMPT_VARIABLES.vnStyleSuffix.map((e, i) => `
+                <div class="plz-var-row">
+                    <button class="menu_button plz-var-copy-btn" onclick="navigator.clipboard.writeText('${e.v}'); event.stopPropagation();"><i class="fa-regular fa-copy"></i></button>
+                    <code class="plz-var-code">${e.v}</code>
+                    <span class="plz-var-desc">— ${e.d}</span>
+                </div>`).join('')}
+         </div>
+
+         <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="4"
+                   style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden; min-height:120px;"
+                   spellcheck="false">${escapeHtml(styleObj.template)}</textarea>
+         
          <div class="plz-modal-actions">
-             <button class="menu_button" id="plz-prompt-save" style="background-color:rgba(76,175,80,0.15);">Save Style</button>
-             <button class="menu_button" id="plz-prompt-reset">Reset to Default</button>
+             <button class="menu_button" id="plz-prompt-save" style="background-color:rgba(76,175,80,0.15);">Save Style Package</button>
+             <button class="menu_button" id="plz-prompt-reset">Reset Text Only</button>
          </div>`,
-        'confirm',
+        'confirm'
     );
 
     initTextareaAutoResize();
+    updateStyleBreadcrumb(styleObj.loras);
+
+    // --- LoRA List Listeners ---
+
+    $(document).on('click.plz-prompt', '#plz-lora-add', () => {
+        styleObj.loras.push({ air: '', weight: 0.8 });
+        $('#plz-lora-container').html(renderLoraList(styleObj.loras));
+        updateStyleBreadcrumb(styleObj.loras);
+    });
+
+    $(document).on('click.plz-prompt', '.plz-lora-remove', function() {
+        const idx = $(this).closest('.plz-lora-row').data('idx');
+        styleObj.loras.splice(idx, 1);
+        $('#plz-lora-container').html(renderLoraList(styleObj.loras));
+        updateStyleBreadcrumb(styleObj.loras);
+    });
+
+    $(document).on('change.plz-prompt', '.plz-lora-air', function() {
+        const idx = $(this).closest('.plz-lora-row').data('idx');
+        styleObj.loras[idx].air = $(this).val();
+        $('#plz-lora-container').html(renderLoraList(styleObj.loras));
+        updateStyleBreadcrumb(styleObj.loras);
+    });
+
+    $(document).on('input.plz-prompt', '.plz-lora-weight', function() {
+        const idx = $(this).closest('.plz-lora-row').data('idx');
+        styleObj.loras[idx].weight = parseFloat($(this).val()) || 0.0;
+        updateStyleBreadcrumb(styleObj.loras);
+    });
+
+    // --- Prompt Listeners ---
 
     $(document).on('click.plz-prompt', '#plz-prompt-reset', () => {
         const $editor = $('#plz-prompt-editor');
@@ -170,55 +263,37 @@ export async function openStyleModal(styleName) {
     cleanupPromptListeners();
 
     if (result) {
-        const newValue = $('#plz-prompt-editor').val();
-        if (!meta.styleLibrary) meta.styleLibrary = {};
-        meta.styleLibrary[styleName] = newValue;
+        styleObj.template = $('#plz-prompt-editor').val();
+        meta.styleLibrary[styleName] = styleObj;
         saveSettingsDebounced();
-        if (window.toastr) window.toastr.success(`Style "${styleName}" updated.`, 'PersonaLyze');
+        if (window.toastr) window.toastr.success(`Visual Preset "${styleName}" updated.`, 'PersonaLyze');
     }
 }
 
-/**
- * Opens a modal to edit a specific prompt template.
- *
- * @param {string} key - The settings key to update.
- * @param {string} title - Human-readable modal title.
- * @param {string} defaultValue - Fallback template for the reset action.
- */
+// ─── Generic Prompt Editor ───────────────────────────────────────────────────
+
 export async function openPromptModal(key, title, defaultValue) {
     const current = getSettings()[key] ?? defaultValue;
-
     const vars = PROMPT_VARIABLES[key] ?? [];
-    const varBlock = vars.length
-        ? `<div class="plz-var-list">
-               ${vars.map((entry, i) => {
-                   const copyId = `plz-var-copy-${key}-${i}`;
-                   const onclickJs = `navigator.clipboard.writeText('${entry.v}').then(function(){`
-                       + `var el=document.getElementById('${copyId}');`
-                       + `el.style.outline='1px solid #4caf50';`
-                       + `setTimeout(function(){el.style.outline='';},900);`
-                       + `});event.stopPropagation();`;
-                   return `<div class="plz-var-row">
-                       <button id="${copyId}" onclick="${onclickJs}" class="menu_button plz-var-copy-btn"
-                               title="Copy to clipboard"><i class="fa-regular fa-copy"></i></button>
-                       <code class="plz-var-code">${entry.v}</code>
-                       <span class="plz-var-desc">— ${entry.d}</span>
-                   </div>`;
-               }).join('')}
-           </div>`
-        : `<p class="plz-var-none">No template variables — this value is used as-is.</p>`;
 
     const popupPromise = callPopup(
         `<h3 class="plz-modal-title">${title}</h3>
-         ${varBlock}
-         <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="1"
-                   style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden; min-height:100px;"
-                   spellcheck="false">${current.replace(/</g, '&lt;')}</textarea>
+         <div class="plz-var-list">
+             ${vars.map((e, i) => `
+                <div class="plz-var-row">
+                    <button class="menu_button plz-var-copy-btn" onclick="navigator.clipboard.writeText('${e.v}'); event.stopPropagation();"><i class="fa-regular fa-copy"></i></button>
+                    <code class="plz-var-code">${e.v}</code>
+                    <span class="plz-var-desc">— ${e.d}</span>
+                </div>`).join('')}
+         </div>
+         <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="4"
+                   style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden; min-height:120px;"
+                   spellcheck="false">${escapeHtml(current)}</textarea>
          <div class="plz-modal-actions">
              <button class="menu_button" id="plz-prompt-save" style="background-color:rgba(76,175,80,0.15);">Save Template</button>
              <button class="menu_button" id="plz-prompt-reset">Reset to Default</button>
          </div>`,
-        'confirm',
+        'confirm'
     );
 
     initTextareaAutoResize();
@@ -237,8 +312,7 @@ export async function openPromptModal(key, title, defaultValue) {
     cleanupPromptListeners();
 
     if (result) {
-        const newValue = $('#plz-prompt-editor').val();
-        updateSetting(key, newValue);
+        updateSetting(key, $('#plz-prompt-editor').val());
         if (window.toastr) window.toastr.success('Template updated.', 'PersonaLyze');
     }
 }

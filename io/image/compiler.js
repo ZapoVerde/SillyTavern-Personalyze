@@ -1,16 +1,20 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/compiler.js
- * @stamp {"utc":"2026-04-16T13:50:00.000Z"}
+ * @stamp {"utc":"2026-04-16T16:10:00.000Z"}
  * @architectural-role State Derivation (Visual Requirements)
  * @description
  * Handles resolution measurement and prompt synthesis.
  * Determines the target dimensions based on UI footprint and compiles 
  * template variables into a final prompt string for image engines.
  * 
+ * Updated:
+ * 1. resolveStyle now returns the Style Package (Object) instead of just a string.
+ * 2. finalizePrompt uses case-insensitive regex to prevent 400 errors from un-replaced variables.
+ * 
  * @api-declaration
  * resolveDimensions(characterId) -> { width: number, height: number }
- * resolveStyle(characterId) -> string
- * finalizePrompt(subjectPrompt, anchor, emotion, pose, style) -> string
+ * resolveStyle(characterId) -> { template: string, loras: Array }
+ * finalizePrompt(subjectPrompt, anchor, emotion, pose, template) -> string
  * 
  * @contract
  *   assertions:
@@ -54,22 +58,30 @@ export function resolveDimensions(characterId) {
 }
 
 /**
- * Retrieves the style template for a character.
+ * Retrieves the style package for a character.
  * Checks for character-pinned styles, then the global default style.
  * 
  * @param {string} characterId 
- * @returns {string}
+ * @returns {{ template: string, loras: Array }}
  */
 export function resolveStyle(characterId) {
     const meta = getMetaSettings();
     const lib = meta.styleLibrary;
+    
+    const fallback = { 
+        template: getSettings().vnStyleSuffix || DEFAULT_VN_STYLE_SUFFIX, 
+        loras: [] 
+    };
+
     if (lib) {
         const pin = state.chatCharacters[characterId]?.styleName;
         if (pin && lib[pin]) return lib[pin];
+        
         const def = meta.defaultStyleName;
         if (def && lib[def]) return lib[def];
     }
-    return getSettings().vnStyleSuffix || DEFAULT_VN_STYLE_SUFFIX;
+    
+    return fallback;
 }
 
 /**
@@ -77,22 +89,24 @@ export function resolveStyle(characterId) {
  * Supports template variables: {{identity_anchor}}, {{layers_description}},
  * {{emotion}}, {{pose}}.
  * 
+ * Uses 'gi' regex flags to ensure case-insensitive replacement.
+ * 
  * @param {string} subjectPrompt - The layered description (outfit).
  * @param {string} anchor - Physical identity features.
  * @param {string} emotion - Current emotion label.
  * @param {string} pose - Current pose description.
- * @param {string} style - The style template to use.
+ * @param {string} template - The style template string to use.
  * @returns {string}
  */
-export function finalizePrompt(subjectPrompt, anchor = '', emotion = '', pose = '', style = '') {
-    const effectiveStyle = style || getSettings().vnStyleSuffix || '';
+export function finalizePrompt(subjectPrompt, anchor = '', emotion = '', pose = '', template = '') {
+    const effectiveStyle = template || getSettings().vnStyleSuffix || '';
 
     if (effectiveStyle.includes('{{')) {
         return effectiveStyle
-            .replace(/\{\{identity_anchor\}\}/g, anchor)
-            .replace(/\{\{layers_description\}\}/g, subjectPrompt)
-            .replace(/\{\{emotion\}\}/g, emotion)
-            .replace(/\{\{pose\}\}/g, pose)
+            .replace(/\{\{identity_anchor\}\}/gi, anchor)
+            .replace(/\{\{layers_description\}\}/gi, subjectPrompt)
+            .replace(/\{\{emotion\}\}/gi, emotion)
+            .replace(/\{\{pose\}\}/gi, pose)
             .replace(/(,\s*)+/g, ', ')
             .trim();
     }

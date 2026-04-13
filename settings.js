@@ -1,13 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-16T13:10:00.000Z"}
+ * @stamp {"utc":"2026-04-16T16:00:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
  * Implements the "Working Table" architecture for the Layered State Pipeline.
  *
- * Updated for Runware.ai Integration:
- * 1. Added engineEnableRunware, runwareModel, runwareUseLayerDiffuse, and runwareRemoveBackground to defaults.
+ * Updated for Visual Presets:
+ * 1. Upgraded styleLibrary to support packages (Template + LoRA Stack).
+ * 2. Implemented migration from legacy string-only styles.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -163,11 +164,27 @@ export function initSettings() {
         }
     }
 
-    // Style Library — global, cross-profile
+    // --- Style Library & Package Migration ---
     if (!root.styleLibrary) {
-        root.styleLibrary = { 'Default': DEFAULT_VN_STYLE_SUFFIX };
+        root.styleLibrary = { 'Default': { template: DEFAULT_VN_STYLE_SUFFIX, loras: [] } };
         root.defaultStyleName = 'Default';
+    } else {
+        // Migration: Convert String-based styles to Object-based packages
+        let migrated = false;
+        for (const key of Object.keys(root.styleLibrary)) {
+            const val = root.styleLibrary[key];
+            if (typeof val === 'string') {
+                log('Settings', `Migrating style "${key}" to package format...`);
+                root.styleLibrary[key] = {
+                    template: val,
+                    loras: []
+                };
+                migrated = true;
+            }
+        }
+        if (migrated) saveSettingsDebounced();
     }
+
     if (!root.defaultStyleName) {
         root.defaultStyleName = Object.keys(root.styleLibrary)[0] || 'Default';
     }
