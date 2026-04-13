@@ -105,6 +105,12 @@ export const RUNWARE_LORA_REGISTRY = [
     { label: 'Concept Sheet/Grid', air: 'civitai:83023@88210', defaultWeight: 1.0 },
     { label: 'Hourglass Flux', air: 'civitai:129130@155255', defaultWeight: 0.8 },
     { label: 'Frank Cho Flux', air: 'civitai:1905015@2145391', defaultWeight: 0.7 },
+    { label: 'Elusarca  ZIT', air: 'civitai:2176274@2145391', defaultWeight: 0.7 },
+    { label: 'Anime Style v2.52 - Dream ZIT', air: 'civitai:2176274@2145391', defaultWeight: 0.7 },
+    { label: 'Z-Image Anime 01 ZIT', air: 'civitai:2174642', defaultWeight: 0.7 },
+    { label: 'ZNSFW LoRA ZIT', air: 'civitai:2279079', defaultWeight: 0.7 },
+    { label: 'Anime NSFW Characters and Style ZIT', air: 'civitai:2221829', defaultWeight: 0.7 },    
+    { label: 'Z-Image-Turbo-Anime ZIT', air: 'civitai:2259646', defaultWeight: 0.7 },
 ];
 
 /** 
