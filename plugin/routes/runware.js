@@ -1,15 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/routes/runware.js
- * @stamp {"utc":"2026-04-16T19:10:00.000Z"}
+ * @stamp {"utc":"2026-04-16T19:20:00.000Z"}
  * @architectural-role Server-Side Route Handler
  * @description
  * Implements proxy routes for the Runware.ai API. 
  * Supports high-performance image inference with native transparency (LayerDiffuse),
  * visual preset LoRAs, and standalone background removal.
  * 
- * Updated for Style-Specific Negative Prompts:
- * 1. The /runware-generate route now accepts negativePrompt from the frontend.
- * 2. negativePrompt is included in the imageInference task payload.
+ * Updated for Robustness:
+ * 1. Fixed 400 error: negativePrompt is now conditionally added to the task 
+ *    only if it is a non-empty string.
  * 
  * @api-declaration
  * registerRunwareRoutes(router) -> void
@@ -48,23 +48,28 @@ export function registerRunwareRoutes(router) {
                 ? `${positivePrompt}, transparent background, isolated on white background`
                 : positivePrompt;
 
-            // Construct Runware Task Array
-            const payload = [{
+            // Construct Runware Task Object
+            const task = {
                 taskType: "imageInference",
                 taskUUID: taskUUID,
                 positivePrompt: finalPrompt,
-                negativePrompt: negativePrompt || "",
                 model: model || "runware:101@1",
                 width: width || 512,
                 height: height || 768,
                 numberResults: 1,
-                outputType: ["URL"], // Schema Fix: Must be array
+                outputType: ["URL"], 
                 outputFormat: useLayerDiffuse ? "PNG" : "JPG",
                 seed: seed || -1,
-                loras: loras || [], // Schema Fix: Must be plural 'loras'
+                loras: loras || [], 
                 layerDiffuse: !!useLayerDiffuse, 
                 checkNSFW: false
-            }];
+            };
+
+            // Industrial Fix: Only include negativePrompt if it has content.
+            // Runware returns 400 invalidNegativePrompt if an empty string is passed.
+            if (negativePrompt && String(negativePrompt).trim().length > 0) {
+                task.negativePrompt = String(negativePrompt).trim();
+            }
 
             const response = await withRetry(() => fetchChecked('https://api.runware.ai/v1', {
                 method: 'POST',
@@ -72,7 +77,7 @@ export function registerRunwareRoutes(router) {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apiKey}` 
                 },
-                body: JSON.stringify(payload)
+                body: JSON.stringify([task])
             }), 'RunwareGen');
 
             const data = await response.json();
