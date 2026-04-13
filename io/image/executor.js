@@ -20,7 +20,7 @@
  *     external_io: [Server Plugins, Image APIs, DOM Events]
  */
 
-import { getRequestHeaders } from '../../../../script.js';
+import { getRequestHeaders } from '../../../../../../script.js';
 import { 
     POLLINATIONS_BASE_URL, 
     DEFAULT_IMAGE_MODEL, 

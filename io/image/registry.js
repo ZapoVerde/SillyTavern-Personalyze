@@ -19,7 +19,7 @@
  *     external_io: [/api/images/list]
  */
 
-import { getRequestHeaders } from '../../../../script.js';
+import { getRequestHeaders } from '../../../../../../script.js';
 import { PLZ_IMAGE_FOLDER } from '../../defaults.js';
 
 /** Standard prefix for all PersonaLyze image files. */

@@ -18,7 +18,7 @@
  *     external_io: [/api/images/delete]
  */
 
-import { getRequestHeaders } from '../../../../script.js';
+import { getRequestHeaders } from '../../../../../../script.js';
 import { PLZ_IMAGE_FOLDER } from '../../defaults.js';
 import { fetchFileIndex, FILE_PREFIX } from './registry.js';
 
