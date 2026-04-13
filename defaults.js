@@ -90,6 +90,7 @@ export const SECRET_RUNWARE = 'api_key_runware';
 /** Verified Runware Model AIRs */
 export const RUNWARE_MODELS = [
     { label: 'Pony Diffusion V6 XL', air: 'civitai:257749@290640' },
+    { label: 'V6 Turbo DPO merge', air: 'civitai:257749@298112' },
     { label: 'Flux.1 Dev', air: 'runware:100@1' },
     { label: 'Z-image turbo', air: 'runware:z-image@turbo' },
 ];
