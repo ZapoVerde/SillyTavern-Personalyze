@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/routes/runware.js
- * @stamp {"utc":"2026-04-16T16:30:00.000Z"}
+ * @stamp {"utc":"2026-04-16T17:20:00.000Z"}
  * @architectural-role Server-Side Route Handler
  * @description
  * Implements proxy routes for the Runware.ai API. 
@@ -10,6 +10,7 @@
  * Updated:
  * 1. Fixed Schema: Switched 'lora' to plural 'loras'.
  * 2. Fixed Schema: Switched 'outputType' to array ["URL"].
+ * 3. RMBG: Now supports model selection for background removal.
  * 
  * @api-declaration
  * registerRunwareRoutes(router) -> void
@@ -108,7 +109,7 @@ export function registerRunwareRoutes(router) {
     // ─── Runware: Background Removal (Post-Process) ───────────────────────────
     router.post('/runware-remove-bg', async (req, res) => {
         try {
-            const { image_url, image_base64 } = req.body;
+            const { image_url, image_base64, model } = req.body;
             const apiKey = readSecret(req.user.directories, 'api_key_runware');
 
             if (!apiKey) {
@@ -121,7 +122,8 @@ export function registerRunwareRoutes(router) {
                 taskType: "imageBackgroundRemoval",
                 taskUUID: taskUUID,
                 inputImage: image_url || image_base64,
-                outputFormat: "PNG"
+                outputFormat: "PNG",
+                model: model || "rembg:1@4"
             }];
 
             const response = await withRetry(() => fetchChecked('https://api.runware.ai/v1', {

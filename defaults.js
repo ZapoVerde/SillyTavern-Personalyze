@@ -1,14 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/defaults.js
- * @stamp {"utc":"2026-04-16T12:00:00.000Z"}
+ * @stamp {"utc":"2026-04-16T17:00:00.000Z"}
  * @architectural-role Default Configuration
  * @description
  * Default constants for the Layered State Pipeline.
  * 
- * Updated for Runware.ai Integration:
- * 1. Added Runware AIR model identifiers.
- * 2. Added hardcoded Global LoRA Registry to bypass Civitai/VPN bottlenecks.
- * 3. Added Runware secret key and settings defaults.
+ * Updated for Runware.ai RMBG Models:
+ * 1. Added RUNWARE_RMBG_MODELS registry.
+ * 2. Added DEFAULT_RUNWARE_RMBG_MODEL.
  * 
  * @api-declaration
  * POLLINATIONS_BASE_URL
@@ -20,6 +19,8 @@
  * SECRET_RUNWARE
  * RUNWARE_MODELS
  * RUNWARE_LORA_REGISTRY
+ * RUNWARE_RMBG_MODELS
+ * DEFAULT_RUNWARE_RMBG_MODEL
  * ...
  */
 
@@ -103,10 +104,20 @@ export const RUNWARE_LORA_REGISTRY = [
     { label: 'Concept Sheet/Grid', air: 'civitai:83023@88210', defaultWeight: 1.0 },
 ];
 
+/** 
+ * Runware Background Removal Models.
+ */
+export const RUNWARE_RMBG_MODELS = [
+    { label: 'BiRefNet (High Precision)', air: 'runware:112@9' },
+    { label: 'Bria RMBG 2.0', air: 'bria:51@1' },
+    { label: 'RemBG (Fast/Standard)', air: 'rembg:1@4' },
+];
+
 /** Runware Settings Defaults */
 export const DEFAULT_RUNWARE_MODEL = 'runware:101@1';
 export const DEFAULT_RUNWARE_USE_LAYER_DIFFUSE = true;
 export const DEFAULT_RUNWARE_REMOVE_BG = false;
+export const DEFAULT_RUNWARE_RMBG_MODEL = 'runware:112@9';
 
 /**
  * Meta-slot keys.

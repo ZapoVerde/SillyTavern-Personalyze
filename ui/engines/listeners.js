@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/engines/listeners.js
- * @stamp {"utc":"2026-04-16T13:05:00.000Z"}
+ * @stamp {"utc":"2026-04-16T17:15:00.000Z"}
  * @architectural-role UI Logic (Engines Modal)
  * @description
  * Event bindings for the Engines configuration modal. 
@@ -8,6 +8,7 @@
  * Updated for Runware.ai Integration:
  * 1. Added handlers for Runware vault save, ping, and generation testing.
  * 2. Implemented mutual exclusivity logic between PiAPI and Runware post-process RMBG.
+ * 3. Added listener for Runware RMBG model selection.
  *
  * @api-declaration
  * bindEnginesHandlers($modal) → void
@@ -104,6 +105,7 @@ export function refreshEnginesUI() {
     $('#plz-eng-runware-model').val(s.runwareModel);
     $('#plz-eng-runware-layerdiffuse').prop('checked', !!s.runwareUseLayerDiffuse);
     $('#plz-eng-runware-rmbg').prop('checked', !!s.runwareRemoveBackground);
+    $('#plz-eng-runware-rmbg-model').val(s.runwareRmbgModel).prop('disabled', !s.runwareRemoveBackground);
 
     // 5. Test Prompt Area
     const $testArea = $('#plz-eng-test-prompt');
@@ -332,6 +334,7 @@ export function bindEnginesHandlers($modal) {
     $modal.on('change', '#plz-eng-runware-rmbg', function () {
         const enabled = $(this).prop('checked');
         updateSetting('runwareRemoveBackground', enabled);
+        $('#plz-eng-runware-rmbg-model').prop('disabled', !enabled);
         
         if (enabled) {
             $('#plz-eng-piapi-rmbg').prop('checked', false).trigger('change');
@@ -340,6 +343,10 @@ export function bindEnginesHandlers($modal) {
 
     $modal.on('change', '#plz-eng-piapi-rmbg-model', function () {
         updateSetting('piapiRmbgModel', $(this).val());
+    });
+
+    $modal.on('change', '#plz-eng-runware-rmbg-model', function () {
+        updateSetting('runwareRmbgModel', $(this).val());
     });
 
     $modal.on('change', '#plz-eng-runware-layerdiffuse', function () {

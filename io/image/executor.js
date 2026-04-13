@@ -1,16 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/executor.js
- * @stamp {"utc":"2026-04-16T16:20:00.000Z"}
+ * @stamp {"utc":"2026-04-16T17:25:00.000Z"}
  * @architectural-role IO Executor (Generation Logic)
  * @description
  * Primary execution engine for PersonaLyze image generation.
  * Coordinates multi-provider routing (Runware, Fal, PiAPI, Pollinations),
  * manages asynchronous task polling, and handles the post-processing pipeline.
  * 
- * Updated for Visual Presets:
+ * Updated for Visual Presets & Enhanced RMBG:
  * 1. Pulls LoRA stacks directly from the Style Package.
- * 2. Fixed Runware plural schema mismatch (lora -> loras).
- * 3. Fixed ReferenceError by ensuring style-derived variables are scoped correctly.
+ * 2. Support for configurable Runware RMBG models in post-processing.
  * 
  * @api-declaration
  * fetchPreviewBlob(prompt, characterId, provider, seed, emotion, pose) -> Promise<string>
@@ -180,7 +179,15 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
                 imgRes = null;
             }
             if (s.runwareRemoveBackground) {
-                imgRes = await fetch('/api/plugins/personalyze/runware-remove-bg', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ image_url: sourceUrl, image_base64: fallbackB64 }) });
+                imgRes = await fetch('/api/plugins/personalyze/runware-remove-bg', { 
+                    method: 'POST', 
+                    headers: getRequestHeaders(), 
+                    body: JSON.stringify({ 
+                        image_url: sourceUrl, 
+                        image_base64: fallbackB64,
+                        model: s.runwareRmbgModel
+                    }) 
+                });
                 fallbackB64 = null;
             } else {
                 const subRmbg = await fetch('/api/plugins/personalyze/piapi-remove-bg', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify(fallbackB64 ? { image_base64: fallbackB64, rmbg_model: s.piapiRmbgModel } : { image_url: sourceUrl, rmbg_model: s.piapiRmbgModel }) });

@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-16T16:00:00.000Z"}
+ * @stamp {"utc":"2026-04-16T17:05:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
@@ -9,6 +9,7 @@
  * Updated for Visual Presets:
  * 1. Upgraded styleLibrary to support packages (Template + LoRA Stack).
  * 2. Implemented migration from legacy string-only styles.
+ * 3. Added runwareRmbgModel setting.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -57,6 +58,7 @@ import {
     DEFAULT_RUNWARE_MODEL,
     DEFAULT_RUNWARE_USE_LAYER_DIFFUSE,
     DEFAULT_RUNWARE_REMOVE_BG,
+    DEFAULT_RUNWARE_RMBG_MODEL,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
@@ -110,6 +112,7 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     runwareModel:             DEFAULT_RUNWARE_MODEL,
     runwareUseLayerDiffuse:   DEFAULT_RUNWARE_USE_LAYER_DIFFUSE,
     runwareRemoveBackground:  DEFAULT_RUNWARE_REMOVE_BG,
+    runwareRmbgModel:         DEFAULT_RUNWARE_RMBG_MODEL,
 
     // Generation Economy
     maxResolution:            DEFAULT_MAX_RESOLUTION,

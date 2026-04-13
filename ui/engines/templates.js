@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/engines/templates.js
- * @stamp {"utc":"2026-04-16T13:00:00.000Z"}
+ * @stamp {"utc":"2026-04-16T17:10:00.000Z"}
  * @architectural-role Pure UI Templates (Engines Modal)
  * @description
  * Generates the HTML for the Image Engines configuration modal. 
@@ -8,6 +8,7 @@
  * Updated for Runware.ai Integration:
  * 1. Added Runware tab with AIR model selection.
  * 2. Added toggles for LayerDiffuse (native alpha) and standalone RMBG.
+ * 3. Added Runware RMBG model selection dropdown.
  *
  * @api-declaration
  * getEnginesModalHTML(settings) → string
@@ -24,7 +25,8 @@ import {
     FAL_MODELS, 
     PIAPI_MODELS, 
     PIAPI_RMBG_MODELS,
-    RUNWARE_MODELS 
+    RUNWARE_MODELS,
+    RUNWARE_RMBG_MODELS
 } from '../../defaults.js';
 import { escapeHtml } from '../../utils/history.js';
 
@@ -193,6 +195,9 @@ function getRunwareTabHTML(settings) {
     const modelOptions = RUNWARE_MODELS
         .map(m => `<option value="${escapeHtml(m.air)}"${m.air === s.runwareModel ? ' selected' : ''}>${escapeHtml(m.label)}</option>`)
         .join('');
+    const rmbgModelOptions = RUNWARE_RMBG_MODELS
+        .map(m => `<option value="${escapeHtml(m.air)}"${m.air === s.runwareRmbgModel ? ' selected' : ''}>${escapeHtml(m.label)}</option>`)
+        .join('');
 
     return `
     <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
@@ -226,6 +231,12 @@ function getRunwareTabHTML(settings) {
                 <input type="checkbox" id="plz-eng-runware-rmbg" ${s.runwareRemoveBackground ? 'checked' : ''} />
                 <span>Post-Process RMBG <span style="opacity:0.55; font-size:0.88em;">(Works with all engines)</span></span>
             </label>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">RMBG Model:</label>
+                <select id="plz-eng-runware-rmbg-model" class="text_pole" style="flex:1;" ${s.runwareRemoveBackground ? '' : 'disabled'}>
+                    ${rmbgModelOptions}
+                </select>
+            </div>
         </div>
 
         <div style="display:flex; gap:8px; margin-top:10px;">
