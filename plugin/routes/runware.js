@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/routes/runware.js
- * @stamp {"utc":"2026-04-16T13:40:00.000Z"}
+ * @stamp {"utc":"2026-04-16T15:00:00.000Z"}
  * @architectural-role Server-Side Route Handler
  * @description
  * Implements proxy routes for the Runware.ai API. 
@@ -8,7 +8,7 @@
  * character-specific LoRAs, and standalone background removal.
  * 
  * Updated:
- * 1. Added explicit check for Runware API Error responses in the remove-bg route.
+ * 1. Switched taskUUID generation to crypto.randomUUID() to satisfy UUID v4 validation.
  * 
  * @api-declaration
  * registerRunwareRoutes(router) -> void
@@ -19,6 +19,7 @@
  *     external_io: [Runware REST API, SillyTavern Secrets]
  */
 
+import crypto from 'crypto';
 import { readSecret } from '../../src/endpoints/secrets.js';
 import { fetchChecked, withRetry, FATAL_HTTP_CODES } from '../utils/network.js';
 
@@ -38,7 +39,8 @@ export function registerRunwareRoutes(router) {
                 return res.status(401).json({ error: 'Runware API key not configured.' });
             }
 
-            const taskUUID = `plz_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+            // Runware requires a strict UUID v4 for taskUUID
+            const taskUUID = crypto.randomUUID();
             
             // Server-side prompt enhancement for better isolation during LayerDiffuse
             const finalPrompt = useLayerDiffuse 
@@ -57,8 +59,8 @@ export function registerRunwareRoutes(router) {
                 outputType: "URL",
                 outputFormat: useLayerDiffuse ? "PNG" : "JPG",
                 seed: seed || -1,
-                lora: lora || [], // Singular naming convention from REST spec
-                layerDiffuse: !!useLayerDiffuse, // Top-level boolean per REST spec
+                lora: lora || [], 
+                layerDiffuse: !!useLayerDiffuse, 
                 checkNSFW: false
             }];
 
@@ -73,7 +75,6 @@ export function registerRunwareRoutes(router) {
 
             const data = await response.json();
             
-            // Handle Runware error responses (Error 200 containing error data)
             if (data.error) {
                 throw new Error(`Runware API Error: ${data.errorMessage || data.error}`);
             }
@@ -113,7 +114,7 @@ export function registerRunwareRoutes(router) {
                 return res.status(401).json({ error: 'Runware API key not configured.' });
             }
 
-            const taskUUID = `plz_rmbg_${Date.now()}`;
+            const taskUUID = crypto.randomUUID();
             
             const payload = [{
                 taskType: "imageBackgroundRemoval",
@@ -133,7 +134,6 @@ export function registerRunwareRoutes(router) {
 
             const data = await response.json();
 
-            // Handle Runware error responses (Error 200 containing error data)
             if (data.error) {
                 throw new Error(`Runware API Error: ${data.errorMessage || data.error}`);
             }
@@ -162,7 +162,6 @@ export function registerRunwareRoutes(router) {
                 return res.status(401).json({ error: 'Runware API key not configured.' });
             }
 
-            // Authenticated request to verify key validity via model search
             const response = await fetch('https://api.runware.ai/v1', {
                 method: 'POST',
                 headers: { 
@@ -171,7 +170,7 @@ export function registerRunwareRoutes(router) {
                 },
                 body: JSON.stringify([{
                     taskType: "modelSearch",
-                    taskUUID: "ping",
+                    taskUUID: crypto.randomUUID(),
                     search: "pony",
                     category: "checkpoint",
                     limit: 1

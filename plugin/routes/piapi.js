@@ -1,10 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/routes/piapi.js
- * @stamp {"utc":"2026-04-16T12:30:00.000Z"}
+ * @stamp {"utc":"2026-04-16T15:30:00.000Z"}
  * @architectural-role Server-Side Route Handler
  * @description
  * Implements the PiAPI proxy routes for image generation, task status, 
  * background removal, and binary fetching.
+ * 
+ * Updated:
+ * 1. Restored X-API-Key and User-Agent to the piapi-fetch route to prevent 401s on CDNs.
+ * 2. Standardized User-Agent across all outbound PiAPI requests.
  * 
  * @api-declaration
  * registerPiapiRoutes(router) -> void
@@ -23,6 +27,9 @@ import {
     piapiAcquire, 
     piapiRelease 
 } from '../utils/network.js';
+
+/** Standard User-Agent for PersonaLyze outbound requests. */
+const PLZ_USER_AGENT = 'Mozilla/5.0 (compatible; PersonaLyze/1.0)';
 
 /**
  * Extracts an image URL from a PiAPI task output object.
@@ -62,7 +69,11 @@ export function registerPiapiRoutes(router) {
             const taskResponse = await withRetry(
                 () => fetchChecked('https://api.piapi.ai/api/v1/task', {
                     method: 'POST',
-                    headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+                    headers: { 
+                        'X-API-Key': apiKey, 
+                        'Content-Type': 'application/json',
+                        'User-Agent': PLZ_USER_AGENT
+                    },
                     body: JSON.stringify({
                         model: modelId,
                         task_type: 'txt2img',
@@ -89,7 +100,10 @@ export function registerPiapiRoutes(router) {
             if (!apiKey) return res.status(401).json({ error: 'PiAPI key not configured.' });
 
             const statusResponse = await fetch(`https://api.piapi.ai/api/v1/task/${task_id}`, {
-                headers: { 'X-API-Key': apiKey },
+                headers: { 
+                    'X-API-Key': apiKey,
+                    'User-Agent': PLZ_USER_AGENT
+                },
             });
 
             const statusData = await statusResponse.json();
@@ -110,12 +124,23 @@ export function registerPiapiRoutes(router) {
         }
     });
 
-    // ─── PiAPI: Fetch Binary (Concurrency Limited) ────────────────────────────
+    // ─── PiAPI: Fetch Binary (Restored Auth) ──────────────────────────────────
     router.post('/piapi-fetch', async (req, res) => {
         const { image_url } = req.body;
+        if (!image_url || !image_url.startsWith('http')) {
+            return res.status(400).json({ error: 'Missing or invalid image_url.' });
+        }
+
+        const apiKey = readSecret(req.user.directories, 'api_key_piapi');
+
         await piapiAcquire();
         try {
-            const imgRes = await withRetry(() => fetchChecked(image_url), 'PiAPICDN');
+            const imgRes = await withRetry(() => fetchChecked(image_url, {
+                headers: { 
+                    'X-API-Key': apiKey,
+                    'User-Agent': PLZ_USER_AGENT
+                },
+            }), 'PiAPICDN');
             res.setHeader('Content-Type', imgRes.headers.get('Content-Type') ?? 'image/png');
             res.send(Buffer.from(await imgRes.arrayBuffer()));
         } catch (err) {
@@ -135,7 +160,11 @@ export function registerPiapiRoutes(router) {
             const taskResponse = await withRetry(
                 () => fetchChecked('https://api.piapi.ai/api/v1/task', {
                     method: 'POST',
-                    headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+                    headers: { 
+                        'X-API-Key': apiKey, 
+                        'Content-Type': 'application/json',
+                        'User-Agent': PLZ_USER_AGENT
+                    },
                     body: JSON.stringify({
                         model: 'Qubico/image-toolkit',
                         task_type: 'background-remove',
@@ -156,7 +185,12 @@ export function registerPiapiRoutes(router) {
         try {
             const apiKey = readSecret(req.user.directories, 'api_key_piapi');
             if (!apiKey) return res.status(401).json({ error: 'PiAPI key not configured.' });
-            const probe = await fetch('https://api.piapi.ai/api/v1/task/ping-probe', { headers: { 'X-API-Key': apiKey } });
+            const probe = await fetch('https://api.piapi.ai/api/v1/task/ping-probe', { 
+                headers: { 
+                    'X-API-Key': apiKey,
+                    'User-Agent': PLZ_USER_AGENT
+                } 
+            });
             if (probe.status === 401) return res.status(401).json({ error: 'PiAPI key invalid.' });
             return res.json({ ok: true, user: 'authenticated' });
         } catch (err) {

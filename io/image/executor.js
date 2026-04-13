@@ -1,13 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/executor.js
- * @stamp {"utc":"2026-04-16T14:10:00.000Z"}
+ * @stamp {"utc":"2026-04-16T15:15:00.000Z"}
  * @architectural-role IO Executor (Generation Logic)
  * @description
  * Primary execution engine for PersonaLyze image generation.
  * Coordinates multi-provider routing (Runware, Fal, PiAPI, Pollinations),
  * manages asynchronous task polling, and handles the post-processing pipeline.
  * 
- * Satisfies Rule: Single-purpose module (<300 LOC).
+ * Updated:
+ * 1. Restored safe: 'false' for Pollinations (User requested).
+ * 2. Restored findSecret and Authorization headers to support authenticated safe:false calls.
  * 
  * @api-declaration
  * fetchPreviewBlob(prompt, characterId, provider, seed, emotion, pose) -> Promise<string>
@@ -21,6 +23,7 @@
  */
 
 import { getRequestHeaders } from '../../../../../../script.js';
+import { findSecret } from '../../../../../../secrets.js';
 import { 
     POLLINATIONS_BASE_URL, 
     DEFAULT_IMAGE_MODEL, 
@@ -97,8 +100,11 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
             body: JSON.stringify({ positivePrompt: fullPrompt, model: s.runwareModel, width: DEV_IMAGE_WIDTH, height: DEV_IMAGE_HEIGHT, seed, lora, useLayerDiffuse: s.runwareUseLayerDiffuse }),
         });
     } else {
+        const key = await findSecret('api_key_pollinations');
         const params = new URLSearchParams({ width: String(DEV_IMAGE_WIDTH), height: String(DEV_IMAGE_HEIGHT), model: s.imageModel ?? DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed) });
-        res = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`);
+        res = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`, {
+            headers: key ? { 'Authorization': `Bearer ${key}` } : {}
+        });
     }
 
     await validateImageResponse(res);
@@ -128,9 +134,12 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
             imgRes = await fetch('/api/plugins/personalyze/runware-generate', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ positivePrompt: fullPrompt, model: s.runwareModel, width: w, height: h, seed, lora, useLayerDiffuse: s.runwareUseLayerDiffuse }) });
             if (s.runwareUseLayerDiffuse) nativeTransparency = true;
         } else {
+            const key = await findSecret('api_key_pollinations');
             const params = new URLSearchParams({ width: String(w), height: String(h), model: s.imageModel ?? DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed), safe: 'false' });
             if (forceCacheBust) params.append('cb', String(Date.now()));
-            const polRes = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`);
+            const polRes = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`, {
+                headers: key ? { 'Authorization': `Bearer ${key}` } : {}
+            });
             if (s.piapiRemoveBackground || s.runwareRemoveBackground) {
                 await validateImageResponse(polRes);
                 const blob = await polRes.blob();
