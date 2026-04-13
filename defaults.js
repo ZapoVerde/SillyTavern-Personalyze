@@ -53,6 +53,7 @@ export const DEFAULT_IMAGE_HEIGHT = 768;
  * Used by the Dynamic Dimension Resolver to scale generation based on DOM size.
  */
 export const RESOLUTION_TIERS = {
+    SuperMAX:   { width: 768, height: 1152 },
     MAX:   { width: 512, height: 768 },
     HIGH:  { width: 448, height: 672 },
     MED:   { width: 384, height: 576 },
