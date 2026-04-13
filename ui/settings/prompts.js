@@ -1,14 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/prompts.js
- * @stamp {"utc":"2026-04-16T16:40:00.000Z"}
+ * @stamp {"utc":"2026-04-16T18:40:00.000Z"}
  * @architectural-role UI Logic (Prompt & Style Editor)
  * @description
  * Orchestrates the multi-line Prompt Editor and Style Package Editor modals.
  * 
- * Updated for Visual Presets:
- * 1. overhauled openStyleModal to manage Style Packages (Template + LoRAs).
- * 2. Added dynamic LoRA stack editor with weight sliders and Civitai links.
- * 3. Implemented Case-Insensitive variable descriptions.
+ * Updated for Style-Specific Negative Prompts:
+ * 1. Added Negative Prompt textarea to openStyleModal.
+ * 2. Updated save logic to persist the negativePrompt field.
+ * 3. Expanded auto-resize utility to support both textareas in the Style Editor.
  *
  * @api-declaration
  * openPromptModal(key, title, defaultValue) -> Promise<void>
@@ -87,13 +87,13 @@ const PROMPT_VARIABLES = {
 // ─── Shared Helpers ───────────────────────────────────────────────────────────
 
 function initTextareaAutoResize() {
-    const selector = '#plz-prompt-editor';
+    const selector = '#plz-prompt-editor, #plz-style-negative';
     $(document).on('input.plz-prompt keyup.plz-prompt change.plz-prompt', selector, function() {
         smartResize(this);
     });
     const triggerResize = () => {
-        const el = document.querySelector(selector);
-        if (el) smartResize(el);
+        const els = document.querySelectorAll(selector);
+        els.forEach(el => smartResize(el));
     };
     requestAnimationFrame(triggerResize);
     setTimeout(triggerResize, 200);
@@ -181,7 +181,7 @@ function updateStyleBreadcrumb(loras) {
  */
 export async function openStyleModal(styleName) {
     const meta = getMetaSettings();
-    const styleObj = structuredClone(meta.styleLibrary?.[styleName] ?? { template: DEFAULT_VN_STYLE_SUFFIX, loras: [] });
+    const styleObj = structuredClone(meta.styleLibrary?.[styleName] ?? { template: DEFAULT_VN_STYLE_SUFFIX, loras: [], negativePrompt: '' });
 
     const popupPromise = callPopup(
         `<h3 class="plz-modal-title">Edit Style: ${escapeHtml(styleName)}</h3>
@@ -207,7 +207,16 @@ export async function openStyleModal(styleName) {
 
          <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="4"
                    style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden; min-height:120px;"
-                   spellcheck="false">${escapeHtml(styleObj.template)}</textarea>
+                   spellcheck="false" placeholder="Positive Prompt Template...">${escapeHtml(styleObj.template)}</textarea>
+
+         <div style="margin-top:15px;">
+             <label style="font-size:0.85em; opacity:0.7; display:block; margin-bottom:5px;">
+                 Negative Prompt (Runware Only)
+             </label>
+             <textarea id="plz-style-negative" class="text_pole plz-auto-textarea" rows="2" 
+                       style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden;" 
+                       spellcheck="false" placeholder="Items to exclude...">${escapeHtml(styleObj.negativePrompt || '')}</textarea>
+         </div>
          
          <div class="plz-modal-actions">
              <button class="menu_button" id="plz-prompt-save" style="background-color:rgba(76,175,80,0.15);">Save Style Package</button>
@@ -253,6 +262,8 @@ export async function openStyleModal(styleName) {
         const $editor = $('#plz-prompt-editor');
         $editor.val(DEFAULT_VN_STYLE_SUFFIX);
         smartResize($editor[0]);
+        $('#plz-style-negative').val('');
+        smartResize($('#plz-style-negative')[0]);
     });
 
     $(document).on('click.plz-prompt', '#plz-prompt-save', () => {
@@ -264,6 +275,7 @@ export async function openStyleModal(styleName) {
 
     if (result) {
         styleObj.template = $('#plz-prompt-editor').val();
+        styleObj.negativePrompt = $('#plz-style-negative').val();
         meta.styleLibrary[styleName] = styleObj;
         saveSettingsDebounced();
         if (window.toastr) window.toastr.success(`Visual Preset "${styleName}" updated.`, 'PersonaLyze');

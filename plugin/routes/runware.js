@@ -1,16 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/routes/runware.js
- * @stamp {"utc":"2026-04-16T17:20:00.000Z"}
+ * @stamp {"utc":"2026-04-16T19:10:00.000Z"}
  * @architectural-role Server-Side Route Handler
  * @description
  * Implements proxy routes for the Runware.ai API. 
  * Supports high-performance image inference with native transparency (LayerDiffuse),
  * visual preset LoRAs, and standalone background removal.
  * 
- * Updated:
- * 1. Fixed Schema: Switched 'lora' to plural 'loras'.
- * 2. Fixed Schema: Switched 'outputType' to array ["URL"].
- * 3. RMBG: Now supports model selection for background removal.
+ * Updated for Style-Specific Negative Prompts:
+ * 1. The /runware-generate route now accepts negativePrompt from the frontend.
+ * 2. negativePrompt is included in the imageInference task payload.
  * 
  * @api-declaration
  * registerRunwareRoutes(router) -> void
@@ -34,7 +33,7 @@ export function registerRunwareRoutes(router) {
     // ─── Runware: Image Generation ────────────────────────────────────────────
     router.post('/runware-generate', async (req, res) => {
         try {
-            const { positivePrompt, model, width, height, seed, loras, useLayerDiffuse } = req.body;
+            const { positivePrompt, negativePrompt, model, width, height, seed, loras, useLayerDiffuse } = req.body;
             const apiKey = readSecret(req.user.directories, 'api_key_runware');
 
             if (!apiKey) {
@@ -54,6 +53,7 @@ export function registerRunwareRoutes(router) {
                 taskType: "imageInference",
                 taskUUID: taskUUID,
                 positivePrompt: finalPrompt,
+                negativePrompt: negativePrompt || "",
                 model: model || "runware:101@1",
                 width: width || 512,
                 height: height || 768,

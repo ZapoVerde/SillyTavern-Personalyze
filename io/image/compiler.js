@@ -1,19 +1,18 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/compiler.js
- * @stamp {"utc":"2026-04-16T16:10:00.000Z"}
+ * @stamp {"utc":"2026-04-16T18:50:00.000Z"}
  * @architectural-role State Derivation (Visual Requirements)
  * @description
  * Handles resolution measurement and prompt synthesis.
  * Determines the target dimensions based on UI footprint and compiles 
  * template variables into a final prompt string for image engines.
  * 
- * Updated:
- * 1. resolveStyle now returns the Style Package (Object) instead of just a string.
- * 2. finalizePrompt uses case-insensitive regex to prevent 400 errors from un-replaced variables.
+ * Updated for Style-Specific Negative Prompts:
+ * 1. resolveStyle now returns the complete Style Package including negativePrompt.
  * 
  * @api-declaration
  * resolveDimensions(characterId) -> { width: number, height: number }
- * resolveStyle(characterId) -> { template: string, loras: Array }
+ * resolveStyle(characterId) -> { template: string, loras: Array, negativePrompt: string }
  * finalizePrompt(subjectPrompt, anchor, emotion, pose, template) -> string
  * 
  * @contract
@@ -62,7 +61,7 @@ export function resolveDimensions(characterId) {
  * Checks for character-pinned styles, then the global default style.
  * 
  * @param {string} characterId 
- * @returns {{ template: string, loras: Array }}
+ * @returns {{ template: string, loras: Array, negativePrompt: string }}
  */
 export function resolveStyle(characterId) {
     const meta = getMetaSettings();
@@ -70,15 +69,21 @@ export function resolveStyle(characterId) {
     
     const fallback = { 
         template: getSettings().vnStyleSuffix || DEFAULT_VN_STYLE_SUFFIX, 
-        loras: [] 
+        loras: [],
+        negativePrompt: ''
     };
 
     if (lib) {
         const pin = state.chatCharacters[characterId]?.styleName;
-        if (pin && lib[pin]) return lib[pin];
+        const style = (pin && lib[pin]) ? lib[pin] : (meta.defaultStyleName && lib[meta.defaultStyleName]) ? lib[meta.defaultStyleName] : null;
         
-        const def = meta.defaultStyleName;
-        if (def && lib[def]) return lib[def];
+        if (style) {
+            return {
+                template: style.template,
+                loras: style.loras || [],
+                negativePrompt: style.negativePrompt || ''
+            };
+        }
     }
     
     return fallback;

@@ -1,15 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/executor.js
- * @stamp {"utc":"2026-04-16T17:25:00.000Z"}
+ * @stamp {"utc":"2026-04-16T19:00:00.000Z"}
  * @architectural-role IO Executor (Generation Logic)
  * @description
  * Primary execution engine for PersonaLyze image generation.
  * Coordinates multi-provider routing (Runware, Fal, PiAPI, Pollinations),
  * manages asynchronous task polling, and handles the post-processing pipeline.
  * 
- * Updated for Visual Presets & Enhanced RMBG:
- * 1. Pulls LoRA stacks directly from the Style Package.
- * 2. Support for configurable Runware RMBG models in post-processing.
+ * Updated for Style-Specific Negative Prompts:
+ * 1. fetchPreviewBlob and generate now extract negativePrompt from the Style Package.
+ * 2. negativePrompt is passed to the Runware provider backend.
  * 
  * @api-declaration
  * fetchPreviewBlob(prompt, characterId, provider, seed, emotion, pose) -> Promise<string>
@@ -94,12 +94,14 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
         const genResult = await _pollPiapiTask(task_id, 120000, () => { });
         res = await fetch('/api/plugins/personalyze/piapi-fetch', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ image_url: genResult.image_url }) });
     } else if (provider === 'runware') {
-        // Pull LoRAs from the style package
+        // Pull LoRAs and Negative Prompt from the style package
         const loras = styleObj.loras || [];
+        const negativePrompt = styleObj.negativePrompt || '';
         res = await fetch('/api/plugins/personalyze/runware-generate', {
             method: 'POST', headers: getRequestHeaders(),
             body: JSON.stringify({ 
                 positivePrompt: fullPrompt, 
+                negativePrompt: negativePrompt,
                 model: s.runwareModel, 
                 width: DEV_IMAGE_WIDTH, 
                 height: DEV_IMAGE_HEIGHT, 
@@ -140,13 +142,15 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
             const resData = await _pollPiapiTask(task_id, 120000, st => _dispatchPortraitStatus(characterId, { status: st }));
             sourceUrl = resData.image_url; meta = resData.meta;
         } else if (provider === 'runware') {
-            // Pull LoRAs from the style package
+            // Pull LoRAs and Negative Prompt from the style package
             const loras = styleObj.loras || [];
+            const negativePrompt = styleObj.negativePrompt || '';
             imgRes = await fetch('/api/plugins/personalyze/runware-generate', { 
                 method: 'POST', 
                 headers: getRequestHeaders(), 
                 body: JSON.stringify({ 
                     positivePrompt: fullPrompt, 
+                    negativePrompt: negativePrompt,
                     model: s.runwareModel, 
                     width: w, 
                     height: h, 

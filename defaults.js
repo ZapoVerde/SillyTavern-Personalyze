@@ -88,8 +88,9 @@ export const SECRET_RUNWARE = 'api_key_runware';
 
 /** Verified Runware Model AIRs */
 export const RUNWARE_MODELS = [
-    { label: 'Pony Diffusion V6 XL', air: 'runware:101@1' },
+    { label: 'Pony Diffusion V6 XL', air: 'purplesmart:257749@290640' },
     { label: 'Flux.1 Dev', air: 'runware:100@1' },
+    { label: 'Z-image turbo', air: 'runware:z-image@turbo' },
 ];
 
 /** 
@@ -114,7 +115,7 @@ export const RUNWARE_RMBG_MODELS = [
 ];
 
 /** Runware Settings Defaults */
-export const DEFAULT_RUNWARE_MODEL = 'runware:101@1';
+export const DEFAULT_RUNWARE_MODEL = 'runware:100@1';
 export const DEFAULT_RUNWARE_USE_LAYER_DIFFUSE = true;
 export const DEFAULT_RUNWARE_REMOVE_BG = false;
 export const DEFAULT_RUNWARE_RMBG_MODEL = 'runware:112@9';

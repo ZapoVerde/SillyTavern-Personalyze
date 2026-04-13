@@ -1,15 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-16T17:05:00.000Z"}
+ * @stamp {"utc":"2026-04-16T18:30:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
  * Implements the "Working Table" architecture for the Layered State Pipeline.
  *
- * Updated for Visual Presets:
- * 1. Upgraded styleLibrary to support packages (Template + LoRA Stack).
- * 2. Implemented migration from legacy string-only styles.
- * 3. Added runwareRmbgModel setting.
+ * Updated for Style-Specific Negative Prompts:
+ * 1. Upgraded styleLibrary migration to ensure 'negativePrompt' exists in all packages.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -169,20 +167,27 @@ export function initSettings() {
 
     // --- Style Library & Package Migration ---
     if (!root.styleLibrary) {
-        root.styleLibrary = { 'Default': { template: DEFAULT_VN_STYLE_SUFFIX, loras: [] } };
+        root.styleLibrary = { 'Default': { template: DEFAULT_VN_STYLE_SUFFIX, loras: [], negativePrompt: '' } };
         root.defaultStyleName = 'Default';
     } else {
-        // Migration: Convert String-based styles to Object-based packages
+        // Migration: Convert String-based styles to Object-based packages, and ensure negativePrompt exists
         let migrated = false;
         for (const key of Object.keys(root.styleLibrary)) {
-            const val = root.styleLibrary[key];
+            let val = root.styleLibrary[key];
             if (typeof val === 'string') {
                 log('Settings', `Migrating style "${key}" to package format...`);
                 root.styleLibrary[key] = {
                     template: val,
-                    loras: []
+                    loras: [],
+                    negativePrompt: ''
                 };
                 migrated = true;
+            } else if (typeof val === 'object') {
+                // Ensure negativePrompt field exists in existing packages
+                if (val.negativePrompt === undefined) {
+                    val.negativePrompt = '';
+                    migrated = true;
+                }
             }
         }
         if (migrated) saveSettingsDebounced();
