@@ -111,6 +111,7 @@ export const RUNWARE_LORA_REGISTRY = [
     { label: 'ZNSFW LoRA ZIT', air: 'civitai:2279079', defaultWeight: 0.7 },
     { label: 'Anime NSFW Characters and Style ZIT', air: 'civitai:2221829', defaultWeight: 0.7 },    
     { label: 'Z-Image-Turbo-Anime ZIT', air: 'civitai:2259646', defaultWeight: 0.7 },
+    { label: 'PhotorealTouch ZIT', air: 'civitai:1464286', defaultWeight: 0.7 },
 ];
 
 /** 
