@@ -1,17 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/engines/templates.js
- * @stamp {"utc":"2026-04-07T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-16T13:00:00.000Z"}
  * @architectural-role Pure UI Templates (Engines Modal)
  * @description
  * Generates the HTML for the Image Engines configuration modal. 
  * 
- * Updated to a "Multi-Engine" architecture including:
- * - Pollinations
- * - Fal AI
- * - PiAPI
- *
- * Includes master "Availability" toggles at the top of each tab to control
- * which engines are shown in the Dressing Room and Studio outfit dropdowns.
+ * Updated for Runware.ai Integration:
+ * 1. Added Runware tab with AIR model selection.
+ * 2. Added toggles for LayerDiffuse (native alpha) and standalone RMBG.
  *
  * @api-declaration
  * getEnginesModalHTML(settings) → string
@@ -23,7 +19,13 @@
  *     external_io: []
  */
 
-import { POLLINATIONS_MODELS, FAL_MODELS, PIAPI_MODELS, PIAPI_RMBG_MODELS } from '../../defaults.js';
+import { 
+    POLLINATIONS_MODELS, 
+    FAL_MODELS, 
+    PIAPI_MODELS, 
+    PIAPI_RMBG_MODELS,
+    RUNWARE_MODELS 
+} from '../../defaults.js';
 import { escapeHtml } from '../../utils/history.js';
 
 /**
@@ -89,7 +91,7 @@ function getPollinationsTabHTML(settings) {
     </div>`;
 }
 
-// ─── Tab: Fal AI (New) ────────────────────────────────────────────────────────
+// ─── Tab: Fal AI ──────────────────────────────────────────────────────────────
 
 function getFalTabHTML(settings) {
     const s = settings;
@@ -173,7 +175,7 @@ function getPiAPITabHTML(settings) {
                     ${rmbgModelOptions}
                 </select>
             </div>
-            <p style="font-size:0.78em; opacity:0.5; margin:0;">Requires PiAPI as the generation engine. Has no effect with Pollinations or Fal.</p>
+            <p style="font-size:0.78em; opacity:0.5; margin:0;">Works with all engines (converts output to base64 for background removal).</p>
         </div>
 
         <div style="display:flex; gap:8px; margin-top:10px;">
@@ -181,6 +183,56 @@ function getPiAPITabHTML(settings) {
             <button class="menu_button" id="plz-eng-piapi-test" style="flex:1;"><i class="fa-solid fa-flask"></i> Test</button>
         </div>
         <div id="plz-eng-piapi-status" style="font-size:0.8em; opacity:0.8;"></div>
+    </div>`;
+}
+
+// ─── Tab: Runware ─────────────────────────────────────────────────────────────
+
+function getRunwareTabHTML(settings) {
+    const s = settings;
+    const modelOptions = RUNWARE_MODELS
+        .map(m => `<option value="${escapeHtml(m.air)}"${m.air === s.runwareModel ? ' selected' : ''}>${escapeHtml(m.label)}</option>`)
+        .join('');
+
+    return `
+    <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
+        ${getDefaultEngineButtonHTML('runware', s.defaultEngine === 'runware')}
+        ${getAvailabilityToggleHTML('plz-eng-runware-enabled', 'Runware', !!s.engineEnableRunware)}
+
+        <p style="font-size:0.85em; opacity:0.6; margin:0;">
+            Fast generation with native transparency support. Requires a Runware API key.
+        </p>
+
+        <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">API Key:</label>
+            <input type="password" id="plz-eng-runware-key" class="text_pole" placeholder="Your Runware Key" style="flex:1;" />
+            <button class="menu_button plz-eng-vault-save" data-secret="api_key_runware">Save</button>
+        </div>
+        <div id="plz-eng-runware-key-status" style="font-size:0.8em; margin-top:-8px;"></div>
+
+        <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Model:</label>
+            <select id="plz-eng-runware-model" class="text_pole" style="flex:1;">
+                ${modelOptions}
+            </select>
+        </div>
+
+        <div style="padding:10px; border:1px solid var(--SmartThemeBorderColor,#444); border-radius:6px; display:flex; flex-direction:column; gap:10px;">
+            <label class="checkbox_label" style="font-size:0.9em; cursor:pointer;" title="Generate transparency in a single pass.">
+                <input type="checkbox" id="plz-eng-runware-layerdiffuse" ${s.runwareUseLayerDiffuse ? 'checked' : ''} />
+                <span>Use LayerDiffuse <span style="opacity:0.55; font-size:0.88em;">(Native PNG Alpha)</span></span>
+            </label>
+            <label class="checkbox_label" style="font-size:0.9em; cursor:pointer;" title="Use Runware to remove background from any generated image.">
+                <input type="checkbox" id="plz-eng-runware-rmbg" ${s.runwareRemoveBackground ? 'checked' : ''} />
+                <span>Post-Process RMBG <span style="opacity:0.55; font-size:0.88em;">(Works with all engines)</span></span>
+            </label>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:10px;">
+            <button class="menu_button" id="plz-eng-runware-ping" style="flex:1;"><i class="fa-solid fa-signal"></i> Ping</button>
+            <button class="menu_button" id="plz-eng-runware-test" style="flex:1;"><i class="fa-solid fa-flask"></i> Test</button>
+        </div>
+        <div id="plz-eng-runware-status" style="font-size:0.8em; opacity:0.8;"></div>
     </div>`;
 }
 
@@ -200,6 +252,7 @@ export function getEnginesModalHTML(settings) {
                 <button class="plz-tab-btn menu_button" data-tab="pollinations">Pollinations</button>
                 <button class="plz-tab-btn menu_button" data-tab="fal">Fal AI</button>
                 <button class="plz-tab-btn menu_button" data-tab="piapi">PiAPI</button>
+                <button class="plz-tab-btn menu_button" data-tab="runware">Runware</button>
             </div>
         </div>
 
@@ -212,6 +265,9 @@ export function getEnginesModalHTML(settings) {
             </div>
             <div id="plz-eng-tab-piapi" class="plz-tab-panel plz-hidden">
                 ${getPiAPITabHTML(settings)}
+            </div>
+            <div id="plz-eng-tab-runware" class="plz-tab-panel plz-hidden">
+                ${getRunwareTabHTML(settings)}
             </div>
 
             <!-- Shared Test Prompt Area -->
@@ -228,4 +284,3 @@ export function getEnginesModalHTML(settings) {
     </div>
 </div>`;
 }
-

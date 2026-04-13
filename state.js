@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/state.js
- * @stamp {"utc":"2026-04-14T09:10:00.000Z"}
+ * @stamp {"utc":"2026-04-16T12:05:00.000Z"}
  * @architectural-role Stateful Owner (Runtime State)
  * @description
  * Single source of truth for all PersonaLyze in-memory runtime state.
@@ -8,9 +8,9 @@
  * Tracks the active character, their current layered visual state, 
  * and the local DNA derived from chat history.
  *
- * Updated for the Multi-Character Architecture:
- * 1. Added uiState: {} for transient cosmetic preferences (e.g. flipping).
- * 2. Added toggleCharacterFlip(characterId) to manage mirror-state and trigger UI updates.
+ * Updated for Runware.ai Integration:
+ * 1. Added runwareLoraAir and runwareLoraWeight to character metadata.
+ * 2. Added upsertChatCharacterLora() to manage LoRA pinning in memory.
  *
  * @api-declaration
  * state                                    — Read-only access to runtime data.
@@ -30,6 +30,7 @@
  * upsertChatCharacterDef(id, anchor, seed) — Updates local DNA identity.
  * upsertChatCharacterLabel(id, label)      — Updates a character's display label.
  * upsertChatCharacterEngine(id, engine)    — Updates a character's pinned image engine.
+ * upsertChatCharacterLora(id, air, weight) — Updates Runware LoRA pinning.
  * upsertChatEnsemble(id, key, label, layers) — Updates local DNA ensemble.
  * deleteChatEnsemble(id, key)              — Removes an ensemble from local DNA.
  * upsertChatCharacterAka(id, akaList)      — Updates a character's AKA aliases.
@@ -65,7 +66,7 @@ export const state = {
 
     // Local DNA definitions
     // Keyed by characterId.
-    chatCharacters: {}, // { [id]: { label, identityAnchor, seed, engine, ensembles, aka, defaultEnsemble, slots: string[] } }
+    chatCharacters: {}, // { [id]: { label, identityAnchor, seed, engine, ensembles, aka, defaultEnsemble, slots: string[], runwareLoraAir, runwareLoraWeight } }
 
     // Per-chat roster
     activeRoster: [],
@@ -197,8 +198,10 @@ export function getCleanLayers(slots) {
 }
 
 // ─── Local DNA Setters ───────────────────────────────────────────────────────
-
-export function _ensureChatChar(id) {
+/**
+ * Internal helper to guarantee a valid character structure exists in memory.
+ */
+export function ensureChatChar(id) {
     if (!state.chatCharacters[id]) {
         state.chatCharacters[id] = { 
             label: id.replace(/_/g, ' '), 
@@ -209,7 +212,9 @@ export function _ensureChatChar(id) {
             aka: [], 
             defaultEnsemble: null, 
             styleName: null,
-            slots: [...BASE_SLOTS] // Default template
+            slots: [...BASE_SLOTS], // Default template
+            runwareLoraAir: null,   // Added for Runware
+            runwareLoraWeight: 0.8  // Added for Runware
         };
     }
     return state.chatCharacters[id];
@@ -217,32 +222,39 @@ export function _ensureChatChar(id) {
 
 /** Updates identity anchor and seed for a character in local DNA. */
 export function upsertChatCharacterDef(id, anchor, seed) {
-    const char = _ensureChatChar(id);
+    const char = ensureChatChar(id);
     char.identityAnchor = anchor;
     char.seed = seed;
 }
 
 /** Updates a character's display label in local DNA. */
 export function upsertChatCharacterLabel(id, label) {
-    const char = _ensureChatChar(id);
+    const char = ensureChatChar(id);
     char.label = label;
 }
 
 /** Updates a character's pinned image engine in local DNA. */
 export function upsertChatCharacterEngine(id, engine) {
-    const char = _ensureChatChar(id);
+    const char = ensureChatChar(id);
     char.engine = engine || null;
+}
+
+/** Updates a character's Runware LoRA pinning. */
+export function upsertChatCharacterLora(id, air, weight) {
+    const char = ensureChatChar(id);
+    char.runwareLoraAir = air || null;
+    char.runwareLoraWeight = weight ?? 0.8;
 }
 
 /** Adds or updates an ensemble (saved layer snapshot) for a character. */
 export function upsertChatEnsemble(id, key, label, layers) {
-    const char = _ensureChatChar(id);
+    const char = ensureChatChar(id);
     char.ensembles[key] = { label, layers: structuredClone(layers) };
 }
 
 /** Removes an ensemble from a character in the local DNA. */
 export function deleteChatEnsemble(id, key) {
-    const char = _ensureChatChar(id);
+    const char = ensureChatChar(id);
     delete char.ensembles[key];
     if (char.defaultEnsemble === key) {
         char.defaultEnsemble = null;
@@ -251,25 +263,25 @@ export function deleteChatEnsemble(id, key) {
 
 /** Updates a character's AKA aliases. */
 export function upsertChatCharacterAka(id, akaList) {
-    const char = _ensureChatChar(id);
+    const char = ensureChatChar(id);
     char.aka = Array.isArray(akaList) ? [...akaList] : [];
 }
 
 /** Updates a character's designated default ensemble key. */
 export function upsertChatDefaultEnsemble(id, key) {
-    const char = _ensureChatChar(id);
+    const char = ensureChatChar(id);
     char.defaultEnsemble = key ?? null;
 }
 
 /** Updates a character's pinned portrait style name. */
 export function upsertChatCharacterStyle(id, styleName) {
-    const char = _ensureChatChar(id);
+    const char = ensureChatChar(id);
     char.styleName = styleName || null;
 }
 
 /** Updates a character's custom wardrobe slot list. */
 export function upsertChatSlots(id, slots) {
-    const char = _ensureChatChar(id);
+    const char = ensureChatChar(id);
     char.slots = Array.isArray(slots) ? [...slots] : [...BASE_SLOTS];
 }
 

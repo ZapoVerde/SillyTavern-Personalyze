@@ -1,13 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/defaults.js
- * @stamp {"utc":"2026-04-15T10:00:00.000Z"}
+ * @stamp {"utc":"2026-04-16T12:00:00.000Z"}
  * @architectural-role Default Configuration
  * @description
  * Default constants for the Layered State Pipeline.
  * 
- * Updated for the Generation Economy:
- * 1. Added RESOLUTION_TIERS for multi-tier image generation.
- * 2. Added defaults for Dynamic Resolution and Ephemeral Caching.
+ * Updated for Runware.ai Integration:
+ * 1. Added Runware AIR model identifiers.
+ * 2. Added hardcoded Global LoRA Registry to bypass Civitai/VPN bottlenecks.
+ * 3. Added Runware secret key and settings defaults.
  * 
  * @api-declaration
  * POLLINATIONS_BASE_URL
@@ -16,6 +17,9 @@
  * DEFAULT_MAX_RESOLUTION
  * DEFAULT_DYNAMIC_RESOLUTION
  * DEFAULT_KEEP_CACHE
+ * SECRET_RUNWARE
+ * RUNWARE_MODELS
+ * RUNWARE_LORA_REGISTRY
  * ...
  */
 
@@ -75,6 +79,34 @@ export const DEFAULT_DESCRIBER_HISTORY = 3;
 export const DEFAULT_MAX_RESOLUTION = 'MAX';
 export const DEFAULT_DYNAMIC_RESOLUTION = false;
 export const DEFAULT_KEEP_CACHE = false;
+
+/**
+ * Runware API & Registry.
+ */
+export const SECRET_RUNWARE = 'api_key_runware';
+
+/** Verified Runware Model AIRs */
+export const RUNWARE_MODELS = [
+    { label: 'Pony Diffusion V6 XL', air: 'runware:101@1' },
+    { label: 'Flux.1 Dev', air: 'runware:100@1' },
+];
+
+/** 
+ * Global LoRA Registry.
+ * Hardcoded to avoid Civitai API/VPN lag.
+ */
+export const RUNWARE_LORA_REGISTRY = [
+    { label: 'None', air: '' },
+    { label: 'Detail Tweaker (XL)', air: 'civitai:122359@135867', defaultWeight: 0.8 },
+    { label: 'Anime Lineart', air: 'civitai:160141@179333', defaultWeight: 0.7 },
+    { label: 'Ghibli Style', air: 'civitai:65127@79061', defaultWeight: 0.6 },
+    { label: 'Concept Sheet/Grid', air: 'civitai:83023@88210', defaultWeight: 1.0 },
+];
+
+/** Runware Settings Defaults */
+export const DEFAULT_RUNWARE_MODEL = 'runware:101@1';
+export const DEFAULT_RUNWARE_USE_LAYER_DIFFUSE = true;
+export const DEFAULT_RUNWARE_REMOVE_BG = false;
 
 /**
  * Meta-slot keys.

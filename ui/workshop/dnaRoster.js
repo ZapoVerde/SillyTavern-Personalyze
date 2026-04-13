@@ -1,11 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaRoster.js
- * @stamp {"utc":"2026-04-12T11:10:00.000Z"}
+ * @stamp {"utc":"2026-04-16T13:50:00.000Z"}
  * @architectural-role UI Sub-module (Roster Management)
  * @description
  * Handles navigation and roster-level logic for the DNA tab.
  * Responsible for creating new character "Ghosts" and toggling character
  * visibility in the active chat session.
+ * 
+ * Updated:
+ * 1. Renamed _ensureChatChar to ensureChatChar to match state.js refactor.
  * 
  * @api-declaration
  * bindRosterHandlers($overlay)
@@ -20,7 +23,7 @@
 import { getContext } from '../../../../../extensions.js';
 import {
     state, setWorkshopCharacter, setActiveRoster,
-    getCleanLayers, _ensureChatChar, updateChainLayers
+    getCleanLayers, ensureChatChar, updateChainLayers
 } from '../../state.js';
 import { BASE_SLOTS } from '../../defaults.js';
 import { lockedWriteRoster } from '../../io/dnaWriter.js';
@@ -36,7 +39,7 @@ export function bindRosterHandlers($overlay) {
     // ─── Create New Character (Ghost Initiation) ───
     $overlay.on('click', '.plz-dna-add-new', function() {
         // Initialize the blank ghost template
-        _ensureChatChar('__new__');
+        ensureChatChar('__new__');
         
         // Clean Slate Fix: ensure no inherited clothing
         updateChainLayers('__new__', getCleanLayers(BASE_SLOTS), null);

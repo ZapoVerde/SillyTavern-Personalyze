@@ -1,13 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/engines/listeners.js
- * @stamp {"utc":"2026-04-07T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-16T13:05:00.000Z"}
  * @architectural-role UI Logic (Engines Modal)
  * @description
  * Event bindings for the Engines configuration modal. 
  * 
- * Updated to support the Multi-Engine architecture, including Fal AI.
- * Handles the "Availability" master toggles to control which engines appear 
- * in the Dressing Room and Studio dropdowns.
+ * Updated for Runware.ai Integration:
+ * 1. Added handlers for Runware vault save, ping, and generation testing.
+ * 2. Implemented mutual exclusivity logic between PiAPI and Runware post-process RMBG.
  *
  * @api-declaration
  * bindEnginesHandlers($modal) → void
@@ -23,9 +23,9 @@
 
 import { getSettings, updateSetting } from '../../settings.js';
 import { fetchPreviewBlob } from '../../imageCache.js';
-import { DEFAULT_TEST_PROMPT } from '../../defaults.js';
+import { DEFAULT_TEST_PROMPT, SECRET_RUNWARE } from '../../defaults.js';
 import { log, error } from '../../utils/logger.js';
-import { pingPollinations, pingFal, pingPiAPI } from '../../utils/ping.js';
+import { pingPollinations, pingFal, pingPiAPI, pingRunware } from '../../utils/ping.js';
 import { writeSecret, secret_state } from '../../../../../secrets.js';
 import { callPopup } from '../../../../../../script.js';
 import { getCachedModels } from '../panel/models.js';
@@ -37,13 +37,15 @@ import { smartResize } from '../../utils/dom.js';
  * Updates all engine key status indicators in the engines modal.
  */
 export function updateEngineKeyStatuses() {
-    const polState   = secret_state['api_key_pollinations'];
-    const falState   = secret_state['api_key_fal'];
-    const piapiState = secret_state['api_key_piapi'];
+    const polState     = secret_state['api_key_pollinations'];
+    const falState     = secret_state['api_key_fal'];
+    const piapiState   = secret_state['api_key_piapi'];
+    const runwareState = secret_state[SECRET_RUNWARE];
 
-    const hasPol   = Array.isArray(polState)   && polState.length   > 0;
-    const hasFal   = Array.isArray(falState)   && falState.length   > 0;
-    const hasPiAPI = Array.isArray(piapiState) && piapiState.length > 0;
+    const hasPol     = Array.isArray(polState)     && polState.length     > 0;
+    const hasFal     = Array.isArray(falState)     && falState.length     > 0;
+    const hasPiAPI   = Array.isArray(piapiState)   && piapiState.length   > 0;
+    const hasRunware = Array.isArray(runwareState) && runwareState.length > 0;
 
     const okHtml  = '<span style="color:var(--SmartThemeQuoteColor,#28a745); font-size:0.9em;">● Key saved in vault</span>';
     const errHtml = '<span style="color:var(--SmartThemeErrorColor,#e05555); font-size:0.9em;">○ No key found</span>';
@@ -51,6 +53,7 @@ export function updateEngineKeyStatuses() {
     $('#plz-eng-pol-key-status').html(hasPol ? okHtml : errHtml);
     $('#plz-eng-fal-key-status').html(hasFal ? okHtml : errHtml);
     $('#plz-eng-piapi-key-status').html(hasPiAPI ? okHtml : errHtml);
+    $('#plz-eng-runware-key-status').html(hasRunware ? okHtml : errHtml);
 }
 
 // ─── UI Refresh ───────────────────────────────────────────────────────────────
@@ -75,6 +78,7 @@ export function refreshEnginesUI() {
     $('#plz-eng-pol-enabled').prop('checked', s.engineEnablePollinations !== false);
     $('#plz-eng-fal-enabled').prop('checked', !!s.engineEnableFal);
     $('#plz-eng-piapi-enabled').prop('checked', !!s.engineEnablePiAPI);
+    $('#plz-eng-runware-enabled').prop('checked', !!s.engineEnableRunware);
 
     // 1. Populate Pollinations Model Dropdown from Discovery Cache
     const currentPolModel = s.imageModel;
@@ -91,17 +95,22 @@ export function refreshEnginesUI() {
     // 2. Populate Fal AI
     $('#plz-eng-fal-model').val(s.falModel);
 
-    // 2b. Populate PiAPI
+    // 3. Populate PiAPI
     $('#plz-eng-piapi-model').val(s.piapiModel);
     $('#plz-eng-piapi-rmbg').prop('checked', !!s.piapiRemoveBackground);
     $('#plz-eng-piapi-rmbg-model').val(s.piapiRmbgModel).prop('disabled', !s.piapiRemoveBackground);
 
-    // 3. Test Prompt Area
+    // 4. Populate Runware
+    $('#plz-eng-runware-model').val(s.runwareModel);
+    $('#plz-eng-runware-layerdiffuse').prop('checked', !!s.runwareUseLayerDiffuse);
+    $('#plz-eng-runware-rmbg').prop('checked', !!s.runwareRemoveBackground);
+
+    // 5. Test Prompt Area
     const $testArea = $('#plz-eng-test-prompt');
     $testArea.val(s.testPrompt ?? DEFAULT_TEST_PROMPT);
     smartResize($testArea[0]);
 
-    // 4. Update Vault Indicators
+    // 6. Update Vault Indicators
     updateEngineKeyStatuses();
 }
 
@@ -138,6 +147,9 @@ export function bindEnginesHandlers($modal) {
         } else if (secretName === 'api_key_piapi') {
             inputId = '#plz-eng-piapi-key';
             label   = 'PersonaLyze: PiAPI';
+        } else if (secretName === SECRET_RUNWARE) {
+            inputId = '#plz-eng-runware-key';
+            label   = 'PersonaLyze: Runware';
         } else {
             inputId = '#plz-eng-pol-key';
             label   = 'PersonaLyze: Pollinations';
@@ -226,6 +238,26 @@ export function bindEnginesHandlers($modal) {
         await runEngineTest($(this), '#plz-eng-piapi-status', 'piapi', 'PiAPI');
     });
 
+    // 5. Runware Ping & Test
+    $modal.on('click', '#plz-eng-runware-ping', async function () {
+        const $btn = $(this);
+        const $status = $('#plz-eng-runware-status');
+        $btn.prop('disabled', true);
+        $status.text('Validating key...');
+
+        const result = await pingRunware();
+        if (result.ok) {
+            $status.html(`<span style="color:var(--SmartThemeQuoteColor);">✓ Key valid</span>`);
+        } else {
+            $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${result.error}</span>`);
+        }
+        $btn.prop('disabled', false);
+    });
+
+    $modal.on('click', '#plz-eng-runware-test', async function () {
+        await runEngineTest($(this), '#plz-eng-runware-status', 'runware', 'Runware');
+    });
+
     /**
      * Shared logic for testing an engine's generation capability.
      */
@@ -265,6 +297,9 @@ export function bindEnginesHandlers($modal) {
     $modal.on('change', '#plz-eng-piapi-enabled', function () {
         updateSetting('engineEnablePiAPI', $(this).prop('checked'));
     });
+    $modal.on('change', '#plz-eng-runware-enabled', function () {
+        updateSetting('engineEnableRunware', $(this).prop('checked'));
+    });
 
     // Model Selectors
     $modal.on('change', '#plz-eng-pol-model', function () {
@@ -279,14 +314,36 @@ export function bindEnginesHandlers($modal) {
         updateSetting('piapiModel', $(this).val());
     });
 
+    $modal.on('change', '#plz-eng-runware-model', function () {
+        updateSetting('runwareModel', $(this).val());
+    });
+
+    // RMBG Mutual Exclusivity logic
     $modal.on('change', '#plz-eng-piapi-rmbg', function () {
         const enabled = $(this).prop('checked');
         updateSetting('piapiRemoveBackground', enabled);
         $('#plz-eng-piapi-rmbg-model').prop('disabled', !enabled);
+        
+        if (enabled) {
+            $('#plz-eng-runware-rmbg').prop('checked', false).trigger('change');
+        }
+    });
+
+    $modal.on('change', '#plz-eng-runware-rmbg', function () {
+        const enabled = $(this).prop('checked');
+        updateSetting('runwareRemoveBackground', enabled);
+        
+        if (enabled) {
+            $('#plz-eng-piapi-rmbg').prop('checked', false).trigger('change');
+        }
     });
 
     $modal.on('change', '#plz-eng-piapi-rmbg-model', function () {
         updateSetting('piapiRmbgModel', $(this).val());
+    });
+
+    $modal.on('change', '#plz-eng-runware-layerdiffuse', function () {
+        updateSetting('runwareUseLayerDiffuse', $(this).prop('checked'));
     });
 
     // ─── Test Prompt Actions ───

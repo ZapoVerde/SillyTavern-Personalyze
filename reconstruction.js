@@ -1,16 +1,17 @@
 /**
  * @file data/default-user/extensions/personalyze/reconstruction.js
- * @stamp {"utc":"2026-04-11T13:40:00.000Z"}
+ * @stamp {"utc":"2026-04-16T12:15:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Derives PersonaLyze runtime state from a single forward pass over the chat DNA.
  * Reconstructs character definitions, saved ensembles, and the layered visual state.
  *
- * Updated to handle Dynamic Wardrobe Slots via the slots_update record type.
+ * Updated for Runware.ai Integration:
+ * 1. Added support for the lora_update record type to hydrate pinned LoRAs.
  *
  * @api-declaration
  * reconstruct(chat) → {
- *   chatCharacters:      { [characterId]: { label, identityAnchor, seed, ensembles, aka, defaultEnsemble, slots } },
+ *   chatCharacters:      { [characterId]: { label, identityAnchor, seed, ensembles, aka, defaultEnsemble, slots, runwareLoraAir, runwareLoraWeight } },
  *   characterChain:      { [characterId]: { layers, image } },
  *   activeRoster:        string[],
  *   activeCharacterId:   string|null,
@@ -58,7 +59,9 @@ export function reconstruct(chat) {
                 aka:             [],
                 defaultEnsemble: null,
                 styleName:       null,
-                slots:           [...BASE_SLOTS] // Default minimalist template
+                slots:           [...BASE_SLOTS], // Default minimalist template
+                runwareLoraAir:  null,
+                runwareLoraWeight: 0.8
             };
         }
         return chatCharacters[id];
@@ -120,6 +123,14 @@ export function reconstruct(chat) {
                     if (!rec.characterId) break;
                     const char = ensureChar(rec.characterId);
                     char.styleName = rec.styleName || null;
+                    break;
+                }
+
+                case 'lora_update': {
+                    if (!rec.characterId) break;
+                    const char = ensureChar(rec.characterId);
+                    char.runwareLoraAir = rec.loraAir || null;
+                    char.runwareLoraWeight = rec.weight ?? 0.8;
                     break;
                 }
 

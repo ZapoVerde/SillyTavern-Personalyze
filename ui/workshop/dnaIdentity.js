@@ -1,13 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaIdentity.js
- * @stamp {"utc":"2026-04-15T12:10:00.000Z"}
+ * @stamp {"utc":"2026-04-16T13:20:00.000Z"}
  * @architectural-role UI Sub-module (Metadata & Identity)
  * @description
  * Handles basic character metadata and identity management in the Studio.
- * Manages Display Name, Identity Anchor, Aliases (AKA), and engine/style pinning.
+ * Manages Display Name, Identity Anchor, Aliases (AKA), engine/style pinning,
+ * and Runware-specific LoRA settings.
  * 
- * Updated for Generation Economy:
- * 1. Studio purge now correctly uses deleteFiles IO and removeFromFileIndex state setter.
+ * Updated for Runware.ai Integration:
+ * 1. Added event listeners for Runware LoRA and Weight.
+ * 2. Implemented dual memory/DNA commit for LoRA settings.
  * 
  * @api-declaration
  * bindIdentityHandlers($overlay)
@@ -24,12 +26,12 @@ import { callPopup } from '../../../../../../script.js';
 import {
     state, upsertChatCharacterDef, upsertChatCharacterLabel, 
     upsertChatCharacterAka, upsertChatCharacterEngine, 
-    upsertChatCharacterStyle, updateActiveImage, 
-    updateChainLayers, removeFromFileIndex
+    upsertChatCharacterStyle, upsertChatCharacterLora,
+    updateActiveImage, updateChainLayers, removeFromFileIndex
 } from '../../state.js';
 import { 
     lockedWriteCharacterDef, lockedWriteLabel, lockedWriteAka,
-    lockedWriteCharacterStyle
+    lockedWriteCharacterStyle, lockedWriteCharacterLora
 } from '../../io/dnaWriter.js';
 import { deleteFiles, fetchFileIndex } from '../../imageCache.js';
 import { clearPortrait } from '../../portrait.js';
@@ -37,6 +39,7 @@ import { smartResize } from '../../utils/dom.js';
 
 let anchorSaveTimeout = null;
 let labelSaveTimeout  = null;
+let loraSaveTimeout   = null;
 
 /**
  * Binds event listeners for character identity and metadata.
@@ -151,6 +154,38 @@ export function bindIdentityHandlers($overlay) {
         
         const lastMsgId = Math.max(0, getContext().chat.length - 1);
         await lockedWriteCharacterDef(lastMsgId, id, char.identityAnchor, char.seed, engine);
+    });
+
+    // ─── Runware LoRA & Weight ───
+    $overlay.on('change', '#plz-studio-runware-lora', async function() {
+        const id = state._workshopCharacterId;
+        if (!id) return;
+        const air = $(this).val() || null;
+        const weight = parseFloat($('#plz-studio-runware-weight').val()) || 0.8;
+        
+        upsertChatCharacterLora(id, air, weight); // Memory update
+        
+        if (id === '__new__') return; // Ghost Guard
+        
+        const lastMsgId = Math.max(0, getContext().chat.length - 1);
+        await lockedWriteCharacterLora(lastMsgId, id, air, weight);
+    });
+
+    $overlay.on('input', '#plz-studio-runware-weight', function() {
+        clearTimeout(loraSaveTimeout);
+        loraSaveTimeout = setTimeout(async () => {
+            const id = state._workshopCharacterId;
+            if (!id) return;
+            const air = $('#plz-studio-runware-lora').val() || null;
+            const weight = parseFloat($(this).val()) || 0.8;
+            
+            upsertChatCharacterLora(id, air, weight); // Memory update
+            
+            if (id === '__new__') return; // Ghost Guard
+            
+            const lastMsgId = Math.max(0, getContext().chat.length - 1);
+            await lockedWriteCharacterLora(lastMsgId, id, air, weight);
+        }, 800);
     });
 
     // ─── Maintenance: Purge Portraits ───

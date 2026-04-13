@@ -1,13 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaListeners.js
- * @stamp {"utc":"2026-04-14T23:30:00.000Z"}
+ * @stamp {"utc":"2026-04-16T13:25:00.000Z"}
  * @architectural-role UI Coordinator (Workshop DNA)
  * @description
  * Coordinator hub for the Workshop DNA and Studio tabs. 
  * 
- * Updated for the Smart Wardrobe:
- * 1. JIT Harvesting: Integrated vocabularyService to fill Studio suggestions.
- * 2. Pinned Clear Logic: Handled delegated (x) button events.
+ * Updated for Runware.ai Integration:
+ * 1. Added engineEnableRunware to enabledEngines mapping in renderStudioView.
  * 
  * @api-declaration
  * renderDNAView()
@@ -66,6 +65,7 @@ export function renderStudioView() {
         engineEnablePollinations: s.engineEnablePollinations,
         engineEnableFal:          s.engineEnableFal,
         engineEnablePiAPI:        s.engineEnablePiAPI,
+        engineEnableRunware:      s.engineEnableRunware,
     };
     
     // 1. Render base Studio HTML

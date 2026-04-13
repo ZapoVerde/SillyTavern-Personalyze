@@ -1,13 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/io/dnaWriter.js
- * @stamp {"utc":"2026-04-11T14:00:00.000Z"}
+ * @stamp {"utc":"2026-04-16T12:10:00.000Z"}
  * @architectural-role IO Executor / DNA Chain Writer
  * @description
  * Handles all writes to message.extra.personalyze with integrated concurrency 
  * locking. Implements the Array Pattern for the Layered State Pipeline.
  * 
- * Updated to support AKA alias updates, default ensemble (everyday wear) settings,
- * ensemble deletion tombstones, and custom wardrobe slot schemas.
+ * Updated for Runware.ai Integration:
+ * 1. Added lockedWriteCharacterLora to persist LoRA pinning and weights.
  *
  * @api-declaration
  * lockedWriteCharacterDef(messageId, characterId, anchor, seed, engine?)
@@ -20,6 +20,7 @@
  * lockedDeleteEnsemble(messageId, characterId, key)
  * lockedWriteDefaultEnsemble(messageId, characterId, ensembleKey)
  * lockedWriteLabel(messageId, characterId, label)
+ * lockedWriteCharacterLora(messageId, characterId, loraAir, weight)
  *
  * @contract
  *   assertions:
@@ -285,6 +286,29 @@ export async function lockedWriteDefaultEnsemble(messageId, characterId, ensembl
                 type: 'default_ensemble_set',
                 characterId,
                 key: ensembleKey
+            });
+            await saveChatConditional();
+        }
+    } finally {
+        writeLock.release();
+    }
+}
+
+/**
+ * Writes a character's pinned Runware LoRA and weight to the DNA chain.
+ */
+export async function lockedWriteCharacterLora(messageId, characterId, loraAir, weight) {
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (message) {
+            ensureArray(message);
+            message.extra.personalyze.push({
+                type: 'lora_update',
+                characterId,
+                loraAir: loraAir || null,
+                weight: weight ?? 0.8
             });
             await saveChatConditional();
         }

@@ -1,11 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/studioTemplates.js
- * @stamp {"utc":"2026-04-14T23:10:00.000Z"}
+ * @stamp {"utc":"2026-04-16T13:15:00.000Z"}
  * @architectural-role Pure UI Template (Studio)
  * @description
  * Generates the HTML strings for the Workshop Studio (Character Dashboard).
  * 
- * Updated to use domRegistry for space-safe list attributes.
+ * Updated for Runware.ai Integration:
+ * 1. Added Runware to engine selection options.
+ * 2. Added stylistic LoRA selector with weight input.
  * 
  * @api-declaration
  * getStudioHTML(characterId, character, layers, enabledEngines, styleLibrary, defaultStyleName)
@@ -19,13 +21,14 @@
  */
 
 import { escapeHtml } from '../../utils/history.js';
-import { BASE_SLOTS } from '../../defaults.js';
+import { BASE_SLOTS, RUNWARE_LORA_REGISTRY } from '../../defaults.js';
 import { getDatalistId } from '../../utils/domRegistry.js';
 
 const ENGINE_OPTIONS = [
     { value: 'pollinations', label: 'Pollinations',  key: 'engineEnablePollinations' },
     { value: 'fal',          label: 'Fal AI',        key: 'engineEnableFal'          },
     { value: 'piapi',        label: 'PiAPI',         key: 'engineEnablePiAPI'        },
+    { value: 'runware',      label: 'Runware',       key: 'engineEnableRunware'      },
 ];
 
 /** Renders the Studio dashboard with the Dynamic Layered Grid. */
@@ -53,6 +56,12 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
     const idLabel = isGhost 
         ? `<small style="opacity:0.35;"><i>Unsaved Character</i></small>`
         : `<small style="opacity:0.35;">System ID: ${escapeHtml(characterId)}</small>`;
+
+    // LoRA Selection Options
+    const currentLora = character.runwareLoraAir || '';
+    const loraOptionsHTML = RUNWARE_LORA_REGISTRY.map(l => 
+        `<option value="${escapeHtml(l.air)}" ${currentLora === l.air ? 'selected' : ''}>${escapeHtml(l.label)}</option>`
+    ).join('');
 
     return `
     <div style="margin-bottom:10px;">
@@ -123,6 +132,15 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
             <option value="" ${!pinnedEngine ? 'selected' : ''}>Use Global Default</option>
             ${engineOptionsHTML}
         </select>
+
+        <label class="plz-studio-label" style="display:block;margin-bottom:6px;">Runware LoRA</label>
+        <div style="display:flex; gap:8px; margin-bottom:16px;">
+            <select id="plz-studio-runware-lora" class="text_pole" style="flex:2;">
+                ${loraOptionsHTML}
+            </select>
+            <input id="plz-studio-runware-weight" type="number" step="0.1" class="text_pole" 
+                   value="${character.runwareLoraWeight ?? 0.8}" style="width:60px;" title="LoRA Weight" />
+        </div>
 
         <div style="border:1px solid rgba(var(--SmartThemeErrorColor-rgb, 200,60,60),0.3);border-radius:6px;padding:10px 12px;">
             <div style="font-size:0.8em;opacity:0.6;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">Maintenance</div>

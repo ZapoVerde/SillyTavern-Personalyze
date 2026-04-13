@@ -1,14 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-15T10:10:00.000Z"}
+ * @stamp {"utc":"2026-04-16T13:10:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
  * Implements the "Working Table" architecture for the Layered State Pipeline.
  *
- * Updated for the Generation Economy:
- * 1. Removed legacy portraitPosition.
- * 2. Added maxResolution, dynamicResolution, and keepCache.
+ * Updated for Runware.ai Integration:
+ * 1. Added engineEnableRunware, runwareModel, runwareUseLayerDiffuse, and runwareRemoveBackground to defaults.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -54,6 +53,9 @@ import {
     DEFAULT_MAX_RESOLUTION,
     DEFAULT_DYNAMIC_RESOLUTION,
     DEFAULT_KEEP_CACHE,
+    DEFAULT_RUNWARE_MODEL,
+    DEFAULT_RUNWARE_USE_LAYER_DIFFUSE,
+    DEFAULT_RUNWARE_REMOVE_BG,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
@@ -96,11 +98,17 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     engineEnablePollinations: true,
     engineEnableFal:          false,
     engineEnablePiAPI:        false,
+    engineEnableRunware:      false,
     showPortraitStatus:       true,
 
     // Background Removal (PiAPI Image Toolkit)
     piapiRemoveBackground:    DEFAULT_PIAPI_REMOVE_BG,
     piapiRmbgModel:           DEFAULT_PIAPI_RMBG_MODEL,
+
+    // Runware Integration
+    runwareModel:             DEFAULT_RUNWARE_MODEL,
+    runwareUseLayerDiffuse:   DEFAULT_RUNWARE_USE_LAYER_DIFFUSE,
+    runwareRemoveBackground:  DEFAULT_RUNWARE_REMOVE_BG,
 
     // Generation Economy
     maxResolution:            DEFAULT_MAX_RESOLUTION,

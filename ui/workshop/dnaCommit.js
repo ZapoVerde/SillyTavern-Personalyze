@@ -1,14 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaCommit.js
- * @stamp {"utc":"2026-04-15T13:40:00.000Z"}
+ * @stamp {"utc":"2026-04-16T13:30:00.000Z"}
  * @architectural-role UI Sub-module (Promotion & Generation)
  * @description
  * The final commitment gateway for the Studio dashboard. 
  * Handles 'Apply to Turn' and the promotion of ghost characters ('__new__') 
  * into permanent DNA entries.
  * 
- * Updated for Generation Economy:
- * 1. Broadened Ephemeral Cache cleanup to target all character-prefixed images.
+ * Updated for Runware.ai Integration:
+ * 1. Added Runware LoRA commitment to DNA during ghost character promotion.
+ * 2. Targeted Ephemeral Cache cleanup to character-prefixed images.
  * 
  * @api-declaration
  * bindCommitHandlers($overlay)
@@ -35,7 +36,7 @@ import {
     lockedWriteCharacterDef, lockedWriteLabel, lockedWriteAka,
     lockedWriteVisualState, lockedPatchVisualStateImage, 
     lockedWriteRoster, lockedWriteCharacterStyle, lockedWriteSlots,
-    lockedWriteEnsemble
+    lockedWriteEnsemble, lockedWriteCharacterLora
 } from '../../io/dnaWriter.js';
 import { compilePrompt as compile } from '../../logic/promptCompiler.js';
 import { generateEnsembleLabel, generateEnsembleKey } from '../../logic/parsers.js';
@@ -125,6 +126,10 @@ export function bindCommitHandlers($overlay) {
             }
             if (charData.styleName) {
                 await lockedWriteCharacterStyle(lastAiIdx, targetId, charData.styleName);
+            }
+            // Runware LoRA Persistence
+            if (charData.runwareLoraAir) {
+                await lockedWriteCharacterLora(lastAiIdx, targetId, charData.runwareLoraAir, charData.runwareLoraWeight);
             }
 
             state.chatCharacters[targetId] = charData;
