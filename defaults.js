@@ -103,6 +103,8 @@ export const RUNWARE_LORA_REGISTRY = [
     { label: 'Anime Lineart', air: 'civitai:160141@179333', defaultWeight: 0.7 },
     { label: 'Ghibli Style', air: 'civitai:65127@79061', defaultWeight: 0.6 },
     { label: 'Concept Sheet/Grid', air: 'civitai:83023@88210', defaultWeight: 1.0 },
+    { label: 'Hourglass Flux', air: 'civitai:129130@155255', defaultWeight: 0.8 },
+    { label: 'Frank Cho Flux', air: 'civitai:1905015@2145391', defaultWeight: 0.7 },
 ];
 
 /** 
