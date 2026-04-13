@@ -1,14 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/roster/templates.js
- * @stamp {"utc":"2026-04-14T12:20:00.000Z"}
+ * @stamp {"utc":"2026-04-15T11:10:00.000Z"}
  * @architectural-role Pure UI Template
  * @description
  * Generates the HTML for individual portrait cards within the roster grid.
  * 
- * Rules:
- * 1. No 'id' attributes allowed (prevents collisions in multi-wrapper mode).
- * 2. Uses 'data-id' for character mapping.
- * 3. Uses purely contextual classes for styling and jQuery targeting.
+ * Updated for Generation Economy:
+ * 1. Added Refresh button (fa-rotate) to trigger on-demand re-generation.
  *
  * @api-declaration
  * getPortraitCardHTML(characterId, label, imageUrl, isFlipped) -> string
@@ -49,6 +47,10 @@ export function getPortraitCardHTML(characterId, label, filename, isFlipped = fa
             <div class="plz-card-controls">
                 <button class="plz-card-btn plz-card-flip" title="Mirror Portrait">
                     <i class="fa-solid fa-arrows-left-right"></i>
+                </button>
+                <div style="flex:1;"></div>
+                <button class="plz-card-btn plz-card-refresh" title="Refresh / Re-generate Image">
+                    <i class="fa-solid fa-rotate"></i>
                 </button>
                 <div style="flex:1;"></div>
                 <button class="plz-card-btn plz-card-close" title="Remove from Scene">

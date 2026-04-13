@@ -1,12 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/panel.js
- * @stamp {"utc":"2026-04-11T11:10:00.000Z"}
+ * @stamp {"utc":"2026-04-15T11:00:00.000Z"}
  * @architectural-role UI Orchestrator (Settings)
  * @description
  * Main orchestrator for the Personalyze extensions settings panel.
  * Coordinates profile management, Dual-Model routing, and the 3-Phase prompt editor.
  *
- * Updated to persist the current style selection across refreshes.
+ * Updated for the Generation Economy:
+ * 1. Removed legacy portraitPosition references.
+ * 2. Implemented Purge Chat and Purge All handlers with ST confirmation popups.
+ * 3. Wired maxResolution, dynamicResolution, and keepCache inputs.
  *
  * @api-declaration
  * injectSettingsPanel() — Main entry point to build and bind the panel.
@@ -15,15 +18,16 @@
  *   assertions:
  *     purity: Stateful UI Orchestrator
  *     state_ownership: [extension_settings.personalyze.activeState]
- *     external_io: [DOM, settings.js, enginesModal.js, workshop/core.js]
+ *     external_io: [DOM, settings.js, enginesModal.js, imageCache.js, state.js]
  */
 
 import { getSettings, getMetaSettings, updateSetting } from '../../settings.js';
-import { setPortraitPosition } from '../../portrait.js';
+import { state, removeFromFileIndex } from '../../state.js';
 import { setVnPanelEnabled } from '../vnPanel.js';
 import { openWorkshop } from '../workshop/core.js';
 import { log, setVerbose } from '../../utils/logger.js';
 import { getLogs, getWorkshopLogs } from '../../utils/callLog.js';
+import { deleteFiles, flushAllImages, flushChatImages } from '../../imageCache.js';
 
 // Sub-system imports
 import { buildPanelHTML, buildLogModalHTML } from './templates.js';
@@ -83,8 +87,12 @@ function refreshUI() {
     $(`#plz-vn-mode`).prop('checked', s.plzVnMode);
     $(`#plz-dev-mode`).prop('checked', s.devMode);
     $(`#plz-verbose-logging`).prop('checked', s.verboseLogging);
-    $(`#plz-portrait-position`).val(s.portraitPosition);
     $(`#plz-portrait-status`).prop('checked', s.showPortraitStatus);
+    
+    // Generation Economy
+    $(`#plz-max-resolution`).val(s.maxResolution);
+    $(`#plz-dynamic-resolution`).prop('checked', s.dynamicResolution);
+    $(`#plz-keep-cache`).prop('checked', s.keepCache);
 
     $(`.plz-history-input`).each(function () {
         const key = $(this).data('history-key');
@@ -95,7 +103,6 @@ function refreshUI() {
     refreshStyleDropdown();
     updateDirtyIndicator();
 
-    setPortraitPosition(s.portraitPosition);
     setVerbose(s.verboseLogging);
 }
 
@@ -106,8 +113,6 @@ function refreshStyleDropdown() {
     const s = getSettings();
     const lib = meta.styleLibrary ?? {};
     const defaultName = meta.defaultStyleName ?? '';
-    
-    // Fallback: if remembered style no longer exists, use the default.
     const activeName = (s.currentStyleName && lib[s.currentStyleName]) 
         ? s.currentStyleName 
         : defaultName;
@@ -144,16 +149,61 @@ function bindHandlers() {
         updateDirtyIndicator();
     });
 
-    $panel.on('change', '#plz-portrait-position', function () {
-        const val = $(this).val();
-        updateSetting('portraitPosition', val);
-        setPortraitPosition(val);
-        updateDirtyIndicator();
-    });
-
     $panel.on('change', '#plz-portrait-status', function () {
         updateSetting('showPortraitStatus', $(this).prop('checked'));
         updateDirtyIndicator();
+    });
+
+    // ─── Generation Economy Handlers ───
+    $panel.on('change', '#plz-max-resolution', function() {
+        updateSetting('maxResolution', $(this).val());
+        updateDirtyIndicator();
+    });
+
+    $panel.on('change', '#plz-dynamic-resolution', function() {
+        updateSetting('dynamicResolution', $(this).prop('checked'));
+        updateDirtyIndicator();
+    });
+
+    $panel.on('change', '#plz-keep-cache', function() {
+        updateSetting('keepCache', $(this).prop('checked'));
+        updateDirtyIndicator();
+    });
+
+    $panel.on('click', '#plz-purge-chat', async function() {
+        const roster = state.activeRoster;
+        if (!roster.length) {
+            if (window.toastr) window.toastr.info('Roster is empty.', 'PersonaLyze');
+            return;
+        }
+
+        const confirmed = await callPopup(
+            `<h3>Purge Chat Assets</h3>` +
+            `Delete all portraits generated for the <b>${roster.length}</b> character(s) currently on screen?<br><br>` +
+            `<small>DNA history is preserved, but images will be removed from disk.</small>`,
+            'confirm'
+        );
+        if (!confirmed) return;
+
+        const deleted = await flushChatImages(roster);
+        removeFromFileIndex(deleted);
+        document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
+        if (window.toastr) window.toastr.success(`Purged ${deleted.length} images for this chat.`, 'PersonaLyze');
+    });
+
+    $panel.on('click', '#plz-purge-all', async function() {
+        const confirmed = await callPopup(
+            `<h3 style="color:var(--SmartThemeErrorColor);">Nuclear Purge</h3>` +
+            `Delete <b>EVERY</b> portrait generated by PersonaLyze across all chats?<br><br>` +
+            `This action is permanent and frees up maximum disk space.`,
+            'confirm'
+        );
+        if (!confirmed) return;
+
+        const deleted = await flushAllImages();
+        removeFromFileIndex(deleted);
+        document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
+        if (window.toastr) window.toastr.success(`Successfully deleted ${deleted.length} assets.`, 'PersonaLyze');
     });
 
     $panel.on('change', '#plz-dev-mode', function () {
@@ -177,7 +227,7 @@ function bindHandlers() {
 
     $panel.on('click', '#plz-open-engines', () => openEnginesModal());
 
-    // ─── Style Library ───────────────────────────────────────────────────────
+    // ─── Style Library ───
     $panel.on('change', '#plz-style-select', function () {
         const val = $(this).val();
         updateSetting('currentStyleName', val);
@@ -231,7 +281,6 @@ function bindHandlers() {
         if (meta.defaultStyleName === name) {
             meta.defaultStyleName = Object.keys(meta.styleLibrary)[0] ?? '';
         }
-        // If we deleted the style we were currently using, revert setting to default.
         const s = getSettings();
         if (s.currentStyleName === name) {
             updateSetting('currentStyleName', meta.defaultStyleName);

@@ -1,13 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-11T11:00:00.000Z"}
+ * @stamp {"utc":"2026-04-15T10:10:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
  * Implements the "Working Table" architecture for the Layered State Pipeline.
  *
- * Updated to include currentStyleName to remember the last selected style 
- * in the settings panel across refreshes.
+ * Updated for the Generation Economy:
+ * 1. Removed legacy portraitPosition.
+ * 2. Added maxResolution, dynamicResolution, and keepCache.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -50,6 +51,9 @@ import {
     DEFAULT_PIAPI_MODEL,
     DEFAULT_PIAPI_REMOVE_BG,
     DEFAULT_PIAPI_RMBG_MODEL,
+    DEFAULT_MAX_RESOLUTION,
+    DEFAULT_DYNAMIC_RESOLUTION,
+    DEFAULT_KEEP_CACHE,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
@@ -57,7 +61,6 @@ const EXT_NAME = 'personalyze';
 /** Global defaults for every new profile. */
 export const SETTINGS_DEFAULTS = Object.freeze({
     enabled:                true,
-    portraitPosition:       'bottom-right',
     plzVnMode:              false,
     plzVnSplitPercent:      DEFAULT_PLZ_VN_SPLIT,
     imageModel:             DEFAULT_IMAGE_MODEL,
@@ -98,6 +101,11 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     // Background Removal (PiAPI Image Toolkit)
     piapiRemoveBackground:    DEFAULT_PIAPI_REMOVE_BG,
     piapiRmbgModel:           DEFAULT_PIAPI_RMBG_MODEL,
+
+    // Generation Economy
+    maxResolution:            DEFAULT_MAX_RESOLUTION,
+    dynamicResolution:        DEFAULT_DYNAMIC_RESOLUTION,
+    keepCache:                DEFAULT_KEEP_CACHE,
 });
 
 /** Returns the active working copy. */

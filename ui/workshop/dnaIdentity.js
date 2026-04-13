@@ -1,12 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaIdentity.js
- * @stamp {"utc":"2026-04-12T11:20:00.000Z"}
+ * @stamp {"utc":"2026-04-15T12:10:00.000Z"}
  * @architectural-role UI Sub-module (Metadata & Identity)
  * @description
  * Handles basic character metadata and identity management in the Studio.
  * Manages Display Name, Identity Anchor, Aliases (AKA), and engine/style pinning.
  * 
- * Implements the Ghost Guard Policy: Blocks DNA writes for '__new__'.
+ * Updated for Generation Economy:
+ * 1. Studio purge now correctly uses deleteFiles IO and removeFromFileIndex state setter.
  * 
  * @api-declaration
  * bindIdentityHandlers($overlay)
@@ -30,7 +31,7 @@ import {
     lockedWriteCharacterDef, lockedWriteLabel, lockedWriteAka,
     lockedWriteCharacterStyle
 } from '../../io/dnaWriter.js';
-import { flushCharacterImages } from '../../imageCache.js';
+import { deleteFiles, fetchFileIndex } from '../../imageCache.js';
 import { clearPortrait } from '../../portrait.js';
 import { smartResize } from '../../utils/dom.js';
 
@@ -164,8 +165,15 @@ export function bindIdentityHandlers($overlay) {
         );
         if (!confirmed) return;
 
-        const deleted = await flushCharacterImages(id);
-        removeFromFileIndex(deleted);
+        // Scour index for this character's files
+        const { fileIndex } = await fetchFileIndex();
+        const prefix = `plz_${id}_`;
+        const toDelete = Array.from(fileIndex).filter(f => f.startsWith(prefix));
+        
+        if (toDelete.length > 0) {
+            await deleteFiles(toDelete);
+            removeFromFileIndex(toDelete);
+        }
 
         // Clear the chain image pointer
         if (state.characterChain[id]) {
@@ -179,7 +187,7 @@ export function bindIdentityHandlers($overlay) {
         }
 
         if (window.toastr) {
-            window.toastr.success(`${deleted.length} portrait${deleted.length !== 1 ? 's' : ''} deleted for ${displayName}.`);
+            window.toastr.success(`${toDelete.length} portrait${toDelete.length !== 1 ? 's' : ''} deleted for ${displayName}.`);
         }
     });
 }

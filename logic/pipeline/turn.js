@@ -1,13 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/turn.js
- * @stamp {"utc":"2026-04-14T13:20:00.000Z"}
+ * @stamp {"utc":"2026-04-15T13:00:00.000Z"}
  * @architectural-role Orchestrator (Turn Logic)
  * @description
  * Implements the Hybrid Multi-Character Turn pipeline.
  * 
- * Updated for Event Optimization:
- * 1. Removed redundant setPortrait calls to prevent double-rendering.
- * 2. Standardized on plz:roster-render-req for all visual syncs.
+ * Updated for Generation Economy:
+ * 1. Broadened Ephemeral Cache cleanup to target all character-prefixed images.
  *
  * @api-declaration
  * runTurnPipeline(messageId) -> Promise<void>
@@ -17,7 +16,7 @@
  *   assertions:
  *     purity: Stateful Orchestrator
  *     state_ownership: [state (via setters)]
- *     external_io: [LLM, heuristics.js, heuristicModal.js, TaskQueue, dnaWriter.js]
+ *     external_io: [LLM, heuristics.js, heuristicModal.js, TaskQueue, dnaWriter.js, imageCache.js]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -32,7 +31,8 @@ import {
     updateChainLayers,
     resolveAliasToId,
     upsertChatEnsemble,
-    setActiveRoster
+    setActiveRoster,
+    removeFromFileIndex
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
 import { slugify, buildHistoryText } from '../../utils/history.js';
@@ -44,10 +44,10 @@ import {
     generateEnsembleKey
 } from '../parsers.js';
 import { compilePrompt } from '../promptCompiler.js';
-import { generate } from '../../imageCache.js';
+import { generate, deleteFiles } from '../../imageCache.js';
 import { 
     lockedWriteVisualState, 
-    lockedPatchVisualStateImage,
+    lockedPatchVisualStateImage, 
     lockedWriteEnsemble,
     lockedWriteRoster
 } from '../../io/dnaWriter.js';
@@ -188,7 +188,6 @@ export async function processKnownSubject(messageId, characterId, text, history,
 
     if (!hasChanged) {
         log('Turn', `${characterId}: No visual change detected.`);
-        // Optimization: Removed redundant re-render call on no-change path.
         return;
     }
 
@@ -227,10 +226,11 @@ export async function processKnownSubject(messageId, characterId, text, history,
     const engine = character.engine || s.defaultEngine || 'pollinations';
 
     try {
+        const emotionSlug = slugify(nextLayers.emotion);
         const file = await generate(
             characterId, 
             'layered', 
-            slugify(nextLayers.emotion),
+            emotionSlug,
             prompt, 
             nextLayers.emotion, 
             nextLayers.pose,
@@ -244,6 +244,19 @@ export async function processKnownSubject(messageId, characterId, text, history,
         updateChainLayers(characterId, nextLayers, file);
         await lockedPatchVisualStateImage(messageId, characterId, file, recordId);
         
+        // Ephemeral Cleanup: delete previous active images for this character (regardless of tag/emotion)
+        if (!s.keepCache) {
+            const charPrefix = `plz_${characterId}_`;
+            const staleFiles = Array.from(state.fileIndex).filter(f => 
+                f.startsWith(charPrefix) && f !== file
+            );
+            
+            if (staleFiles.length > 0) {
+                await deleteFiles(staleFiles);
+                removeFromFileIndex(staleFiles);
+            }
+        }
+
         // Notify UI to redraw cards
         document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
         

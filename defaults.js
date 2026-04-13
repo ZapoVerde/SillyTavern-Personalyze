@@ -1,18 +1,21 @@
 /**
  * @file data/default-user/extensions/personalyze/defaults.js
- * @stamp {"utc":"2026-04-14T12:00:00.000Z"}
+ * @stamp {"utc":"2026-04-15T10:00:00.000Z"}
  * @architectural-role Default Configuration
  * @description
  * Default constants for the Layered State Pipeline.
  * 
+ * Updated for the Generation Economy:
+ * 1. Added RESOLUTION_TIERS for multi-tier image generation.
+ * 2. Added defaults for Dynamic Resolution and Ephemeral Caching.
+ * 
  * @api-declaration
  * POLLINATIONS_BASE_URL
  * PLZ_IMAGE_FOLDER
- * BASE_SLOTS
- * DEFAULT_SLOTS
- * META_SLOT_EMOTION
- * META_SLOT_POSE
- * META_SLOTS
+ * RESOLUTION_TIERS
+ * DEFAULT_MAX_RESOLUTION
+ * DEFAULT_DYNAMIC_RESOLUTION
+ * DEFAULT_KEEP_CACHE
  * ...
  */
 
@@ -40,6 +43,17 @@ export const DEFAULT_IMAGE_MODEL = 'flux';
 export const DEFAULT_IMAGE_WIDTH  = 512;
 export const DEFAULT_IMAGE_HEIGHT = 768;
 
+/** 
+ * Resolution Tiers.
+ * Used by the Dynamic Dimension Resolver to scale generation based on DOM size.
+ */
+export const RESOLUTION_TIERS = {
+    MAX:   { width: 512, height: 768 },
+    HIGH:  { width: 448, height: 672 },
+    MED:   { width: 384, height: 576 },
+    SMALL: { width: 320, height: 480 }
+};
+
 /** Default split percentage for split-screen. */
 export const DEFAULT_PLZ_VN_SPLIT = 40;
 
@@ -54,6 +68,13 @@ export const DEFAULT_VERBOSE_LOGGING = false;
 /** History window defaults. */
 export const DEFAULT_DETECTION_HISTORY = 2;
 export const DEFAULT_DESCRIBER_HISTORY = 3;
+
+/**
+ * Generation Economy Defaults.
+ */
+export const DEFAULT_MAX_RESOLUTION = 'MAX';
+export const DEFAULT_DYNAMIC_RESOLUTION = false;
+export const DEFAULT_KEEP_CACHE = false;
 
 /**
  * Meta-slot keys.

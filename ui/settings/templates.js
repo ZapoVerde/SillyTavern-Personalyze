@@ -1,10 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/templates.js
- * @stamp {"utc":"2026-04-09T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-15T10:40:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Pure functions for generating the Personalyze settings panel HTML.
- * Updated for the 3-Phase Layered State architecture and Dual-Model routing.
+ * Updated for the Generation Economy:
+ * 1. Removed obsolete portrait positioning controls.
+ * 2. Added Image & Asset Settings for resolution and cache management.
  *
  * @api-declaration
  * buildPanelHTML(settings, meta, profileNames) -> string (HTML)
@@ -21,24 +23,14 @@ import { escapeHtml } from '../../utils/history.js';
 
 /**
  * Renders the call log modal HTML.
- * - All timestamps shown in UTC.
- * - Two sections: Pipeline (last 2 turns) and Settings / Modal (last 3).
- * - Every prompt and response has a Copy button.
- * - Image generation calls show the prompt only (no response block).
  */
 export function buildLogModalHTML(pipelineLogs, workshopLogs) {
     let _copyId = 0;
 
-    /** Formats a ms-epoch timestamp as "YYYY-MM-DD HH:MM:SS UTC". */
     function utcTime(ts) {
         return new Date(ts).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
     }
 
-    /**
-     * Renders a labelled text block (prompt or response) with a Copy button.
-     * Uses an element ID so the button can read textContent directly (avoids
-     * re-encoding / decoding issues with special characters).
-     */
     function copyBlock(rawText, sectionLabel) {
         if (!rawText) return '';
         const id = `plz-log-copy-${_copyId++}`;
@@ -159,12 +151,6 @@ function tip(text) {
 
 /**
  * Builds a pipeline stage row.
- * @param {string} id
- * @param {string} label
- * @param {string} profileKey
- * @param {string|null} historyKey
- * @param {string} description
- * @param {Array<{key: string, label: string}>} promptButtons
  */
 function buildCallRow(id, label, profileKey, historyKey, description, promptButtons = []) {
     const historyRow = historyKey ? `
@@ -217,6 +203,55 @@ function buildStyleManagerHTML(meta) {
     </div>`;
 }
 
+/** Renders the Image & Asset Settings section. */
+function buildImageSettingsHTML(settings) {
+    const s = settings;
+    const resOptions = [
+        { key: 'MAX',   label: 'Max (512x768)' },
+        { key: 'HIGH',  label: 'High (448x672)' },
+        { key: 'MED',   label: 'Med (384x576)' },
+        { key: 'SMALL', label: 'Small (320x480)' }
+    ].map(o => `<option value="${o.key}" ${s.maxResolution === o.key ? 'selected' : ''}>${o.label}</option>`).join('');
+
+    return `
+    <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
+        <div style="font-size:0.8em; opacity:0.6; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px;">Image & Asset Settings</div>
+        
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:110px;">Max Resolution</label>
+            <select id="plz-max-resolution" class="text_pole" style="flex:1;">
+                ${resOptions}
+            </select>
+            ${tip("The highest resolution tier allowed for any generation.")}
+        </div>
+
+        <div style="margin-bottom:8px;">
+            <label class="checkbox_label" title="Match resolution to current card size on screen.">
+                <input type="checkbox" id="plz-dynamic-resolution" ${s.dynamicResolution ? 'checked' : ''} />
+                <span>Dynamic Resolution</span>
+            </label>
+            ${tip("Automatically shrinks resolution for smaller cards to speed up generation.")}
+        </div>
+
+        <div style="margin-bottom:8px;">
+            <label class="checkbox_label" title="Keep all historical versions of an outfit.">
+                <input type="checkbox" id="plz-keep-cache" ${s.keepCache ? 'checked' : ''} />
+                <span>Persistent Cache</span>
+            </label>
+            ${tip("If disabled, generating a new portrait for a state deletes the previous one to save space.")}
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <label class="checkbox_label"><input type="checkbox" id="plz-portrait-status" ${s.showPortraitStatus ? 'checked' : ''} /><span>Show generation progress bar</span></label>
+        </div>
+
+        <div style="display:flex; gap:8px;">
+            <button class="menu_button" id="plz-purge-chat" style="flex:1; font-size:0.85em;">Purge Chat Assets</button>
+            <button class="menu_button" id="plz-purge-all" style="flex:1; font-size:0.85em; color:var(--SmartThemeErrorColor, #e05555); border:1px solid rgba(224,85,85,0.3);">Purge All Assets</button>
+        </div>
+    </div>`;
+}
+
 /** Main Settings Panel template. */
 export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
     const s = settings;
@@ -263,24 +298,21 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
                         { key: 'forceCostumeHintTemplate', label: 'Hint block template (wraps the keyword hint)' },
                     ])}
 
-                <!-- Workshop & Utils -->
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
-                    <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:110px;">Portrait Position</label>
-                    <select id="plz-portrait-position" class="text_pole" style="flex:1;">
-                        <option value="bottom-right" ${s.portraitPosition === 'bottom-right' ? 'selected' : ''}>Bottom Right</option>
-                        <option value="center-left" ${s.portraitPosition === 'center-left' ? 'selected' : ''}>Center Left</option>
-                    </select>
-                </div>
-
-                <div style="margin-bottom:10px;">
-                    <label class="checkbox_label"><input type="checkbox" id="plz-portrait-status" ${s.showPortraitStatus ? 'checked' : ''} /><span>Show generation progress bar on portrait</span></label>
-                </div>
-
                 <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
                     <button class="menu_button" id="plz-open-engines" style="width:100%;"><i class="fa-solid fa-gear"></i> Configure Engines</button>
                 </div>
 
                 ${buildStyleManagerHTML(meta)}
+
+                ${buildImageSettingsHTML(s)}
+
+                <div style="margin-bottom:14px;">
+                    <label class="checkbox_label"><input type="checkbox" id="plz-dev-mode" ${s.devMode ? 'checked' : ''} /><span>Development Mode (Fast/Tiny images)</span></label>
+                </div>
+
+                <div style="margin-bottom:14px;">
+                    <label class="checkbox_label"><input type="checkbox" id="plz-verbose-logging" ${s.verboseLogging ? 'checked' : ''} /><span>Verbose Logging</span></label>
+                </div>
 
                 <div style="display:flex; gap:8px;">
                     <button class="menu_button" id="plz-open-workshop" style="flex:1;"><i class="fa-solid fa-dna"></i> Workshop</button>

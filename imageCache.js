@@ -1,17 +1,25 @@
 /**
  * @file data/default-user/extensions/personalyze/imageCache.js
- * @stamp {"utc":"2026-04-14T12:10:00.000Z"}
+ * @stamp {"utc":"2026-04-15T10:30:00.000Z"}
  * @architectural-role IO Executor (Image)
  * @description
  * Owns all image-related network and filesystem IO for Personalyze.
  * Supports Multi-Engine architecture (Pollinations, Fal, PiAPI).
+ * 
+ * Updated for Generation Economy:
+ * 1. resolveDimensions() handles Dynamic Resolution tiers based on DOM card size.
+ * 2. deleteFiles() provides pure IO for asset cleanup.
+ * 3. generate() supports forceCacheBust for manual refreshes.
  * 
  * @api-declaration
  * buildFilenamePrefix(characterId, tag, emotion) → string
  * findCachedImage(prefix, fileIndex) → string|null
  * fetchFileIndex() → Promise<{ fileIndex: Set<string>, allImages: string[] }>
  * fetchPreviewBlob(prompt, characterId, provider, seed, emotion, pose) → Promise<string>
- * generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed, provider) → Promise<string>
+ * generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed, provider, forceCacheBust) → Promise<string>
+ * deleteFiles(filenames) → Promise<string[]>
+ * flushAllImages() → Promise<string[]>
+ * flushChatImages(characterIds) → Promise<string[]>
  * 
  * @contract
  *   assertions:
@@ -26,8 +34,7 @@ import {
     POLLINATIONS_BASE_URL,
     PLZ_IMAGE_FOLDER,
     DEFAULT_IMAGE_MODEL,
-    DEFAULT_IMAGE_WIDTH,
-    DEFAULT_IMAGE_HEIGHT,
+    RESOLUTION_TIERS,
     DEV_IMAGE_WIDTH,
     DEV_IMAGE_HEIGHT,
     DEFAULT_VN_STYLE_SUFFIX,
@@ -67,6 +74,33 @@ async function getAuthKey(provider) {
     return key;
 }
 
+// ─── Dimensions ───────────────────────────────────────────────────────────────
+
+/**
+ * Resolves the target generation dimensions.
+ * Respects devMode, user-selected max tiers, and Dynamic Resolution DOM-measuring.
+ * 
+ * @param {string} characterId 
+ * @returns {{ width: number, height: number }}
+ */
+function resolveDimensions(characterId) {
+    const s = getSettings();
+    if (s.devMode) return { width: DEV_IMAGE_WIDTH, height: DEV_IMAGE_HEIGHT };
+    
+    const tier = RESOLUTION_TIERS[s.maxResolution] || RESOLUTION_TIERS.MAX;
+    if (!s.dynamicResolution) return tier;
+
+    // Measurement logic: find the card in the DOM to see its current display footprint
+    const el = document.querySelector(`.plz-portrait-card[data-id="${CSS.escape(characterId)}"]`);
+    if (!el || el.clientWidth === 0) return tier; // Fallback to max if hidden or not rendered
+
+    // Snap to multiples of 32 for AI generation safety, clamp between 256x384 and the user's max tier
+    const targetW = Math.max(256, Math.min(Math.ceil(el.clientWidth / 32) * 32, tier.width));
+    const targetH = Math.max(384, Math.min(Math.ceil(el.clientHeight / 32) * 32, tier.height));
+    
+    return { width: targetW, height: targetH };
+}
+
 // ─── Networking ───────────────────────────────────────────────────────────────
 
 async function validateImageResponse(response) {
@@ -75,20 +109,11 @@ async function validateImageResponse(response) {
         throw new Error(`Image API Error (${response.status}): ${text.slice(0,100)}`);
     }
     const contentType = response.headers.get('Content-Type') ?? '';
-    // Reject only clearly wrong types (error pages, JSON blobs).
-    // Allow image/*, application/octet-stream, and missing content-type (some CDNs omit it).
     if (contentType.startsWith('text/') || contentType.startsWith('application/json')) {
         throw new Error(`Received ${contentType || 'unknown content-type'} instead of image.`);
     }
 }
 
-/**
- * Resolves the portrait style template for a given character.
- * Fallback chain: character pin → library default → profile vnStyleSuffix → hardcoded default.
- *
- * @param {string} characterId
- * @returns {string}
- */
 function resolveStyle(characterId) {
     const meta = getMetaSettings();
     const lib = meta.styleLibrary;
@@ -101,19 +126,6 @@ function resolveStyle(characterId) {
     return getSettings().vnStyleSuffix || DEFAULT_VN_STYLE_SUFFIX;
 }
 
-/**
- * Builds the final image generation prompt from the compiled subject and style template.
- *
- * If the style contains {{variables}}, they are substituted and the result is
- * used as the complete prompt. If it contains no variables, it is appended as a
- * style suffix to the compiled subject prompt (legacy behaviour).
- *
- * @param {string} subjectPrompt - Compiled layers description from promptCompiler.
- * @param {string} [anchor]      - Character's permanent identity anchor.
- * @param {string} [emotion]     - Current emotion label.
- * @param {string} [pose]        - Current pose label.
- * @param {string} [style]       - Resolved style template string.
- */
 function finalizePrompt(subjectPrompt, anchor = '', emotion = '', pose = '', style = '') {
     const effectiveStyle = style || getSettings().vnStyleSuffix || '';
 
@@ -127,7 +139,6 @@ function finalizePrompt(subjectPrompt, anchor = '', emotion = '', pose = '', sty
             .trim();
     }
 
-    // Legacy: no variables — append as style suffix
     return `${subjectPrompt}, ${effectiveStyle}`.replace(/(,\s*)+/g, ', ').trim();
 }
 
@@ -165,23 +176,11 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
     return URL.createObjectURL(await res.blob());
 }
 
-/**
- * Dispatches a portrait generation status event if showPortraitStatus is enabled.
- * Consumed by portrait.js and vnPanel.js to drive the per-character progress bar.
- */
 function _dispatchPortraitStatus(characterId, detail) {
     if (!getSettings().showPortraitStatus) return;
     document.dispatchEvent(new CustomEvent('plz:portrait-status', { detail: { characterId, ...detail } }));
 }
 
-/**
- * Polls a PiAPI task_id until completed/failed or the deadline is exceeded.
- * Returns { image_url, image_base64?, meta? } on success, throws on failure/timeout.
- *
- * @param {string} taskId
- * @param {number} timeoutMs
- * @param {(status: string) => void} onStatus - Called with each raw status string from PiAPI.
- */
 async function _pollPiapiTask(taskId, timeoutMs, onStatus) {
     const POLL_INTERVAL_MS = 1500;
     const deadline = Date.now() + timeoutMs;
@@ -210,7 +209,7 @@ async function _pollPiapiTask(taskId, timeoutMs, onStatus) {
     throw new Error(`PiAPI task ${taskId} timed out after ${timeoutMs / 1000}s`);
 }
 
-export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed = 1, provider = 'pollinations') {
+export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed = 1, provider = 'pollinations', forceCacheBust = false) {
     const fullPrompt = finalizePrompt(subjectPrompt, anchor, emotionLabel, poseLabel, resolveStyle(characterId));
     logCall('PortraitGenerate', `[${provider}]\n${fullPrompt}`, null, null);
 
@@ -219,28 +218,20 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
 
     try {
         const s = getSettings();
-        const w = s.devMode ? DEV_IMAGE_WIDTH : DEFAULT_IMAGE_WIDTH;
-        const h = s.devMode ? DEV_IMAGE_HEIGHT : DEFAULT_IMAGE_HEIGHT;
-
-        // ── Stage 1: Source Generation ────────────────────────────────────────
-        // Produces either a binary Response (imgRes) or a public source URL.
-        // Fal returns the binary directly; PiAPI and Pollinations produce a URL.
+        const { width: w, height: h } = resolveDimensions(characterId);
 
         _dispatchPortraitStatus(characterId, { status: 'generating' });
 
-        let sourceUrl    = null;  // CDN URL for Stage 2 (RMBG) and Stage 3 fetch
-        let imgRes       = null;  // binary Response — set when binary is already in hand (Fal, Pollinations)
+        let sourceUrl    = null;
+        let imgRes       = null;
         let piapiMeta    = null;
-        let fallbackB64  = null;  // Pollinations binary held as base64 fallback when RMBG is attempted
+        let fallbackB64  = null;
 
         if (provider === 'fal') {
             imgRes = await fetch('/api/plugins/personalyze/fal-generate', {
                 method: 'POST', headers: getRequestHeaders(),
                 body: JSON.stringify({ model: s.falModel, prompt: fullPrompt, width: w, height: h }),
             });
-            // Fal returns the binary directly; no stable public URL is available,
-            // so background removal is not chainable for Fal generations.
-
         } else if (provider === 'piapi') {
             const submitRes = await fetch('/api/plugins/personalyze/piapi-generate', {
                 method: 'POST', headers: getRequestHeaders(),
@@ -259,16 +250,17 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
             piapiMeta = genResult.meta;
 
         } else {
-            // Pollinations: fetch the binary now.
-            // If RMBG is enabled, hold it as base64 to send directly to the plugin
-            // (PiAPI can't fetch Pollinations URLs — they're live generation triggers).
-            // The base64 is also kept as a fallback in case RMBG fails.
             const key = await getAuthKey('pollinations');
             const params = new URLSearchParams({
                 width: String(w), height: String(h),
                 model: s.imageModel ?? DEFAULT_IMAGE_MODEL,
                 nologo: 'true', seed: String(seed), safe: 'false',
             });
+            
+            if (forceCacheBust) {
+                params.append('cb', String(Date.now()));
+            }
+
             const polRes = await fetch(
                 `${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`,
                 { headers: key ? { 'Authorization': `Bearer ${key}` } : {} },
@@ -284,21 +276,12 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
             }
         }
 
-        // ── Stage 2: Background Removal (optional) ────────────────────────────
-        // For PiAPI engine: passes the CDN sourceUrl directly.
-        // For Pollinations: passes the binary as base64 — plugin tries raw base64 then
-        //   data: URI prefix to probe what PiAPI's input.image field actually accepts.
-        // Fal is excluded (binary only, no stable URL).
-        // On failure: falls back to the Stage 1 image with a warning.
-
         if (s.piapiRemoveBackground && (sourceUrl || fallbackB64)) {
             try {
                 _dispatchPortraitStatus(characterId, { status: 'removing_bg' });
-
                 const rmbgBody = fallbackB64
                     ? { image_base64: fallbackB64, rmbg_model: s.piapiRmbgModel }
                     : { image_url: sourceUrl,      rmbg_model: s.piapiRmbgModel };
-
                 const rmbgSubmitRes = await fetch('/api/plugins/personalyze/piapi-remove-bg', {
                     method: 'POST', headers: getRequestHeaders(),
                     body: JSON.stringify(rmbgBody),
@@ -308,28 +291,19 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
                     throw new Error(errData.error || `RMBG submit failed (${rmbgSubmitRes.status})`);
                 }
                 const { task_id: rmbgTaskId } = await rmbgSubmitRes.json();
-
                 const rmbgResult = await _pollPiapiTask(rmbgTaskId, RMBG_TIMEOUT_MS,
                     () => _dispatchPortraitStatus(characterId, { status: 'removing_bg' }));
-
-                // RMBG succeeded — update sourceUrl; Stage 3 fetches via /piapi-fetch
                 sourceUrl = rmbgResult.image_url;
                 fallbackB64 = null;
-
             } catch (rmbgErr) {
-                warn('ImageCache', `Background removal failed, using source image: ${rmbgErr.message}`);
-                // fallbackB64 (Pollinations) or sourceUrl (PiAPI) still valid for Stage 3
+                warn('ImageCache', `Background removal failed: ${rmbgErr.message}`);
             }
         }
 
-        // ── Stage 3: Final Download & Save ────────────────────────────────────
-
         if (!imgRes) {
             if (fallbackB64) {
-                // Pollinations binary in memory — RMBG was attempted but failed
-                // Re-use it directly, no further fetch needed
+                // Re-use binary already in memory
             } else {
-                // sourceUrl is a PiAPI CDN URL (generation or RMBG result) — use the proxy
                 imgRes = await fetch('/api/plugins/personalyze/piapi-fetch', {
                     method: 'POST', headers: getRequestHeaders(),
                     body: JSON.stringify({ image_url: sourceUrl }),
@@ -339,7 +313,6 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
 
         const filename = `${buildFilenamePrefix(characterId, tag, emotion)}${Date.now()}.png`;
         let base64;
-
         if (fallbackB64) {
             base64 = fallbackB64;
         } else {
@@ -366,15 +339,44 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
     }
 }
 
-export async function flushCharacterImages(characterId) {
-    const { fileIndex } = await fetchFileIndex();
-    const prefix = `${FILE_PREFIX}${characterId}_`;
-    const toDelete = [...fileIndex].filter(f => f.startsWith(prefix));
-    await Promise.all(toDelete.map(f =>
+/**
+ * Pure IO Executor for batch asset deletion.
+ * Caller is responsible for state reconciliation (removeFromFileIndex).
+ * 
+ * @param {string[]} filenames 
+ * @returns {Promise<string[]>} List of deleted filenames.
+ */
+export async function deleteFiles(filenames) {
+    if (!filenames || filenames.length === 0) return [];
+    await Promise.all(filenames.map(f =>
         fetch('/api/images/delete', {
             method: 'POST', headers: getRequestHeaders(),
             body: JSON.stringify({ path: `user/images/${PLZ_IMAGE_FOLDER}/${f}` }),
         })
     ));
-    return toDelete;
+    return filenames;
+}
+
+/**
+ * Maintenance: Deletes all images in the extension folder.
+ * @returns {Promise<string[]>} List of deleted filenames.
+ */
+export async function flushAllImages() {
+    const { fileIndex } = await fetchFileIndex();
+    const toDelete = Array.from(fileIndex);
+    return await deleteFiles(toDelete);
+}
+
+/**
+ * Maintenance: Deletes images for a specific set of characters.
+ * @param {string[]} characterIds 
+ * @returns {Promise<string[]>} List of deleted filenames.
+ */
+export async function flushChatImages(characterIds) {
+    if (!characterIds || characterIds.length === 0) return [];
+    const { fileIndex } = await fetchFileIndex();
+    const toDelete = Array.from(fileIndex).filter(f => 
+        characterIds.some(id => f.startsWith(`${FILE_PREFIX}${id}_`))
+    );
+    return await deleteFiles(toDelete);
 }

@@ -1,15 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-14T23:20:00.000Z"}
+ * @stamp {"utc":"2026-04-15T13:30:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
  * visual state for the current turn using the 5-slot architecture.
  *
- * Updated for the Smart Wardrobe:
- * 1. JIT Harvesting: Uses vocabularyService to scan history for suggestions.
- * 2. Deterministic Linking: Integrated with domRegistry for space-safe IDs.
- * 3. Orphan Sweeping: Clears modifiers when items are blanked.
+ * Updated for Generation Economy:
+ * 1. Broadened Ephemeral Cache cleanup to target all character-prefixed images.
  *
  * @api-declaration
  * openCharPicker(initialOverride) → Promise<void>
@@ -18,7 +16,7 @@
  *   assertions:
  *     purity: IO Executor
  *     state_ownership: [state (via setters)]
- *     external_io: [callPopup, dnaWriter.js, vocabularyService.js, state.js]
+ *     external_io: [callPopup, dnaWriter.js, vocabularyService.js, state.js, imageCache.js]
  */
 
 import { callPopup } from '../../../../../script.js';
@@ -26,10 +24,10 @@ import { getContext } from '../../../../extensions.js';
 import {
     state, updateActiveCharacter, updateActiveLayers, updateActiveImage,
     addToFileIndex, updateChainLayers, upsertChatSlots, upsertChatEnsemble,
-    setActiveRoster
+    setActiveRoster, removeFromFileIndex
 } from '../state.js';
 import { compilePrompt } from '../logic/promptCompiler.js';
-import { buildFilenamePrefix, findCachedImage, generate } from '../imageCache.js';
+import { buildFilenamePrefix, findCachedImage, generate, deleteFiles } from '../imageCache.js';
 import { 
     lockedWriteVisualState, 
     lockedPatchVisualStateImage, 
@@ -224,7 +222,8 @@ export async function openCharPicker(initialOverride = null) {
 
     const character = state.chatCharacters[charId];
     const s = getSettings();
-    const prefix = buildFilenamePrefix(charId, 'layered', slugify(layers.emotion));
+    const emotionSlug = slugify(layers.emotion);
+    const prefix = buildFilenamePrefix(charId, 'layered', emotionSlug);
     let filename = forceRegen ? null : findCachedImage(prefix, state.fileIndex);
     updateActiveCharacter(charId);
     updateActiveLayers(layers);
@@ -239,11 +238,24 @@ export async function openCharPicker(initialOverride = null) {
 
     try {
         const seed = forceRegen ? Math.floor(Math.random() * 1000000) : (character.seed ?? 1);
-        filename = await generate(charId, 'layered', slugify(layers.emotion), compilePrompt(character.identityAnchor, layers), layers.emotion, layers.pose, character.identityAnchor, seed, character.engine || s.defaultEngine || 'pollinations');
+        filename = await generate(charId, 'layered', emotionSlug, compilePrompt(character.identityAnchor, layers), layers.emotion, layers.pose, character.identityAnchor, seed, character.engine || s.defaultEngine || 'pollinations');
         addToFileIndex(filename);
         updateActiveImage(filename);
         updateChainLayers(charId, layers, filename);
         await lockedPatchVisualStateImage(lastAiIdx, charId, filename, recordId);
+
+        // Ephemeral Cleanup: delete previous active images for this character (regardless of tag/emotion)
+        if (!s.keepCache) {
+            const charPrefix = `plz_${charId}_`;
+            const staleFiles = Array.from(state.fileIndex).filter(f => 
+                f.startsWith(charPrefix) && f !== filename
+            );
+            if (staleFiles.length > 0) {
+                await deleteFiles(staleFiles);
+                removeFromFileIndex(staleFiles);
+            }
+        }
+
         document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
     } catch (err) {
         error('CharPicker', 'Gen failed:', err);

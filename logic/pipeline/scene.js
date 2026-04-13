@@ -1,15 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/scene.js
- * @stamp {"utc":"2026-04-14T13:00:00.000Z"}
+ * @stamp {"utc":"2026-04-15T13:10:00.000Z"}
  * @architectural-role Orchestrator (Scene Logic)
  * @description
  * Manages the wardrobe "Redress" flow triggered by location changes.
  * 
- * Updated for the Multi-Character Architecture:
- * 1. Implements Roster Discovery: Uses heuristics and LLM fallback to identify
- *    who is present in the new scene.
- * 2. Anchors discovery to existing roster to prevent accidental "roster wipes".
- * 3. Continues with batched wardrobe validity and redress extraction.
+ * Updated for Generation Economy:
+ * 1. Integrated broadened Ephemeral Cache cleanup after scene redress generation.
  *
  * @api-declaration
  * runScenePipeline(messageId) -> Promise<void>
@@ -18,7 +15,7 @@
  *   assertions:
  *     purity: Stateful Orchestrator
  *     state_ownership: [state (via setters)]
- *     external_io: [LLM, dnaWriter.js, ensembleEngine.js, imageCache.js]
+ *     external_io: [LLM, dnaWriter.js, ensembleEngine.js, imageCache.js, state.js]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -31,7 +28,8 @@ import {
     addToFileIndex,
     upsertChatEnsemble,
     setActiveRoster,
-    resolveAliasToId
+    resolveAliasToId,
+    removeFromFileIndex
 } from '../../state.js';
 import { detectRedress, detectSceneRoster, detectRedressRequirement } from '../../io/llm/scene.js';
 import { getDefaultEnsembleLayers } from '../ensembleEngine.js';
@@ -43,7 +41,7 @@ import {
     parseSceneRoster
 } from '../parsers.js';
 import { compilePrompt } from '../promptCompiler.js';
-import { generate } from '../../imageCache.js';
+import { generate, deleteFiles } from '../../imageCache.js';
 import { 
     lockedWriteVisualState, 
     lockedPatchVisualStateImage,
@@ -194,10 +192,12 @@ async function processSceneGeneration(messageId, item, layers, s, recordId) {
     try {
         const prompt = compilePrompt(item.anchor, layers);
         const engine = item.engine || s.defaultEngine || 'pollinations';
+        const emotionSlug = slugify(layers.emotion);
+
         const filename = await generate(
             item.id, 
             'redress', 
-            slugify(layers.emotion),
+            emotionSlug,
             prompt, 
             layers.emotion, 
             layers.pose || 'upright', 
@@ -209,6 +209,19 @@ async function processSceneGeneration(messageId, item, layers, s, recordId) {
         addToFileIndex(filename);
         updateChainLayers(item.id, layers, filename);
         await lockedPatchVisualStateImage(messageId, item.id, filename, recordId);
+
+        // Ephemeral Cleanup: delete previous active images for this character (regardless of tag/emotion)
+        if (!s.keepCache) {
+            const charPrefix = `plz_${item.id}_`;
+            const staleFiles = Array.from(state.fileIndex).filter(f => 
+                f.startsWith(charPrefix) && f !== filename
+            );
+            
+            if (staleFiles.length > 0) {
+                await deleteFiles(staleFiles);
+                removeFromFileIndex(staleFiles);
+            }
+        }
 
         // Notify UI to redraw cards
         document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
