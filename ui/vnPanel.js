@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/vnPanel.js
- * @stamp {"utc":"2026-04-11T14:30:00.000Z"}
+ * @stamp {"utc":"2026-04-13T06:22:00.000Z"}
  * @architectural-role UI (Split-Screen Character View)
  * @description
  * PersonaLyze's split-screen character display mode.
@@ -13,6 +13,9 @@
  * Overlap in the left group is computed from available width so cards never
  * compress — they overlap more the tighter the space.
  *
+ * Updated for Asset Resilience:
+ * 1. Validates images against state.fileIndex before rendering to prevent 404s.
+ *
  * @api-declaration
  * injectVnPanel()            — Builds the DOM (idempotent).
  * setVnPanelEnabled(bool)    — Activates or deactivates split-screen mode.
@@ -21,7 +24,7 @@
  *   assertions:
  *     purity: IO
  *     state_ownership: [_splitIndex, _focusCardId]
- *     external_io: [#plz-vn-panel DOM, #sheld inline styles, body class, settings.js]
+ *     external_io: [DOM, state.js, settings.js]
  */
 
 import { state } from '../state.js';
@@ -35,7 +38,7 @@ const BODY_CLASS = 'plz-vn-active';
 const SPLIT_VAR  = '--plz-vn-split';
 
 /** Preset split sizes (% of viewport height) cycling through 2/3 → 1/2 → 1/3 → 1/4 → 1/5. */
-const SPLIT_PRESETS = [
+const SPLIT_PRESETS =[
     { pct: 66.67, label: '⅔' },
     { pct: 50,    label: '½' },
     { pct: 33.33, label: '⅓' },
@@ -76,7 +79,7 @@ function _renderVnRoster() {
         _focusCardId = roster.length ? roster[roster.length - 1] : null;
     }
 
-    const nonFocusIds = _focusCardId ? roster.filter(id => id !== _focusCardId) : [];
+    const nonFocusIds = _focusCardId ? roster.filter(id => id !== _focusCardId) :[];
 
     // ── Left Group (only rendered when there are non-focus cards) ────────────
     let $leftGroup = null;
@@ -89,8 +92,13 @@ function _renderVnRoster() {
             if (!char) return;
             const chain = state.characterChain[id];
             const ui    = state.uiState[id] || {};
+            
+            const imageToRender = (chain?.image && state.fileIndex.has(chain.image)) 
+                ? chain.image 
+                : null;
+
             $leftGroup.append(
-                getPortraitCardHTML(id, char.label || id, chain?.image || null, ui.flipped)
+                getPortraitCardHTML(id, char.label || id, imageToRender, ui.flipped)
             );
         });
 
@@ -114,11 +122,16 @@ function _renderVnRoster() {
         if (focusChar) {
             const chain = state.characterChain[_focusCardId];
             const ui    = state.uiState[_focusCardId] || {};
+            
+            const imageToRender = (chain?.image && state.fileIndex.has(chain.image)) 
+                ? chain.image 
+                : null;
+
             $focusSlot.append(
                 getPortraitCardHTML(
                     _focusCardId,
                     focusChar.label || _focusCardId,
-                    chain?.image || null,
+                    imageToRender,
                     ui.flipped
                 )
             );
@@ -152,7 +165,7 @@ function _renderVnRoster() {
  *   Left group = natural card footprint. Everything centers with room to spare.
  *
  * Phase 2 — overflow:
- *   [leftNatural + GAP + cardWidth] > panelWidth.
+ *[leftNatural + GAP + cardWidth] > panelWidth.
  *   Left group is capped and cards start overlapping each other.
  *
  * @param {jQuery} $group     The .plz-vn-left-group element

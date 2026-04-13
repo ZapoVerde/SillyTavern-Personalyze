@@ -1,13 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/roster/renderer.js
- * @stamp {"utc":"2026-04-14T13:30:00.000Z"}
+ * @stamp {"utc":"2026-04-16T18:00:00.000Z"}
  * @architectural-role IO Executor / UI Hub
  * @description
  * Orchestrates the rendering of character portrait cards into the UI.
  * Handles Multi-Character layouts by populating Flexbox containers and 
  * routing individual generation progress updates to the correct card.
  *
- * Updated to move listeners into an explicit initRenderer() function.
+ * Updated for Asset Resilience:
+ * 1. Implemented index-validation during render: cards will only attempt to
+ *    load portraits found in state.fileIndex. 
+ * 2. Missing/Purged files now show a loading spinner instead of broken 404 images.
  *
  * @api-declaration
  * initRenderer() -> void
@@ -99,10 +102,17 @@ export function renderRoster(containerSelector) {
         const chain = state.characterChain[id];
         const ui = state.uiState[id] || { flipped: false };
 
+        // RESILIENCE CHECK: Only pass the filename if it is confirmed to exist on disk.
+        // If the user just purged the cache, this returns null, triggering a spinner
+        // in the template instead of a broken <img> tag.
+        const imageToRender = (chain?.image && state.fileIndex.has(chain.image)) 
+            ? chain.image 
+            : null;
+
         const html = getPortraitCardHTML(
             id, 
             char.label || id.replace(/_/g, ' '), 
-            chain?.image || null, 
+            imageToRender, 
             ui.flipped
         );
         $container.append(html);
