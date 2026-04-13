@@ -23,7 +23,7 @@
  */
 
 import { getRequestHeaders } from '../../../../../../script.js';
-import { findSecret } from '../../../../../../secrets.js';
+import { findSecret } from '../../../../../secrets.js';
 import { 
     POLLINATIONS_BASE_URL, 
     DEFAULT_IMAGE_MODEL, 
