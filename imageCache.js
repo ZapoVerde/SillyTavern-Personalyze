@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/imageCache.js
- * @stamp {"utc":"2026-04-15T10:30:00.000Z"}
+ * @stamp {"utc":"2026-04-16T11:30:00.000Z"}
  * @architectural-role IO Executor (Image)
  * @description
  * Owns all image-related network and filesystem IO for Personalyze.
@@ -10,6 +10,7 @@
  * 1. resolveDimensions() handles Dynamic Resolution tiers based on DOM card size.
  * 2. deleteFiles() provides pure IO for asset cleanup.
  * 3. generate() supports forceCacheBust for manual refreshes.
+ * 4. fetchPreviewBlob() updated to support PiAPI provider routing.
  * 
  * @api-declaration
  * buildFilenamePrefix(characterId, tag, emotion) → string
@@ -164,6 +165,24 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
             method: 'POST',
             headers: getRequestHeaders(),
             body: JSON.stringify({ model: getSettings().falModel, prompt: fullPrompt, width: DEV_IMAGE_WIDTH, height: DEV_IMAGE_HEIGHT }),
+        });
+    } else if (provider === 'piapi') {
+        const s = getSettings();
+        const submitRes = await fetch('/api/plugins/personalyze/piapi-generate', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ model: s.piapiModel, prompt: fullPrompt, width: DEV_IMAGE_WIDTH, height: DEV_IMAGE_HEIGHT, seed }),
+        });
+        if (!submitRes.ok) {
+            const errData = await submitRes.json().catch(() => ({}));
+            throw new Error(errData.error || `PiAPI submit failed (${submitRes.status})`);
+        }
+        const { task_id } = await submitRes.json();
+        const genResult = await _pollPiapiTask(task_id, 120000, () => {});
+        res = await fetch('/api/plugins/personalyze/piapi-fetch', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ image_url: genResult.image_url }),
         });
     } else {
         const s = getSettings();
