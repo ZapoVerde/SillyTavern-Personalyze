@@ -99,14 +99,10 @@ export const RUNWARE_MODELS = [
  */
 export const RUNWARE_LORA_REGISTRY = [
     { label: 'None', air: '' },
-    { label: 'Detail Tweaker (XL)', air: 'civitai:122359@135867', defaultWeight: 0.8 },
-    { label: 'Anime Lineart', air: 'civitai:160141@179333', defaultWeight: 0.7 },
-    { label: 'Ghibli Style', air: 'civitai:65127@79061', defaultWeight: 0.6 },
-    { label: 'Concept Sheet/Grid', air: 'civitai:83023@88210', defaultWeight: 1.0 },
     { label: 'Hourglass Flux', air: 'civitai:129130@155255', defaultWeight: 0.8 },
     { label: 'Frank Cho Flux', air: 'civitai:1905015@2145391', defaultWeight: 0.7 },
     { label: 'Elusarca  ZIT', air: 'civitai:2176274@2145391', defaultWeight: 0.7 },
-    { label: 'Anime Style v2.52 - Dream ZIT', air: 'civitai:2176274@2145391', defaultWeight: 0.7 },
+    { label: 'Anime Style v2.52 - Dream ZIT', air: 'civitai:2186398', defaultWeight: 0.7 },
     { label: 'Z-Image Anime 01 ZIT', air: 'civitai:2174642', defaultWeight: 0.7 },
     { label: 'ZNSFW LoRA ZIT', air: 'civitai:2279079', defaultWeight: 0.7 },
     { label: 'Anime NSFW Characters and Style ZIT', air: 'civitai:2221829', defaultWeight: 0.7 },    
