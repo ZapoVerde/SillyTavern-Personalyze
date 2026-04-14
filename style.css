@@ -844,7 +844,7 @@ body.plz-focus-active::after {
     content: '';
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0, 0, 0, 0.85);
+    background: #000; /* Solid black takeover */
     backdrop-filter: blur(4px);
     z-index: 9998;
     pointer-events: all;
