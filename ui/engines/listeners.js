@@ -29,8 +29,7 @@ import { DEFAULT_TEST_PROMPT, SECRET_RUNWARE } from '../../defaults.js';
 import { log, error } from '../../utils/logger.js';
 import { pingPollinations, pingFal, pingPiAPI, pingRunware } from '../../utils/ping.js';
 import { writeSecret, secret_state } from '../../../../../secrets.js';
-import { getRequestHeaders } from '../../../../../../script.js';
-import { callPopup } from '../../../../../../script.js';
+import { getRequestHeaders, callPopup } from '../../../../../../script.js';
 import { getCachedModels } from '../panel/models.js';
 import { smartResize } from '../../utils/dom.js';
 
@@ -178,6 +177,7 @@ export function bindEnginesHandlers($modal) {
         const model = $(`#plz-eng-${providerId}-model`).val();
         if (!prompt) return;
 
+        const originalHtml = $btn.html();
         $btn.prop('disabled', true);
         $status.text('Generating test image...');
         try {
