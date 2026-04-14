@@ -1,15 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleModals.js
- * @stamp {"utc":"2026-04-17T12:00:00.000Z"}
+ * @stamp {"utc":"2026-04-18T10:20:00.000Z"}
  * @architectural-role UI Logic (Global Style Modals)
  * @description
  * Manages specialized popups for editing a Global Style's technical render pipeline
  * and LoRA configuration. 
  * 
- * Updated:
- * 1. Rewired openLoraModal to derive a search term from the active model.
- * 2. Updated fetch logic to perform targeted searches based on model keywords (flux, pony, sdxl).
- * 3. Results are merged into the persistent global registry via models.js.
+ * Updated for Parallel Manual Path:
+ * 1. Added "Import Model" button to Pipeline modal with secondary AIR input popup.
+ * 2. Added "Manual Entry" button to LoRA modal.
+ * 3. Manual LoRAs are strictly associated with the current model AIR to ensure compatibility.
+ * 4. Refined LoRA filtering logic to prioritize model-associated manual entries.
  * 
  * @api-declaration
  * openPipelineModal(styleObj) -> Promise<Object>
@@ -25,7 +26,12 @@
 import { callPopup } from '../../../../../../script.js';
 import { getSettings } from '../../settings.js';
 import { escapeHtml } from '../../utils/history.js';
-import { fetchRunwareLoras, getCachedRunwareModels } from '../panel/models.js';
+import { 
+    fetchRunwareLoras, 
+    getCachedRunwareModels, 
+    saveManualModel, 
+    saveManualLora 
+} from '../panel/models.js';
 import { 
     POLLINATIONS_MODELS, 
     FAL_MODELS, 
@@ -37,7 +43,6 @@ import {
 
 /**
  * Opens a modal to configure the technical render pipeline.
- * @param {Object} styleObj - The current style configuration.
  */
 export async function openPipelineModal(styleObj) {
     const draft = {
@@ -49,8 +54,7 @@ export async function openPipelineModal(styleObj) {
 
     const buildModelOptions = (engine) => {
         if (engine === 'runware') {
-            const dynamic = getCachedRunwareModels();
-            const list = (dynamic && dynamic.length > 0) ? dynamic : RUNWARE_MODELS;
+            const list = getCachedRunwareModels();
             return list.map(m => {
                 const air = m.air || m.modelId;
                 const label = m.label || m.name || air;
@@ -76,7 +80,11 @@ export async function openPipelineModal(styleObj) {
         </div>
 
         <div>
-            <label style="display:block; font-size:0.8em; opacity:0.6; margin-bottom:4px;">Model Selection</label>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <label style="font-size:0.8em; opacity:0.6;">Model Selection</label>
+                <button id="plz-pop-model-import" class="menu_button ${draft.engine === 'runware' ? '' : 'plz-hidden'}" 
+                        style="font-size:0.7em; padding:1px 6px;">Import AIR</button>
+            </div>
             <select id="plz-pop-model" class="text_pole" style="width:100%;">
                 ${buildModelOptions(draft.engine)}
             </select>
@@ -111,6 +119,22 @@ export async function openPipelineModal(styleObj) {
             draft.model = defModel;
             $('#plz-pop-model').html(buildModelOptions(draft.engine));
             $('#plz-pop-transparency-container').toggleClass('plz-hidden', draft.engine !== 'runware');
+            $('#plz-pop-model-import').toggleClass('plz-hidden', draft.engine !== 'runware');
+        });
+
+        $(document).on('click.plzPop', '#plz-pop-model-import', async function() {
+            const AIR_REGEX = /^[\w\-:]+[\w\-@.]+$/;
+            const label = await callPopup('<h3>Model Label</h3> e.g. "Fancy Pony"', 'input', '');
+            if (!label) return;
+            const air = await callPopup(`<h3>AIR for "${label}"</h3> e.g. "civitai:123@456"`, 'input', '');
+            if (!air || !AIR_REGEX.test(air)) {
+                if (window.toastr) window.toastr.warning('Invalid AIR format.');
+                return;
+            }
+
+            saveManualModel(label, air);
+            draft.model = air;
+            $('#plz-pop-model').html(buildModelOptions(draft.engine)).val(air);
         });
 
         $(document).on('change.plzPop', '#plz-pop-model', function() {
@@ -129,26 +153,22 @@ export async function openPipelineModal(styleObj) {
 
 /**
  * Opens a modal to manage the LoRA stack.
- * Implements architecture-based filtering for Runware LoRAs.
  */
 export async function openLoraModal(currentLoras, engine, selectedModelAir) {
     const loras = structuredClone(currentLoras || []);
     
-    // 1. Determine target architecture and search keyword for the current model
     let targetArch = null;
-    let searchKeyword = "flux"; // Default fallback
+    let searchKeyword = "flux";
 
     if (engine === 'runware') {
         const models = getCachedRunwareModels();
-        const activeModel = models.find(m => (m.air || m.modelId) === selectedModelAir);
+        const activeModel = models.find(m => m.air === selectedModelAir);
+        const label = (activeModel?.label || "").toLowerCase();
+        targetArch = (activeModel?.architecture || "").toLowerCase();
         
-        const label = (activeModel?.label || activeModel?.name || "").toLowerCase();
-        targetArch = activeModel?.architecture?.toLowerCase() || '';
-        
-        // Derive optimal search term from model context
         if (label.includes('pony') || targetArch.includes('pony')) {
             searchKeyword = "pony";
-            targetArch = "sdxl"; // Group Pony under SDXL for compatibility
+            targetArch = "sdxl";
         } else if (label.includes('flux') || targetArch.includes('flux')) {
             searchKeyword = "flux";
         } else if (label.includes('sdxl') || targetArch.includes('sdxl')) {
@@ -156,27 +176,35 @@ export async function openLoraModal(currentLoras, engine, selectedModelAir) {
         } else if (label.includes('sd 1.5') || targetArch.includes('sd 1.5')) {
             searchKeyword = "sd 1.5";
         }
-
-        if (targetArch.includes('pony')) targetArch = 'sdxl';
     }
 
     const renderList = () => {
         const s = getSettings();
         const combinedRegistry = [...RUNWARE_LORA_REGISTRY, ...(s.runwareLoras || [])];
-        
         const seen = new Set();
+        
         const registry = combinedRegistry.filter(l => {
             const air = l.air || l.modelId;
             if (!air || seen.has(air)) return false;
-            seen.add(air);
             
+            // Priority: Manual association
+            if (l.modelAir === selectedModelAir) {
+                seen.add(air);
+                return true;
+            }
+
+            // Architecture fallback
             if (targetArch) {
                 const loraArch = (l.architecture || '').toLowerCase();
-                if (targetArch === 'sdxl') {
-                    return loraArch === 'sdxl' || loraArch.includes('pony');
+                // If LoRA has no architecture (defaults), we allow it. Otherwise, strictly filter.
+                if (loraArch) {
+                    const match = (targetArch === 'sdxl') 
+                        ? (loraArch === 'sdxl' || loraArch.includes('pony')) 
+                        : loraArch.includes(targetArch);
+                    if (!match) return false;
                 }
-                return loraArch.includes(targetArch);
             }
+            seen.add(air);
             return true;
         });
 
@@ -200,12 +228,12 @@ export async function openLoraModal(currentLoras, engine, selectedModelAir) {
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
             <h3 style="margin:0;">Manage LoRAs${archLabel}</h3>
             <div style="display:flex; gap:5px;">
-                <button id="plz-pop-lora-fetch" class="menu_button" title="Fetch related LoRAs for ${searchKeyword.toUpperCase()}"><i class="fa-solid fa-cloud-arrow-down"></i> Fetch ${searchKeyword.toUpperCase()}</button>
+                <button id="plz-pop-lora-manual" class="menu_button" title="Manually link a LoRA to this model"><i class="fa-solid fa-link"></i> Manual</button>
+                <button id="plz-pop-lora-fetch" class="menu_button" title="Fetch related LoRAs"><i class="fa-solid fa-cloud-arrow-down"></i> Fetch ${searchKeyword.toUpperCase()}</button>
                 <button id="plz-pop-lora-add" class="menu_button"><i class="fa-solid fa-plus"></i> Add</button>
             </div>
         </div>
         <div id="plz-pop-lora-list" style="max-height:300px; overflow-y:auto;">${renderList()}</div>
-        ${engine !== 'runware' ? '<p style="font-size:0.8em; opacity:0.6; margin-top:10px;">Note: LoRAs are currently only supported by the Runware engine.</p>' : ''}
     </div>`;
 
     return new Promise((resolve) => {
@@ -214,17 +242,27 @@ export async function openLoraModal(currentLoras, engine, selectedModelAir) {
             resolve(ok ? loras.filter(l => l.air) : null);
         });
 
+        $(document).on('click.plzLora', '#plz-pop-lora-manual', async function() {
+            const label = await callPopup('<h3>LoRA Label</h3> e.g. "Oil Paint Style"', 'input', '');
+            if (!label) return;
+            const air = await callPopup(`<h3>AIR for "${label}"</h3>`, 'input', '');
+            if (!air) return;
+
+            saveManualLora(label, air, selectedModelAir);
+            loras.push({ air: air, weight: 0.8 });
+            $('#plz-pop-lora-list').html(renderList());
+        });
+
         $(document).on('click.plzLora', '#plz-pop-lora-fetch', async function() {
             const $btn = $(this);
             const original = $btn.html();
             $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Fetching...');
             try {
-                // Call rewired fetch with model-specific search term
                 await fetchRunwareLoras(searchKeyword);
                 $('#plz-pop-lora-list').html(renderList());
-                if (window.toastr) window.toastr.success(`Registry updated with ${searchKeyword.toUpperCase()} LoRAs.`);
+                if (window.toastr) window.toastr.success(`Registry updated.`);
             } catch (err) {
-                if (window.toastr) window.toastr.error('Failed to fetch LoRAs. Ensure VPN is active in your browser.');
+                if (window.toastr) window.toastr.error('Failed to fetch LoRAs.');
             } finally {
                 $btn.prop('disabled', false).html(original);
             }

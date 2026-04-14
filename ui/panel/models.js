@@ -1,14 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/panel/models.js
- * @stamp {"utc":"2026-04-17T14:10:00.000Z"}
+ * @stamp {"utc":"2026-04-18T10:10:00.000Z"}
  * @architectural-role UI Logic (API Discovery)
  * @description
- * Handles dynamic discovery for image generation engines. 
+ * Handles dynamic discovery and manual registry management for image generation engines. 
  * 
  * Updated:
- * 1. Removed strict API key checks that were blocking the discovery fallback.
- * 2. Logic now attempts Browser Direct only if a key is found, then always tries Server Proxy.
- * 3. Maintains detailed debug logging for both success and failure paths.
+ * 1. Refactored getCachedRunwareModels to merge Defaults, Session Discovery, and Manual Registry.
+ * 2. Added saveManualModel and saveManualLora for persistent user-defined AIRs.
+ * 3. LoRAs saved manually are associated with a specific modelAir to ensure compatibility.
  *
  * @api-declaration
  * refreshModelDropdown(currentModel) -> Promise<void>
@@ -16,6 +16,8 @@
  * fetchRunwareModels() -> Promise<void>
  * fetchRunwareLoras(searchTerm) -> Promise<void>
  * getCachedRunwareModels() -> Object[]
+ * saveManualModel(label, air) -> void
+ * saveManualLora(label, air, modelAir) -> void
  * 
  * @contract
  *   assertions:
@@ -26,7 +28,12 @@
 
 import { findSecret } from '../../../../../secrets.js';
 import { getRequestHeaders } from '../../../../../../script.js';
-import { POLLINATIONS_BASE_URL, POLLINATIONS_MODELS, SECRET_RUNWARE } from '../../defaults.js';
+import { 
+    POLLINATIONS_BASE_URL, 
+    POLLINATIONS_MODELS, 
+    SECRET_RUNWARE, 
+    RUNWARE_MODELS 
+} from '../../defaults.js';
 import { log, error } from '../../utils/logger.js';
 import { updateSetting, getSettings } from '../../settings.js';
 
@@ -42,7 +49,6 @@ let cachedRunwareModels = [];
 
 /**
  * Returns a UUID v4. 
- * Includes a fallback for browsers where crypto.randomUUID is restricted (non-HTTPS).
  */
 function generateUUID() {
     try {
@@ -57,18 +63,67 @@ function generateUUID() {
 
 /**
  * Returns the latest known list of Pollinations models.
- * @returns {string[]}
  */
 export function getCachedModels() {
     return cachedModels;
 }
 
 /**
- * Returns the session cache of Runware models.
- * @returns {Object[]}
+ * Returns a merged list of Runware models from all sources.
+ * Priority: 1. Manual Registry (Settings), 2. Session Discovery, 3. Hardcoded Defaults.
+ * @returns {Object[]} [{ label, air }]
  */
 export function getCachedRunwareModels() {
-    return cachedRunwareModels;
+    const s = getSettings();
+    const manual = s.runwareModels || [];
+    const seen = new Set();
+    const merged = [];
+
+    const add = (list) => {
+        for (const m of list) {
+            const air = m.air || m.modelId;
+            if (air && !seen.has(air)) {
+                seen.add(air);
+                merged.push({ 
+                    label: m.label || m.name || air, 
+                    air 
+                });
+            }
+        }
+    };
+
+    // Add in order of priority to ensure first-seen (manual) labels are used
+    add(manual);
+    add(cachedRunwareModels);
+    add(RUNWARE_MODELS);
+    
+    return merged;
+}
+
+/**
+ * Persistently saves a manual model AIR to the user settings.
+ */
+export function saveManualModel(label, air) {
+    const s = getSettings();
+    const current = s.runwareModels || [];
+    if (current.some(m => m.air === air)) return;
+    
+    updateSetting('runwareModels', [...current, { label, air }]);
+    log('Models', `Manual Model added: ${label} (${air})`);
+}
+
+/**
+ * Persistently saves a manual LoRA AIR to the user settings, associated with a model.
+ */
+export function saveManualLora(label, air, modelAir) {
+    const s = getSettings();
+    const current = s.runwareLoras || [];
+    // Check if exactly this combo exists
+    if (current.some(l => l.air === air && l.modelAir === modelAir)) return;
+    
+    const newItem = { label, air, modelAir };
+    updateSetting('runwareLoras', [...current, newItem]);
+    log('Models', `Manual LoRA added for model ${modelAir}: ${label} (${air})`);
 }
 
 /**
@@ -126,12 +181,10 @@ export async function refreshModelDropdown(currentModel) {
 
 /**
  * Fetches latest Checkpoints from Runware.
- * Attempts Browser Direct if key is found, then falls back to Server Proxy.
  */
 export async function fetchRunwareModels() {
     const apiKey = await findSecret(SECRET_RUNWARE);
 
-    // --- Path A: Browser Direct (VPN check) ---
     if (apiKey) {
         try {
             log('Models', 'Path A: Fetching Runware checkpoints (Browser Direct)...');
@@ -159,11 +212,8 @@ export async function fetchRunwareModels() {
         } catch (err) {
             log('Models', `Path A failed: ${err.message}. Attempting Path B (Server Proxy)...`);
         }
-    } else {
-        log('Models', 'Path A skipped: No API key found in browser vault. Attempting Path B (Server Proxy)...');
     }
 
-    // --- Path B: Server Proxy (Fallback) ---
     try {
         log('Models', 'Path B: Fetching Runware checkpoints (Server Proxy)...');
         const res = await fetch('/api/plugins/personalyze/runware-search', {
@@ -184,7 +234,6 @@ export async function fetchRunwareModels() {
 
 /**
  * Fetches top 200 LoRAs related to a specific search term.
- * Attempts Browser Direct if key is found, then falls back to Server Proxy.
  * 
  * @param {string} searchTerm - Query related to the active model (e.g. "flux", "pony")
  */
@@ -192,7 +241,6 @@ export async function fetchRunwareLoras(searchTerm = "flux") {
     const apiKey = await findSecret(SECRET_RUNWARE);
     let newModels = [];
 
-    // --- Path A: Browser Direct (VPN check) ---
     if (apiKey) {
         try {
             log('Models', `Path A: Fetching LoRAs for "${searchTerm}" (Browser Direct)...`);
@@ -214,15 +262,11 @@ export async function fetchRunwareLoras(searchTerm = "flux") {
             const data = await res.json();
             const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
             newModels = taskResult?.models || [];
-            log('Models', `Path A Response: Found ${newModels.length} LoRAs.`);
         } catch (err) {
             log('Models', `Path A failed: ${err.message}. Attempting Path B (Server Proxy)...`);
         }
-    } else {
-        log('Models', 'Path A skipped: No API key found in browser vault.');
     }
 
-    // --- Path B: Server Proxy (Fallback) ---
     if (newModels.length === 0) {
         try {
             log('Models', `Path B: Fetching LoRAs for "${searchTerm}" (Server Proxy)...`);
@@ -236,13 +280,11 @@ export async function fetchRunwareLoras(searchTerm = "flux") {
             
             const data = await res.json();
             newModels = data.models || [];
-            log('Models', `Path B Response: Found ${newModels.length} LoRAs.`);
         } catch (serverErr) {
             error('Models', `CRITICAL: Both discovery paths for LoRA "${searchTerm}" failed.`, serverErr);
         }
     }
 
-    // --- Shared Registry Update ---
     if (newModels.length > 0) {
         const currentSettings = getSettings();
         const existingLoras = currentSettings.runwareLoras || [];
@@ -261,7 +303,5 @@ export async function fetchRunwareLoras(searchTerm = "flux") {
         const merged = Array.from(loraMap.values());
         updateSetting('runwareLoras', merged);
         log('Models', `Persistent registry updated. Total entries: ${merged.length}.`);
-    } else {
-        log('Models', `Query for "${searchTerm}" returned 0 results across both paths.`);
     }
 }
