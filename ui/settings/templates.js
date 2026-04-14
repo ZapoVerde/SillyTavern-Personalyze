@@ -1,11 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/templates.js
- * @stamp {"utc":"2026-04-18T17:10:00.000Z"}
+ * @stamp {"utc":"2026-04-18T23:45:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Pure functions for generating the Personalyze settings panel and forensic logs.
  * Implements the Forensic Observability Standard: full request/response mirroring,
  * JSON pretty-printing, and debug bundle exports.
+ * 
+ * Updated: 
+ * 1. Fixed Debug Bundle copy failure by using ID-based DOM lookup for clipboard text.
  * 
  * @api-declaration
  * buildPanelHTML(settings, meta, profileNames) -> string
@@ -60,7 +63,11 @@ export function buildLogModalHTML(pipelineLogs, workshopLogs, systemLogs) {
         return [...turns].reverse().slice(0, limit).map(turn => {
             const calls = turn.calls.map(c => {
                 const status = c.error ? `<span style="color:var(--SmartThemeErrorColor);">✗ FAIL</span>` : `<span style="color:var(--SmartThemeQuoteColor);">✓ OK</span>`;
-                const debugBundle = `--- DEBUG BUNDLE: ${c.label} ---\n\nREQUEST:\n${prettyPrint(c.requestBundle || c.prompt)}\n\nRESPONSE:\n${prettyPrint(c.responseDocument || c.response)}`;
+                
+                // INDUSTRIAL FIX: Use hidden DOM elements to store bundle text.
+                // Inline Javascript template literals in 'onclick' attributes break on JSON quotes/newlines.
+                const bundleId = `plz-bundle-v-${_copyId++}`;
+                const debugBundleText = `--- DEBUG BUNDLE: ${c.label} ---\n\nREQUEST:\n${prettyPrint(c.requestBundle || c.prompt)}\n\nRESPONSE:\n${prettyPrint(c.responseDocument || c.response)}${c.error ? `\n\nERROR:\n${c.error}` : ''}`;
 
                 return `
                 <details style="margin-top:6px; border-left:2px solid rgba(255,255,255,0.1); padding-left:10px;">
@@ -71,7 +78,9 @@ export function buildLogModalHTML(pipelineLogs, workshopLogs, systemLogs) {
                         </div>
                         <div style="display:flex; align-items:center; gap:10px;">
                             ${status}
-                            <button onclick="navigator.clipboard.writeText(\`${debugBundle.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`); event.stopPropagation();" 
+                            <!-- Hidden source for the copy command to ensure valid JS string handling -->
+                            <div id="${bundleId}" style="display:none;">${escapeHtml(debugBundleText)}</div>
+                            <button onclick="navigator.clipboard.writeText(document.getElementById('${bundleId}').textContent); event.stopPropagation();" 
                                     class="menu_button" style="font-size:0.75em; padding:1px 8px;" title="Copy Full Request/Response Bundle">Debug Bundle</button>
                         </div>
                     </summary>

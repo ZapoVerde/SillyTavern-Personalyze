@@ -850,6 +850,7 @@ body.plz-focus-active::after {
     pointer-events: all;
 }
 
+
 /* --- Focus Mode Text Box --- */
 textarea.plz-fullscreen-input {
     position: fixed !important;
@@ -861,10 +862,17 @@ textarea.plz-fullscreen-input {
     max-height: none !important;
     z-index: 99999 !important; /* Above backdrop */
     border-radius: 8px !important;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.8) !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.9) !important;
     /* 16px font size prevents iOS Safari from auto-zooming! */
     font-size: 16px !important; 
     transition: all 0.2s ease-out;
+
+    /* Transparency Fix: Force opaque background and standard padding */
+    background-color: var(--SmartThemeBlurTintColor, #1e1e2e) !important;
+    color: var(--SmartThemeBodyColor, #fff) !important;
+    border: 1px solid var(--SmartThemeBorderColor, #444) !important;
+    padding: 16px !important;
+    box-sizing: border-box !important;
 }
 
 /* --- Focus Mode Exit Button --- */
