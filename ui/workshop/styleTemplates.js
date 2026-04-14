@@ -27,23 +27,21 @@ import { RUNWARE_LORA_REGISTRY } from '../../defaults.js';
 export function getStylesTabHTML(styleLibrary, defaultName, activeName, styleObj) {
     const options = Object.keys(styleLibrary).map(name => {
         const isDefault = name === defaultName;
-        return `<option value="${escapeHtml(name)}" ${name === activeName ? 'selected' : ''}>${escapeHtml(name)}${isDefault ? ' (Default)' : ''}</option>`;
+        return `<option value="${escapeHtml(name)}" ${name === activeName ? 'selected' : ''}>${escapeHtml(name)}${isDefault ? ' ⭐' : ''}</option>`;
     }).join('');
 
     return `
-    <div id="plz-styles-container" style="display:flex; flex-direction:column; gap:15px; padding:5px;">
+    <div id="plz-styles-container" style="display:flex; flex-direction:column; gap:12px; padding:5px;">
         <h3 style="margin:0;">Global Portrait Styles</h3>
         
-        <!-- Style Selection & CRUD Row -->
-        <div style="display:flex; flex-direction:column; gap:8px;">
-            <select id="plz-style-selector" class="text_pole" style="width:100%; font-size:1.1em; font-weight:bold;">
+        <!-- Compact Style Selection Row (Restored) -->
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+            <select id="plz-style-selector" class="text_pole" style="flex:1; font-weight:bold;">
                 ${options}
             </select>
-            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px;">
-                <button id="plz-style-set-default" class="menu_button" title="Set as global default">Set Default</button>
-                <button id="plz-style-new" class="menu_button" title="Create new from current">New Style</button>
-                <button id="plz-style-delete" class="menu_button" style="color:var(--SmartThemeErrorColor);" title="Delete style">Delete</button>
-            </div>
+            <button id="plz-style-set-default" class="menu_button" title="Set as global default">⭐</button>
+            <button id="plz-style-new" class="menu_button" title="Create new from current">➕</button>
+            <button id="plz-style-delete" class="menu_button" style="color:var(--SmartThemeErrorColor);" title="Delete style">🗑️</button>
         </div>
 
         <!-- Collapsible Generation Settings -->

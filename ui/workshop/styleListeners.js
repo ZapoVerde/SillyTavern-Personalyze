@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleListeners.js
- * @stamp {"utc":"2026-04-17T00:05:00.000Z"}
+ * @stamp {"utc":"2026-04-17T01:10:00.000Z"}
  * @architectural-role UI Controller (Global Styles)
  * @description
  * Orchestrates the management and editing of Global Style Render Pipelines.
@@ -42,8 +42,13 @@ export function renderStylesView() {
         : (meta.defaultStyleName || Object.keys(lib)[0]);
 
     // Initialize draft if needed or if switching styles
+    // Merges defaults to ensure all technical fields exist even on legacy styles
     if (!localDraft || localDraft._originalName !== activeName) {
-        localDraft = { ...structuredClone(lib[activeName] || DEFAULT_STYLE_PACKAGE), _originalName: activeName };
+        localDraft = { 
+            ...structuredClone(DEFAULT_STYLE_PACKAGE), 
+            ...structuredClone(lib[activeName] || {}), 
+            _originalName: activeName 
+        };
     }
 
     const html = getStylesTabHTML(lib, meta.defaultStyleName, activeName, localDraft);
@@ -117,8 +122,9 @@ export function bindStyleHandlers() {
     // 4. CRUD Operations
     $overlay.on('click', '#plz-style-save-changes', () => {
         const meta = getMetaSettings();
-        meta.styleLibrary[localDraft._originalName] = structuredClone(localDraft);
-        delete meta.styleLibrary[localDraft._originalName]._originalName;
+        const saveObj = structuredClone(localDraft);
+        delete saveObj._originalName; // Don't save internal marker
+        meta.styleLibrary[localDraft._originalName] = saveObj;
         saveSettingsDebounced();
         renderStylesView();
         if (window.toastr) window.toastr.success(`Style "${localDraft._originalName}" updated.`);
@@ -170,10 +176,18 @@ export function bindStyleHandlers() {
         $btn.prop('disabled', true).text('Generating test...');
 
         try {
-            const resParts = (localDraft.resolutionOverride || '256x384').split('x');
+            // Priority: Override -> Square -> Vertical Fallback
+            const resParts = (localDraft.resolutionOverride || '512x768').split('x');
             const url = await fetchPreviewBlob(
-                localDraft.engine, localDraft.model, localDraft.template, localDraft.negativePrompt,
-                parseInt(resParts[0]), parseInt(resParts[1]), 1, localDraft.loras, localDraft.useLayerDiffuse
+                localDraft.engine, 
+                localDraft.model, 
+                localDraft.template, 
+                localDraft.negativePrompt,
+                parseInt(resParts[0]), 
+                parseInt(resParts[1]), 
+                1, 
+                localDraft.loras, 
+                localDraft.useLayerDiffuse
             );
             await callPopup(`<h3>Test OK</h3><img src="${url}" style="width:100%; border-radius:6px;" />`, 'text');
         } catch (err) {

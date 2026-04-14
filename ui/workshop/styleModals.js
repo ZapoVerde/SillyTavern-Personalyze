@@ -1,10 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleModals.js
- * @stamp {"utc":"2026-04-16T23:59:00.000Z"}
+ * @stamp {"utc":"2026-04-17T01:00:00.000Z"}
  * @architectural-role UI Logic (Global Style Modals)
  * @description
  * Manages specialized popups for editing a Global Style's technical render pipeline
- * and LoRA configuration. Decouples complex modal logic from the main Styles tab.
+ * and LoRA configuration. 
+ * 
+ * Fixed: Implemented internal state tracking to prevent data loss during 
+ * modal clearance (race condition with callPopup resolution).
  * 
  * @api-declaration
  * openPipelineModal(styleObj) -> Promise<Object>
@@ -33,10 +36,18 @@ import {
  * @param {Object} styleObj - The current style configuration.
  */
 export async function openPipelineModal(styleObj) {
+    // Internal state to track changes before the DOM is cleared
+    const draft = {
+        engine: styleObj.engine,
+        model: styleObj.model,
+        resolutionOverride: styleObj.resolutionOverride,
+        useLayerDiffuse: !!styleObj.useLayerDiffuse
+    };
+
     const buildModelOptions = (engine) => {
-        if (engine === 'runware') return RUNWARE_MODELS.map(m => `<option value="${escapeHtml(m.air)}" ${styleObj.model === m.air ? 'selected' : ''}>${escapeHtml(m.label)}</option>`).join('');
+        if (engine === 'runware') return RUNWARE_MODELS.map(m => `<option value="${escapeHtml(m.air)}" ${draft.model === m.air ? 'selected' : ''}>${escapeHtml(m.label)}</option>`).join('');
         const list = engine === 'fal' ? FAL_MODELS : engine === 'piapi' ? PIAPI_MODELS : POLLINATIONS_MODELS;
-        return list.map(m => `<option value="${escapeHtml(m)}" ${styleObj.model === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('');
+        return list.map(m => `<option value="${escapeHtml(m)}" ${draft.model === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('');
     };
 
     const html = `
@@ -46,30 +57,30 @@ export async function openPipelineModal(styleObj) {
         <div>
             <label style="display:block; font-size:0.8em; opacity:0.6; margin-bottom:4px;">Generation Engine</label>
             <select id="plz-pop-engine" class="text_pole" style="width:100%;">
-                <option value="pollinations" ${styleObj.engine === 'pollinations' ? 'selected' : ''}>Pollinations</option>
-                <option value="fal" ${styleObj.engine === 'fal' ? 'selected' : ''}>Fal AI</option>
-                <option value="piapi" ${styleObj.engine === 'piapi' ? 'selected' : ''}>PiAPI</option>
-                <option value="runware" ${styleObj.engine === 'runware' ? 'selected' : ''}>Runware</option>
+                <option value="pollinations" ${draft.engine === 'pollinations' ? 'selected' : ''}>Pollinations</option>
+                <option value="fal" ${draft.engine === 'fal' ? 'selected' : ''}>Fal AI</option>
+                <option value="piapi" ${draft.engine === 'piapi' ? 'selected' : ''}>PiAPI</option>
+                <option value="runware" ${draft.engine === 'runware' ? 'selected' : ''}>Runware</option>
             </select>
         </div>
 
         <div>
             <label style="display:block; font-size:0.8em; opacity:0.6; margin-bottom:4px;">Model Selection</label>
             <select id="plz-pop-model" class="text_pole" style="width:100%;">
-                ${buildModelOptions(styleObj.engine)}
+                ${buildModelOptions(draft.engine)}
             </select>
         </div>
 
         <div>
             <label style="display:block; font-size:0.8em; opacity:0.6; margin-bottom:4px;">Resolution Override</label>
             <select id="plz-pop-res" class="text_pole" style="width:100%;">
-                ${RESOLUTION_OVERRIDES.map(r => `<option value="${escapeHtml(r.value || '')}" ${styleObj.resolutionOverride === r.value ? 'selected' : ''}>${escapeHtml(r.label)}</option>`).join('')}
+                ${RESOLUTION_OVERRIDES.map(r => `<option value="${escapeHtml(r.value || '')}" ${draft.resolutionOverride === r.value ? 'selected' : ''}>${escapeHtml(r.label)}</option>`).join('')}
             </select>
         </div>
 
-        <div id="plz-pop-transparency-container" class="${styleObj.engine === 'runware' ? '' : 'plz-hidden'}">
+        <div id="plz-pop-transparency-container" class="${draft.engine === 'runware' ? '' : 'plz-hidden'}">
             <label class="checkbox_label" style="font-size:0.9em; cursor:pointer;">
-                <input type="checkbox" id="plz-pop-layerdiffuse" ${styleObj.useLayerDiffuse ? 'checked' : ''} />
+                <input type="checkbox" id="plz-pop-layerdiffuse" ${draft.useLayerDiffuse ? 'checked' : ''} />
                 <span>Use LayerDiffuse (Native Alpha)</span>
             </label>
         </div>
@@ -78,20 +89,31 @@ export async function openPipelineModal(styleObj) {
     return new Promise((resolve) => {
         callPopup(html, 'confirm').then(ok => {
             $(document).off('.plzPop');
-            if (!ok) return resolve(null);
-            resolve({
-                engine: $('#plz-pop-engine').val(),
-                model: $('#plz-pop-model').val(),
-                resolutionOverride: $('#plz-pop-res').val() || null,
-                useLayerDiffuse: $('#plz-pop-layerdiffuse').prop('checked')
-            });
+            resolve(ok ? draft : null);
         });
 
-        // Cascading Logic
+        // ─── Live Tracking ───
         $(document).on('change.plzPop', '#plz-pop-engine', function() {
-            const engine = $(this).val();
-            $('#plz-pop-model').html(buildModelOptions(engine));
-            $('#plz-pop-transparency-container').toggleClass('plz-hidden', engine !== 'runware');
+            draft.engine = $(this).val();
+            // Reset model to default for new engine
+            draft.model = (draft.engine === 'runware') ? RUNWARE_MODELS[0].air : 
+                          (draft.engine === 'fal') ? FAL_MODELS[0] : 
+                          (draft.engine === 'piapi') ? PIAPI_MODELS[0] : POLLINATIONS_MODELS[0];
+            
+            $('#plz-pop-model').html(buildModelOptions(draft.engine));
+            $('#plz-pop-transparency-container').toggleClass('plz-hidden', draft.engine !== 'runware');
+        });
+
+        $(document).on('change.plzPop', '#plz-pop-model', function() {
+            draft.model = $(this).val();
+        });
+
+        $(document).on('change.plzPop', '#plz-pop-res', function() {
+            draft.resolutionOverride = $(this).val() || null;
+        });
+
+        $(document).on('change.plzPop', '#plz-pop-layerdiffuse', function() {
+            draft.useLayerDiffuse = $(this).prop('checked');
         });
     });
 }
@@ -128,8 +150,7 @@ export async function openLoraModal(currentLoras) {
     return new Promise((resolve) => {
         callPopup(html, 'confirm').then(ok => {
             $(document).off('.plzLora');
-            if (!ok) return resolve(null);
-            resolve(loras.filter(l => l.air));
+            resolve(ok ? loras.filter(l => l.air) : null);
         });
 
         $(document).on('click.plzLora', '#plz-pop-lora-add', () => {
