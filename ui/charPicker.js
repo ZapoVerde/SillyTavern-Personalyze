@@ -1,13 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-15T13:30:00.000Z"}
+ * @stamp {"utc":"2026-04-16T22:40:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
  * visual state for the current turn using the 5-slot architecture.
  *
- * Updated for Generation Economy:
- * 1. Broadened Ephemeral Cache cleanup to target all character-prefixed images.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Updated generate() call to remove the legacy engine argument.
  *
  * @api-declaration
  * openCharPicker(initialOverride) → Promise<void>
@@ -238,7 +238,16 @@ export async function openCharPicker(initialOverride = null) {
 
     try {
         const seed = forceRegen ? Math.floor(Math.random() * 1000000) : (character.seed ?? 1);
-        filename = await generate(charId, 'layered', emotionSlug, compilePrompt(character.identityAnchor, layers), layers.emotion, layers.pose, character.identityAnchor, seed, character.engine || s.defaultEngine || 'pollinations');
+        filename = await generate(
+            charId, 
+            'layered', 
+            emotionSlug, 
+            compilePrompt(character.identityAnchor, layers), 
+            layers.emotion, 
+            layers.pose, 
+            character.identityAnchor, 
+            seed
+        );
         addToFileIndex(filename);
         updateActiveImage(filename);
         updateChainLayers(charId, layers, filename);

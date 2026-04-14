@@ -1,15 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaCommit.js
- * @stamp {"utc":"2026-04-16T13:30:00.000Z"}
+ * @stamp {"utc":"2026-04-16T22:50:00.000Z"}
  * @architectural-role UI Sub-module (Promotion & Generation)
  * @description
  * The final commitment gateway for the Studio dashboard. 
  * Handles 'Apply to Turn' and the promotion of ghost characters ('__new__') 
  * into permanent DNA entries.
  * 
- * Updated for Runware.ai Integration:
- * 1. Added Runware LoRA commitment to DNA during ghost character promotion.
- * 2. Targeted Ephemeral Cache cleanup to character-prefixed images.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Removed engine argument from generate() and lockedWriteCharacterDef().
+ * 2. Removed engine derivation logic (now handled by executor/compiler).
  * 
  * @api-declaration
  * bindCommitHandlers($overlay)
@@ -36,7 +36,7 @@ import {
     lockedWriteCharacterDef, lockedWriteLabel, lockedWriteAka,
     lockedWriteVisualState, lockedPatchVisualStateImage, 
     lockedWriteRoster, lockedWriteCharacterStyle, lockedWriteSlots,
-    lockedWriteEnsemble, lockedWriteCharacterLora
+    lockedWriteEnsemble
 } from '../../io/dnaWriter.js';
 import { compilePrompt as compile } from '../../logic/promptCompiler.js';
 import { generateEnsembleLabel, generateEnsembleKey } from '../../logic/parsers.js';
@@ -111,7 +111,7 @@ export function bindCommitHandlers($overlay) {
             const charData = state.chatCharacters['__new__'];
             charData.label = labelInput;
 
-            await lockedWriteCharacterDef(lastAiIdx, targetId, charData.identityAnchor, charData.seed, charData.engine);
+            await lockedWriteCharacterDef(lastAiIdx, targetId, charData.identityAnchor, charData.seed);
             await lockedWriteLabel(lastAiIdx, targetId, labelInput);
             
             const newRoster = [...new Set([...state.activeRoster, targetId])];
@@ -126,10 +126,6 @@ export function bindCommitHandlers($overlay) {
             }
             if (charData.styleName) {
                 await lockedWriteCharacterStyle(lastAiIdx, targetId, charData.styleName);
-            }
-            // Runware LoRA Persistence
-            if (charData.runwareLoraAir) {
-                await lockedWriteCharacterLora(lastAiIdx, targetId, charData.runwareLoraAir, charData.runwareLoraWeight);
             }
 
             state.chatCharacters[targetId] = charData;
@@ -164,7 +160,6 @@ export function bindCommitHandlers($overlay) {
 
         // ─── Phase 3: Background Generation ───
         const s = getSettings();
-        const engine = char.engine || s.defaultEngine || 'pollinations';
 
         try {
             const emotionSlug = slugify(layers.emotion);
@@ -176,8 +171,7 @@ export function bindCommitHandlers($overlay) {
                 layers.emotion, 
                 layers.pose, 
                 char.identityAnchor, 
-                char.seed, 
-                engine
+                char.seed
             );
 
             addToFileIndex(file);

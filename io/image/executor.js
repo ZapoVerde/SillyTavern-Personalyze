@@ -1,19 +1,19 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/executor.js
- * @stamp {"utc":"2026-04-16T19:00:00.000Z"}
+ * @stamp {"utc":"2026-04-16T22:00:00.000Z"}
  * @architectural-role IO Executor (Generation Logic)
  * @description
  * Primary execution engine for PersonaLyze image generation.
- * Coordinates multi-provider routing (Runware, Fal, PiAPI, Pollinations),
- * manages asynchronous task polling, and handles the post-processing pipeline.
+ * Coordinates routing and post-processing based on Style-assigned Render Pipelines.
  * 
- * Updated for Style-Specific Negative Prompts:
- * 1. fetchPreviewBlob and generate now extract negativePrompt from the Style Package.
- * 2. negativePrompt is passed to the Runware provider backend.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. generate() derives engine/model/LoRAs from resolveStyle().
+ * 2. fetchPreviewBlob() refactored to pure-parameter signature for decoupled testing.
+ * 3. LayerDiffuse style setting acts as a short-circuit for post-process RMBG.
  * 
  * @api-declaration
- * fetchPreviewBlob(prompt, characterId, provider, seed, emotion, pose) -> Promise<string>
- * generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed, provider, forceCacheBust) -> Promise<string>
+ * fetchPreviewBlob(engine, model, positivePrompt, negativePrompt, width, height, seed, loras, useLayerDiffuse) -> Promise<string>
+ * generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed, forceCacheBust) -> Promise<string>
  * 
  * @contract
  *   assertions:
@@ -28,16 +28,12 @@ import {
     POLLINATIONS_BASE_URL, 
     DEFAULT_IMAGE_MODEL, 
     PLZ_IMAGE_FOLDER, 
-    DEV_IMAGE_WIDTH, 
-    DEV_IMAGE_HEIGHT 
 } from '../../defaults.js';
 import { getSettings } from '../../settings.js';
-import { state } from '../../state.js';
-import { log, warn, error } from '../../utils/logger.js';
+import { log, error } from '../../utils/logger.js';
 import { logCall, logPatchLast } from '../../utils/callLog.js';
-import { buildFilenamePrefix, findCachedImage } from './registry.js';
+import { buildFilenamePrefix } from './registry.js';
 import { resolveDimensions, resolveStyle, finalizePrompt } from './compiler.js';
-import { deleteFiles } from './maintenance.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -74,46 +70,36 @@ async function _pollPiapiTask(taskId, timeoutMs, onStatus) {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinations', seed = 1, emotion = '', pose = '') {
-    const styleObj = resolveStyle(characterId);
-    const fullPrompt = finalizePrompt(prompt, '', emotion, pose, styleObj.template);
-    const s = getSettings();
+/**
+ * Pure executor for preview/test generation.
+ * Parameters are passed explicitly to support testing "dirty" configurations
+ * before they are saved to the Style Library.
+ */
+export async function fetchPreviewBlob(engine, model, positivePrompt, negativePrompt, width, height, seed = 1, loras = [], useLayerDiffuse = false) {
     let res;
 
-    if (provider === 'fal') {
+    if (engine === 'fal') {
         res = await fetch('/api/plugins/personalyze/fal-generate', {
             method: 'POST', headers: getRequestHeaders(),
-            body: JSON.stringify({ model: s.falModel, prompt: fullPrompt, width: DEV_IMAGE_WIDTH, height: DEV_IMAGE_HEIGHT }),
+            body: JSON.stringify({ model, prompt: positivePrompt, width, height }),
         });
-    } else if (provider === 'piapi') {
+    } else if (engine === 'piapi') {
         const submitRes = await fetch('/api/plugins/personalyze/piapi-generate', {
             method: 'POST', headers: getRequestHeaders(),
-            body: JSON.stringify({ model: s.piapiModel, prompt: fullPrompt, width: DEV_IMAGE_WIDTH, height: DEV_IMAGE_HEIGHT, seed }),
+            body: JSON.stringify({ model, prompt: positivePrompt, negative_prompt: negativePrompt, width, height, seed }),
         });
         const { task_id } = await submitRes.json();
         const genResult = await _pollPiapiTask(task_id, 120000, () => { });
         res = await fetch('/api/plugins/personalyze/piapi-fetch', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ image_url: genResult.image_url }) });
-    } else if (provider === 'runware') {
-        // Pull LoRAs and Negative Prompt from the style package
-        const loras = styleObj.loras || [];
-        const negativePrompt = styleObj.negativePrompt || '';
+    } else if (engine === 'runware') {
         res = await fetch('/api/plugins/personalyze/runware-generate', {
             method: 'POST', headers: getRequestHeaders(),
-            body: JSON.stringify({ 
-                positivePrompt: fullPrompt, 
-                negativePrompt: negativePrompt,
-                model: s.runwareModel, 
-                width: DEV_IMAGE_WIDTH, 
-                height: DEV_IMAGE_HEIGHT, 
-                seed, 
-                loras, 
-                useLayerDiffuse: s.runwareUseLayerDiffuse 
-            }),
+            body: JSON.stringify({ positivePrompt, negativePrompt, model, width, height, seed, loras, useLayerDiffuse }),
         });
     } else {
         const key = await findSecret('api_key_pollinations');
-        const params = new URLSearchParams({ width: String(DEV_IMAGE_WIDTH), height: String(DEV_IMAGE_HEIGHT), model: s.imageModel ?? DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed) });
-        res = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`, {
+        const params = new URLSearchParams({ width: String(width), height: String(height), model: model || DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed) });
+        res = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(positivePrompt)}?${params.toString()}`, {
             headers: key ? { 'Authorization': `Bearer ${key}` } : {}
         });
     }
@@ -122,51 +108,56 @@ export async function fetchPreviewBlob(prompt, characterId, provider = 'pollinat
     return URL.createObjectURL(await res.blob());
 }
 
-export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed = 1, provider = 'pollinations', forceCacheBust = false) {
+/**
+ * Standard character generation.
+ * Routes based on the character's active Style Package.
+ */
+export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed = 1, forceCacheBust = false) {
     const styleObj = resolveStyle(characterId);
+    const engine   = styleObj.engine;
+    const model    = styleObj.model;
     const fullPrompt = finalizePrompt(subjectPrompt, anchor, emotionLabel, poseLabel, styleObj.template);
     
-    logCall('PortraitGenerate', `[${provider}]\n${fullPrompt}`, null, null);
+    logCall('PortraitGenerate', `[${engine}:${model}]\n${fullPrompt}`, null, null);
+    
     const s = getSettings();
-    const { width: w, height: h } = resolveDimensions(characterId);
+    const { width: w, height: h } = resolveDimensions(characterId, styleObj);
     _dispatchPortraitStatus(characterId, { status: 'generating' });
 
     try {
-        let sourceUrl = null, imgRes = null, meta = null, fallbackB64 = null, nativeTransparency = false;
+        let sourceUrl = null, imgRes = null, meta = null, fallbackB64 = null;
+        let nativeTransparency = !!styleObj.useLayerDiffuse;
 
-        if (provider === 'fal') {
-            imgRes = await fetch('/api/plugins/personalyze/fal-generate', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ model: s.falModel, prompt: fullPrompt, width: w, height: h }) });
-        } else if (provider === 'piapi') {
-            const subRes = await fetch('/api/plugins/personalyze/piapi-generate', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ model: s.piapiModel, prompt: fullPrompt, width: w, height: h, seed }) });
+        if (engine === 'fal') {
+            imgRes = await fetch('/api/plugins/personalyze/fal-generate', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ model, prompt: fullPrompt, width: w, height: h }) });
+        } else if (engine === 'piapi') {
+            const subRes = await fetch('/api/plugins/personalyze/piapi-generate', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ model, prompt: fullPrompt, negative_prompt: styleObj.negativePrompt, width: w, height: h, seed }) });
             const { task_id } = await subRes.json();
             const resData = await _pollPiapiTask(task_id, 120000, st => _dispatchPortraitStatus(characterId, { status: st }));
             sourceUrl = resData.image_url; meta = resData.meta;
-        } else if (provider === 'runware') {
-            // Pull LoRAs and Negative Prompt from the style package
-            const loras = styleObj.loras || [];
-            const negativePrompt = styleObj.negativePrompt || '';
+        } else if (engine === 'runware') {
             imgRes = await fetch('/api/plugins/personalyze/runware-generate', { 
                 method: 'POST', 
                 headers: getRequestHeaders(), 
                 body: JSON.stringify({ 
                     positivePrompt: fullPrompt, 
-                    negativePrompt: negativePrompt,
-                    model: s.runwareModel, 
+                    negativePrompt: styleObj.negativePrompt,
+                    model: model, 
                     width: w, 
                     height: h, 
                     seed, 
-                    loras, 
-                    useLayerDiffuse: s.runwareUseLayerDiffuse 
+                    loras: styleObj.loras, 
+                    useLayerDiffuse: nativeTransparency 
                 }) 
             });
-            if (s.runwareUseLayerDiffuse) nativeTransparency = true;
         } else {
             const key = await findSecret('api_key_pollinations');
-            const params = new URLSearchParams({ width: String(w), height: String(h), model: s.imageModel ?? DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed), safe: 'false' });
+            const params = new URLSearchParams({ width: String(w), height: String(h), model: model || DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed), safe: 'false' });
             if (forceCacheBust) params.append('cb', String(Date.now()));
             const polRes = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`, {
                 headers: key ? { 'Authorization': `Bearer ${key}` } : {}
             });
+            
             if (s.piapiRemoveBackground || s.runwareRemoveBackground) {
                 await validateImageResponse(polRes);
                 const blob = await polRes.blob();
@@ -174,6 +165,7 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
             } else imgRes = polRes;
         }
 
+        // Post-Process RMBG Block: Short-circuited if style uses native transparency (LayerDiffuse)
         if ((s.piapiRemoveBackground || s.runwareRemoveBackground) && !nativeTransparency && (sourceUrl || fallbackB64 || imgRes)) {
             _dispatchPortraitStatus(characterId, { status: 'removing_bg' });
             if (!fallbackB64 && !sourceUrl && imgRes) {

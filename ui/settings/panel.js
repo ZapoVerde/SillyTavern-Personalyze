@@ -1,15 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/panel.js
- * @stamp {"utc":"2026-04-15T11:00:00.000Z"}
+ * @stamp {"utc":"2026-04-16T23:50:00.000Z"}
  * @architectural-role UI Orchestrator (Settings)
  * @description
  * Main orchestrator for the Personalyze extensions settings panel.
  * Coordinates profile management, Dual-Model routing, and the 3-Phase prompt editor.
  *
- * Updated for the Generation Economy:
- * 1. Removed legacy portraitPosition references.
- * 2. Implemented Purge Chat and Purge All handlers with ST confirmation popups.
- * 3. Wired maxResolution, dynamicResolution, and keepCache inputs.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Removed Global Style management listeners (relocated to Workshop).
+ * 2. Removed style-related UI refresh logic.
  *
  * @api-declaration
  * injectSettingsPanel() — Main entry point to build and bind the panel.
@@ -27,11 +26,11 @@ import { setVnPanelEnabled } from '../vnPanel.js';
 import { openWorkshop } from '../workshop/core.js';
 import { log, setVerbose } from '../../utils/logger.js';
 import { getLogs, getWorkshopLogs } from '../../utils/callLog.js';
-import { deleteFiles, flushAllImages, flushChatImages } from '../../imageCache.js';
+import { flushAllImages, flushChatImages } from '../../imageCache.js';
 
 // Sub-system imports
 import { buildPanelHTML, buildLogModalHTML } from './templates.js';
-import { openPromptModal, openStyleModal } from './prompts.js';
+import { openPromptModal } from './prompts.js';
 import { bindProfileHandlers, refreshProfileDropdown, updateDirtyIndicator } from '../panel/profiles.js';
 import { refreshConnectionDropdowns } from '../panel/connection.js';
 import { refreshModelDropdown } from '../panel/models.js';
@@ -48,7 +47,7 @@ import {
     FORCE_COSTUME_PROMPT,
 } from '../../logic/prompts.js';
 import { DEFAULT_VN_STYLE_SUFFIX } from '../../defaults.js';
-import { callPopup, saveSettingsDebounced } from '../../../../../../script.js';
+import { callPopup } from '../../../../../../script.js';
 
 const PANEL_ID = 'plz-settings';
 
@@ -100,34 +99,9 @@ function refreshUI() {
     });
 
     refreshConnectionDropdowns(() => updateDirtyIndicator());
-    refreshStyleDropdown();
     updateDirtyIndicator();
 
     setVerbose(s.verboseLogging);
-}
-
-// ─── Style Library Helpers ────────────────────────────────────────────────────
-
-function refreshStyleDropdown() {
-    const meta = getMetaSettings();
-    const s = getSettings();
-    const lib = meta.styleLibrary ?? {};
-    const defaultName = meta.defaultStyleName ?? '';
-    const activeName = (s.currentStyleName && lib[s.currentStyleName]) 
-        ? s.currentStyleName 
-        : defaultName;
-
-    const $sel = $('#plz-style-select');
-    if (!$sel.length) return;
-
-    $sel.empty();
-    for (const name of Object.keys(lib)) {
-        const text = name + (name === defaultName ? ' ⭐' : '');
-        $sel.append($('<option>').val(name).text(text));
-    }
-    
-    $sel.val(activeName);
-    $('#plz-style-edit').text(`✏️ Edit "${activeName}"`);
 }
 
 // ─── Event Bindings ───────────────────────────────────────────────────────────
@@ -227,68 +201,6 @@ function bindHandlers() {
 
     $panel.on('click', '#plz-open-engines', () => openEnginesModal());
 
-    // ─── Style Library ───
-    $panel.on('change', '#plz-style-select', function () {
-        const val = $(this).val();
-        updateSetting('currentStyleName', val);
-        $('#plz-style-edit').text(`✏️ Edit "${val}"`);
-        updateDirtyIndicator();
-    });
-
-    $panel.on('click', '#plz-style-edit', async function () {
-        const name = $('#plz-style-select').val();
-        if (!name) return;
-        await openStyleModal(name);
-    });
-
-    $panel.on('click', '#plz-style-star', function () {
-        const meta = getMetaSettings();
-        const name = $('#plz-style-select').val();
-        if (!name) return;
-        meta.defaultStyleName = name;
-        saveSettingsDebounced();
-        refreshStyleDropdown();
-        if (window.toastr) window.toastr.success(`"${name}" set as global default style.`, 'PersonaLyze');
-    });
-
-    $panel.on('click', '#plz-style-add', async function () {
-        const meta = getMetaSettings();
-        const rawName = await callPopup('<h3>New style name</h3>', 'input', '');
-        const name = (rawName ?? '').trim();
-        if (!name) return;
-        if (meta.styleLibrary[name]) {
-            if (window.toastr) window.toastr.warning(`Style "${name}" already exists.`);
-            return;
-        }
-        const sourceName = $('#plz-style-select').val();
-        meta.styleLibrary[name] = meta.styleLibrary[sourceName] ?? '';
-        saveSettingsDebounced();
-        refreshStyleDropdown();
-        $('#plz-style-select').val(name).trigger('change');
-    });
-
-    $panel.on('click', '#plz-style-delete', async function () {
-        const meta = getMetaSettings();
-        const name = $('#plz-style-select').val();
-        if (!name) return;
-        if (Object.keys(meta.styleLibrary).length <= 1) {
-            if (window.toastr) window.toastr.warning('Cannot delete the only style.');
-            return;
-        }
-        const confirmed = await callPopup(`<h3>Delete style "${name}"?</h3>Characters pinned to it will fall back to the default.`, 'confirm');
-        if (!confirmed) return;
-        delete meta.styleLibrary[name];
-        if (meta.defaultStyleName === name) {
-            meta.defaultStyleName = Object.keys(meta.styleLibrary)[0] ?? '';
-        }
-        const s = getSettings();
-        if (s.currentStyleName === name) {
-            updateSetting('currentStyleName', meta.defaultStyleName);
-        }
-        saveSettingsDebounced();
-        refreshStyleDropdown();
-    });
-
     $panel.on('click', '.plz-open-prompt', async function () {
         const key = $(this).data('prompt-key');
         const title = PROMPT_TITLES[key];
@@ -322,7 +234,6 @@ export function injectSettingsPanel() {
     bindHandlers();
     refreshUI();
     refreshProfileDropdown();
-    refreshStyleDropdown();
 
     refreshModelDropdown(settings.imageModel);
 

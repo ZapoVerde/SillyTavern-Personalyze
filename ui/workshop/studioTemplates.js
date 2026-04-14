@@ -1,16 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/studioTemplates.js
- * @stamp {"utc":"2026-04-16T16:50:00.000Z"}
+ * @stamp {"utc":"2026-04-16T23:10:00.000Z"}
  * @architectural-role Pure UI Template (Studio)
  * @description
  * Generates the HTML strings for the Workshop Studio (Character Dashboard).
  * 
- * Updated for Visual Presets:
- * 1. Removed character-specific LoRA selection (now handled by pinned Style).
- * 2. Added informative note regarding Portrait Style technical weights.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Removed Preferred Image Engine selection (now controlled by Global Styles).
+ * 2. Simplified template logic to focus on identity, layers, and style assignment.
  * 
  * @api-declaration
- * getStudioHTML(characterId, character, layers, enabledEngines, styleLibrary, defaultStyleName)
+ * getStudioHTML(characterId, character, layers, styleLibrary, defaultStyleName)
  * getStudioEmptyHTML()
  * 
  * @contract
@@ -24,27 +24,14 @@ import { escapeHtml } from '../../utils/history.js';
 import { BASE_SLOTS } from '../../defaults.js';
 import { getDatalistId } from '../../utils/domRegistry.js';
 
-const ENGINE_OPTIONS = [
-    { value: 'pollinations', label: 'Pollinations',  key: 'engineEnablePollinations' },
-    { value: 'fal',          label: 'Fal AI',        key: 'engineEnableFal'          },
-    { value: 'piapi',        label: 'PiAPI',         key: 'engineEnablePiAPI'        },
-    { value: 'runware',      label: 'Runware',       key: 'engineEnableRunware'      },
-];
-
 /** Renders the Studio dashboard with the Dynamic Layered Grid. */
-export function getStudioHTML(characterId, character, layers, enabledEngines = {}, styleLibrary = {}, defaultStyleName = '') {
+export function getStudioHTML(characterId, character, layers, styleLibrary = {}, defaultStyleName = '') {
     const isGhost = characterId === '__new__';
     const displayName = character.label || characterId.replace(/_/g, ' ');
     const akaTagsHTML = (character.aka || []).map(alias => `
         <span class="plz-aka-tag" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;background:rgba(255,255,255,0.08);font-size:0.8em;">
             ${escapeHtml(alias)}<i class="fa-solid fa-xmark plz-aka-remove" data-alias="${escapeHtml(alias)}" style="cursor:pointer;opacity:0.6;"></i>
         </span>`).join('');
-
-    const pinnedEngine = character.engine || '';
-    const engineOptionsHTML = ENGINE_OPTIONS
-        .filter(e => enabledEngines[e.key])
-        .map(e => `<option value="${e.value}" ${pinnedEngine === e.value ? 'selected' : ''}>${escapeHtml(e.label)}</option>`)
-        .join('');
 
     const slots = character.slots || [...BASE_SLOTS];
     const slotsHTML = slots.map(key => {
@@ -56,8 +43,6 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
     const idLabel = isGhost 
         ? `<small style="opacity:0.35;"><i>Unsaved Character</i></small>`
         : `<small style="opacity:0.35;">System ID: ${escapeHtml(characterId)}</small>`;
-
-    const activeStyleName = character.styleName || defaultStyleName || 'Default';
 
     return `
     <div style="margin-bottom:10px;">
@@ -123,14 +108,8 @@ export function getStudioHTML(characterId, character, layers, enabledEngines = {
             ).join('')}
         </select>
         <p style="font-size:0.75em; opacity:0.5; margin-bottom:16px;">
-            <i class="fa-solid fa-circle-info"></i> LoRAs and Art Style are determined by the pinned Style Package. Edit these in Extension Settings.
+            <i class="fa-solid fa-circle-info"></i> Rendering technicals (Engine, Model, LoRAs) are determined by the assigned Global Style.
         </p>
-
-        <label class="plz-studio-label" style="display:block;margin-bottom:6px;">Preferred Image Engine</label>
-        <select id="plz-studio-engine" class="text_pole" style="width:100%;margin-bottom:16px;">
-            <option value="" ${!pinnedEngine ? 'selected' : ''}>Use Global Default</option>
-            ${engineOptionsHTML}
-        </select>
 
         <div style="border:1px solid rgba(var(--SmartThemeErrorColor-rgb, 200,60,60),0.3);border-radius:6px;padding:10px 12px;">
             <div style="font-size:0.8em;opacity:0.6;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">Maintenance</div>

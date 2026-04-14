@@ -1,14 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/engines/templates.js
- * @stamp {"utc":"2026-04-16T17:10:00.000Z"}
+ * @stamp {"utc":"2026-04-16T23:05:00.000Z"}
  * @architectural-role Pure UI Templates (Engines Modal)
  * @description
  * Generates the HTML for the Image Engines configuration modal. 
  * 
- * Updated for Runware.ai Integration:
- * 1. Added Runware tab with AIR model selection.
- * 2. Added toggles for LayerDiffuse (native alpha) and standalone RMBG.
- * 3. Added Runware RMBG model selection dropdown.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Removed Default Engine selection buttons.
+ * 2. Updated Model labels to "Test Model" to distinguish from Style-level models.
+ * 3. Availability toggles updated to refer to Global Styles.
  *
  * @api-declaration
  * getEnginesModalHTML(settings) → string
@@ -31,21 +31,6 @@ import {
 import { escapeHtml } from '../../utils/history.js';
 
 /**
- * Helper to build the "Set as Default" radio-style button for an engine.
- */
-function getDefaultEngineButtonHTML(engineId, isDefault) {
-    return `
-    <div style="margin-bottom:10px;">
-        <button class="menu_button plz-eng-set-default${isDefault ? ' plz-active' : ''}"
-                data-engine="${engineId}"
-                style="width:100%; font-size:0.85em;">
-            <i class="fa-${isDefault ? 'solid' : 'regular'} fa-star"></i>
-            ${isDefault ? 'Default Engine' : 'Set as Default'}
-        </button>
-    </div>`;
-}
-
-/**
  * Helper to build the master availability checkbox for an engine.
  */
 function getAvailabilityToggleHTML(id, label, checked) {
@@ -53,7 +38,7 @@ function getAvailabilityToggleHTML(id, label, checked) {
     <div style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
         <label class="checkbox_label" style="font-size:0.9em; cursor:pointer;">
             <input type="checkbox" id="${id}" ${checked ? 'checked' : ''} />
-            <span>Enable ${label} in Outfit dropdowns</span>
+            <span>Enable ${label} in Global Styles</span>
         </label>
     </div>`;
 }
@@ -68,7 +53,6 @@ function getPollinationsTabHTML(settings) {
 
     return `
     <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
-        ${getDefaultEngineButtonHTML('pollinations', (s.defaultEngine || 'pollinations') === 'pollinations')}
         ${getAvailabilityToggleHTML('plz-eng-pol-enabled', 'Pollinations', s.engineEnablePollinations !== false)}
 
         <div style="display:flex; align-items:center; gap:8px;">
@@ -79,7 +63,7 @@ function getPollinationsTabHTML(settings) {
         <div id="plz-eng-pol-key-status" style="font-size:0.8em; margin-top:-8px;"></div>
 
         <div style="display:flex; align-items:center; gap:8px;">
-            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Model:</label>
+            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Test Model:</label>
             <select id="plz-eng-pol-model" class="text_pole" style="flex:1;">
                 ${modelOptions}
             </select>
@@ -103,7 +87,6 @@ function getFalTabHTML(settings) {
 
     return `
     <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
-        ${getDefaultEngineButtonHTML('fal', s.defaultEngine === 'fal')}
         ${getAvailabilityToggleHTML('plz-eng-fal-enabled', 'Fal AI', !!s.engineEnableFal)}
 
         <p style="font-size:0.85em; opacity:0.6; margin:0;">
@@ -118,7 +101,7 @@ function getFalTabHTML(settings) {
         <div id="plz-eng-fal-key-status" style="font-size:0.8em; margin-top:-8px;"></div>
 
         <div style="display:flex; align-items:center; gap:8px;">
-            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Model:</label>
+            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Test Model:</label>
             <select id="plz-eng-fal-model" class="text_pole" style="flex:1;">
                 ${modelOptions}
             </select>
@@ -145,7 +128,6 @@ function getPiAPITabHTML(settings) {
 
     return `
     <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
-        ${getDefaultEngineButtonHTML('piapi', s.defaultEngine === 'piapi')}
         ${getAvailabilityToggleHTML('plz-eng-piapi-enabled', 'PiAPI', !!s.engineEnablePiAPI)}
 
         <p style="font-size:0.85em; opacity:0.6; margin:0;">
@@ -160,7 +142,7 @@ function getPiAPITabHTML(settings) {
         <div id="plz-eng-piapi-key-status" style="font-size:0.8em; margin-top:-8px;"></div>
 
         <div style="display:flex; align-items:center; gap:8px;">
-            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Model:</label>
+            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Test Model:</label>
             <select id="plz-eng-piapi-model" class="text_pole" style="flex:1;">
                 ${modelOptions}
             </select>
@@ -201,7 +183,6 @@ function getRunwareTabHTML(settings) {
 
     return `
     <div style="display:flex; flex-direction:column; gap:14px; padding-top:10px;">
-        ${getDefaultEngineButtonHTML('runware', s.defaultEngine === 'runware')}
         ${getAvailabilityToggleHTML('plz-eng-runware-enabled', 'Runware', !!s.engineEnableRunware)}
 
         <p style="font-size:0.85em; opacity:0.6; margin:0;">
@@ -216,7 +197,7 @@ function getRunwareTabHTML(settings) {
         <div id="plz-eng-runware-key-status" style="font-size:0.8em; margin-top:-8px;"></div>
 
         <div style="display:flex; align-items:center; gap:8px;">
-            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Model:</label>
+            <label style="font-size:0.85em; opacity:0.75; white-space:nowrap; min-width:85px;">Test Model:</label>
             <select id="plz-eng-runware-model" class="text_pole" style="flex:1;">
                 ${modelOptions}
             </select>

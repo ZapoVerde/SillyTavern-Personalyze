@@ -1,16 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/core.js
- * @stamp {"utc":"2026-04-12T10:40:00.000Z"}
+ * @stamp {"utc":"2026-04-16T23:55:00.000Z"}
  * @architectural-role UI Orchestrator (Workshop)
  * @description
  * High-level coordinator for the Personalyze Character Workshop modal.
  *
- * Manages modal injection, tab-switching, and orchestrates the binding
- * of specialized handlers for DNA, Studio, and Library views.
- *
- * Updated for the "Ghost Studio" architecture:
- * 1. Removed the 'Add' tab from the switch logic.
- * 2. Simplified the renderer to focus on DNA, Studio, and Library.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Integrated 'styles' tab into the switchTab routing.
+ * 2. Added binding for Style-level handlers in injectWorkshop.
  *
  * @api-declaration
  * openWorkshop(tab)  — primary entry point; injects modal if needed, then shows it.
@@ -21,16 +18,17 @@
  *   assertions:
  *     purity: UI Shell / Orchestrator
  *     state_ownership: [state._workshopCharacterId]
- *     external_io: [jQuery DOM, dnaListeners, libraryListeners, dnaTemplates]
+ *     external_io: [jQuery DOM, dnaListeners, libraryListeners, styleListeners, dnaTemplates]
  */
 
 import { getBaseWorkshopHTML } from './dnaTemplates.js';
 import { renderDNAView, renderStudioView, bindDNAHandlers } from './dnaListeners.js';
 import { renderLibraryView, bindLibraryHandlers } from './libraryListeners.js';
+import { renderStylesView, bindStyleHandlers } from './styleListeners.js';
 
 /**
  * Switches the active tab and triggers the appropriate sub-renderer.
- * @param {'dna'|'studio'|'library'} tabName
+ * @param {'dna'|'studio'|'library'|'styles'} tabName
  */
 export function switchTab(tabName) {
     // 1. Update Tab Button UI
@@ -51,6 +49,9 @@ export function switchTab(tabName) {
             break;
         case 'library':
             renderLibraryView();
+            break;
+        case 'styles':
+            renderStylesView();
             break;
     }
 }
@@ -86,16 +87,16 @@ export function injectWorkshop() {
     });
 
     // 3. Sub-Module Handler Binding
-    // We bind these once during the initial injection phase.
     bindDNAHandlers();
     bindLibraryHandlers();
+    bindStyleHandlers();
 }
 
 /**
  * Primary entry point to display the Character Workshop.
  * Ensures the shell is injected before attempting navigation.
  * 
- * @param {'dna'|'studio'|'library'} tab  Initial tab to display.
+ * @param {'dna'|'studio'|'library'|'styles'} tab  Initial tab to display.
  */
 export function openWorkshop(tab = 'dna') {
     injectWorkshop();

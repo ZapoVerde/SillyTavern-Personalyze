@@ -1,10 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaTemplates.js
- * @stamp {"utc":"2026-04-14T22:30:00.000Z"}
+ * @stamp {"utc":"2026-04-16T23:56:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Generates the HTML for the Workshop shell and DNA character roster.
- * Studio dashboard logic has been moved to studioTemplates.js.
+ * 
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Added "Global Styles" tab button to the Workshop header.
+ * 2. Added plz-tab-styles container to the body.
  * 
  * @api-declaration
  * getBaseWorkshopHTML()
@@ -22,7 +25,7 @@ import { escapeHtml } from '../../utils/history.js';
 // Re-export Studio templates for consumption by dnaListeners
 export { getStudioHTML, getStudioEmptyHTML } from './studioTemplates.js';
 
-/** Main modal shell with DNA, Studio, and Library tabs. */
+/** Main modal shell with DNA, Studio, Styles, and Library tabs. */
 export function getBaseWorkshopHTML() {
     return `
     <div id="plz-workshop-overlay" class="plz-overlay plz-hidden">
@@ -35,12 +38,14 @@ export function getBaseWorkshopHTML() {
                 <div class="plz-tab-bar">
                     <button class="plz-tab-btn menu_button" data-tab="dna">DNA</button>
                     <button class="plz-tab-btn menu_button" data-tab="studio">Studio</button>
+                    <button class="plz-tab-btn menu_button" data-tab="styles">Global Styles</button>
                     <button class="plz-tab-btn menu_button" data-tab="library">Library</button>
                 </div>
             </div>
             <div class="plz-workshop-body">
                 <div id="plz-tab-dna"     class="plz-tab-panel plz-hidden"></div>
                 <div id="plz-tab-studio"  class="plz-tab-panel plz-hidden"></div>
+                <div id="plz-tab-styles"  class="plz-tab-panel plz-hidden"></div>
                 <div id="plz-tab-library" class="plz-tab-panel plz-hidden"></div>
             </div>
         </div>

@@ -1,17 +1,18 @@
 /**
  * @file data/default-user/extensions/personalyze/reconstruction.js
- * @stamp {"utc":"2026-04-16T12:15:00.000Z"}
+ * @stamp {"utc":"2026-04-16T21:30:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Derives PersonaLyze runtime state from a single forward pass over the chat DNA.
  * Reconstructs character definitions, saved ensembles, and the layered visual state.
  *
- * Updated for Runware.ai Integration:
- * 1. Added support for the lora_update record type to hydrate pinned LoRAs.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Removed character-level engine and LoRA hydration.
+ * 2. Legacy 'lora_update' and 'engine' fields in 'character_def' are now ignored.
  *
  * @api-declaration
  * reconstruct(chat) → {
- *   chatCharacters:      { [characterId]: { label, identityAnchor, seed, ensembles, aka, defaultEnsemble, slots, runwareLoraAir, runwareLoraWeight } },
+ *   chatCharacters:      { [characterId]: { label, identityAnchor, seed, ensembles, aka, defaultEnsemble, slots, styleName } },
  *   characterChain:      { [characterId]: { layers, image } },
  *   activeRoster:        string[],
  *   activeCharacterId:   string|null,
@@ -54,14 +55,11 @@ export function reconstruct(chat) {
                 label:           id.replace(/_/g, ' '),
                 identityAnchor:  '',
                 seed:            1,
-                engine:          null,
                 ensembles:       {},
                 aka:             [],
                 defaultEnsemble: null,
                 styleName:       null,
                 slots:           [...BASE_SLOTS], // Default minimalist template
-                runwareLoraAir:  null,
-                runwareLoraWeight: 0.8
             };
         }
         return chatCharacters[id];
@@ -87,7 +85,7 @@ export function reconstruct(chat) {
                     const char = ensureChar(rec.characterId);
                     if (rec.anchor !== undefined) char.identityAnchor = rec.anchor;
                     if (rec.seed !== undefined)   char.seed = rec.seed;
-                    if (rec.engine !== undefined) char.engine = rec.engine || null;
+                    // Engine field is ignored (moved to Global Styles)
                     break;
                 }
 
@@ -123,14 +121,6 @@ export function reconstruct(chat) {
                     if (!rec.characterId) break;
                     const char = ensureChar(rec.characterId);
                     char.styleName = rec.styleName || null;
-                    break;
-                }
-
-                case 'lora_update': {
-                    if (!rec.characterId) break;
-                    const char = ensureChar(rec.characterId);
-                    char.runwareLoraAir = rec.loraAir || null;
-                    char.runwareLoraWeight = rec.weight ?? 0.8;
                     break;
                 }
 

@@ -1,12 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/scene.js
- * @stamp {"utc":"2026-04-15T13:10:00.000Z"}
+ * @stamp {"utc":"2026-04-16T22:20:00.000Z"}
  * @architectural-role Orchestrator (Scene Logic)
  * @description
  * Manages the wardrobe "Redress" flow triggered by location changes.
  * 
- * Updated for Generation Economy:
- * 1. Integrated broadened Ephemeral Cache cleanup after scene redress generation.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. processSceneGeneration calls generate() without the legacy engine argument.
+ * 2. Removed engine field from the rosterItems mapping.
  *
  * @api-declaration
  * runScenePipeline(messageId) -> Promise<void>
@@ -129,7 +130,6 @@ export async function runScenePipeline(messageId) {
             layers,
             anchor:  char?.identityAnchor || '',
             seed:    char?.seed || 1,
-            engine:  char?.engine || null,
         };
     });
 
@@ -191,7 +191,6 @@ export async function runScenePipeline(messageId) {
 async function processSceneGeneration(messageId, item, layers, s, recordId) {
     try {
         const prompt = compilePrompt(item.anchor, layers);
-        const engine = item.engine || s.defaultEngine || 'pollinations';
         const emotionSlug = slugify(layers.emotion);
 
         const filename = await generate(
@@ -202,8 +201,7 @@ async function processSceneGeneration(messageId, item, layers, s, recordId) {
             layers.emotion, 
             layers.pose || 'upright', 
             item.anchor, 
-            item.seed,
-            engine
+            item.seed
         );
 
         addToFileIndex(filename);

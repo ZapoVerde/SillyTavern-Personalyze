@@ -1,13 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-16T18:30:00.000Z"}
+ * @stamp {"utc":"2026-04-16T21:10:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
  * Implements the "Working Table" architecture for the Layered State Pipeline.
  *
- * Updated for Style-Specific Negative Prompts:
- * 1. Upgraded styleLibrary migration to ensure 'negativePrompt' exists in all packages.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. initSettings() now performs a non-destructive patch on the Style Library.
+ * 2. Injects engine, model, and resolution defaults into existing style objects.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -57,6 +58,7 @@ import {
     DEFAULT_RUNWARE_USE_LAYER_DIFFUSE,
     DEFAULT_RUNWARE_REMOVE_BG,
     DEFAULT_RUNWARE_RMBG_MODEL,
+    DEFAULT_STYLE_PACKAGE,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
@@ -167,27 +169,41 @@ export function initSettings() {
 
     // --- Style Library & Package Migration ---
     if (!root.styleLibrary) {
-        root.styleLibrary = { 'Default': { template: DEFAULT_VN_STYLE_SUFFIX, loras: [], negativePrompt: '' } };
+        root.styleLibrary = { 'Default': structuredClone(DEFAULT_STYLE_PACKAGE) };
         root.defaultStyleName = 'Default';
     } else {
-        // Migration: Convert String-based styles to Object-based packages, and ensure negativePrompt exists
+        // Migration: Convert String-based styles to Object-based packages, and ensure Render Pipeline fields exist
         let migrated = false;
         for (const key of Object.keys(root.styleLibrary)) {
             let val = root.styleLibrary[key];
+            
+            // 1. Handle legacy string-only styles
             if (typeof val === 'string') {
                 log('Settings', `Migrating style "${key}" to package format...`);
                 root.styleLibrary[key] = {
-                    template: val,
-                    loras: [],
-                    negativePrompt: ''
+                    ...DEFAULT_STYLE_PACKAGE,
+                    template: val
                 };
                 migrated = true;
-            } else if (typeof val === 'object') {
-                // Ensure negativePrompt field exists in existing packages
-                if (val.negativePrompt === undefined) {
-                    val.negativePrompt = '';
-                    migrated = true;
-                }
+                continue;
+            }
+
+            // 2. Non-destructive patch for new Render Pipeline fields
+            if (val.engine === undefined) {
+                log('Settings', `Patching engine/model fields for style "${key}"...`);
+                Object.assign(val, {
+                    engine: DEFAULT_STYLE_PACKAGE.engine,
+                    model: DEFAULT_STYLE_PACKAGE.model,
+                    useLayerDiffuse: DEFAULT_STYLE_PACKAGE.useLayerDiffuse,
+                    resolutionOverride: DEFAULT_STYLE_PACKAGE.resolutionOverride
+                });
+                migrated = true;
+            }
+
+            // 3. Ensure negativePrompt field exists in existing packages
+            if (val.negativePrompt === undefined) {
+                val.negativePrompt = '';
+                migrated = true;
             }
         }
         if (migrated) saveSettingsDebounced();

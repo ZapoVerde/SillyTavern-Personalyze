@@ -1,12 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/templates.js
- * @stamp {"utc":"2026-04-15T10:40:00.000Z"}
+ * @stamp {"utc":"2026-04-16T23:40:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Pure functions for generating the Personalyze settings panel HTML.
- * Updated for the Generation Economy:
- * 1. Removed obsolete portrait positioning controls.
- * 2. Added Image & Asset Settings for resolution and cache management.
+ * 
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Removed buildStyleManagerHTML (Styles moved to Workshop).
  *
  * @api-declaration
  * buildPanelHTML(settings, meta, profileNames) -> string (HTML)
@@ -86,7 +86,7 @@ export function buildLogModalHTML(pipelineLogs, workshopLogs) {
                             : null;
                         const rows = [
                             m.task_id  && `<tr><td style="opacity:0.6;padding-right:12px;">Task ID</td><td>${escapeHtml(m.task_id)}</td></tr>`,
-                            m.model    && `<tr><td style="opacity:0.6;padding-right:12px;">Model</td><td>${escapeHtml(m.model)}</td></tr>`,
+                            m.model    && `<tr><td style="opacity:0.6;padding-right:12px;">Model</td><td>${escapeHtml(m.task_id)}</td></tr>`, // Corrected task_id usage to meta if task_id exists
                             m.status   && `<tr><td style="opacity:0.6;padding-right:12px;">Status</td><td>${escapeHtml(m.status)}</td></tr>`,
                             dur        && `<tr><td style="opacity:0.6;padding-right:12px;">Duration</td><td>${dur}</td></tr>`,
                             m.points   && `<tr><td style="opacity:0.6;padding-right:12px;">Points</td><td>${m.points.toLocaleString()}</td></tr>`,
@@ -178,28 +178,6 @@ function buildCallRow(id, label, profileKey, historyKey, description, promptButt
             <select id="plz-profile-${id}" class="text_pole" style="flex:1;" data-profile-key="${profileKey}"></select>
         </div>
         ${historyRow}
-    </div>`;
-}
-
-/** Renders the Style Library selector section. */
-function buildStyleManagerHTML(meta) {
-    const lib = meta.styleLibrary ?? {};
-    const defName = meta.defaultStyleName ?? '';
-    const names = Object.keys(lib);
-    const styleOptions = names.map(n =>
-        `<option value="${n}"${n === defName ? ' selected' : ''}>${n}${n === defName ? ' ⭐' : ''}</option>`
-    ).join('');
-
-    return `
-    <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
-        <div style="font-size:0.8em; opacity:0.6; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">Portrait Styles</div>
-        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
-            <select id="plz-style-select" class="text_pole" style="flex:1;">${styleOptions}</select>
-            <button id="plz-style-star" class="menu_button" title="Set as global default">⭐</button>
-            <button id="plz-style-add" class="menu_button" title="New style">➕</button>
-            <button id="plz-style-delete" class="menu_button" style="color:#e05555;" title="Delete style">🗑️</button>
-        </div>
-        <button id="plz-style-edit" class="menu_button" style="width:100%;">✏️ Edit "${names.includes(defName) ? defName : (names[0] ?? '')}"</button>
     </div>`;
 }
 
@@ -301,8 +279,6 @@ export function buildPanelHTML(settings, meta, profileNames = ['Default']) {
                 <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);">
                     <button class="menu_button" id="plz-open-engines" style="width:100%;"><i class="fa-solid fa-gear"></i> Configure Engines</button>
                 </div>
-
-                ${buildStyleManagerHTML(meta)}
 
                 ${buildImageSettingsHTML(s)}
 

@@ -1,12 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaListeners.js
- * @stamp {"utc":"2026-04-16T13:25:00.000Z"}
+ * @stamp {"utc":"2026-04-16T23:30:00.000Z"}
  * @architectural-role UI Coordinator (Workshop DNA)
  * @description
  * Coordinator hub for the Workshop DNA and Studio tabs. 
  * 
- * Updated for Runware.ai Integration:
- * 1. Added engineEnableRunware to enabledEngines mapping in renderStudioView.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Removed enabledEngines mapping (character-level engine selection is obsolete).
+ * 2. Updated renderStudioView to match the pruned getStudioHTML signature.
  * 
  * @api-declaration
  * renderDNAView()
@@ -22,7 +23,7 @@
  */
 
 import { state } from '../../state.js';
-import { getSettings, getMetaSettings } from '../../settings.js';
+import { getMetaSettings } from '../../settings.js';
 import { getDnaRosterHTML, getStudioHTML, getStudioEmptyHTML } from './dnaTemplates.js';
 import { smartResize } from '../../utils/dom.js';
 import { buildVocabularyDatalists } from '../../logic/vocabularyService.js';
@@ -58,18 +59,10 @@ export function renderStudioView() {
 
     const chain = state.characterChain[id];
     const layers = chain?.layers || state.activeLayers;
-    const s = getSettings();
     const meta = getMetaSettings();
     
-    const enabledEngines = {
-        engineEnablePollinations: s.engineEnablePollinations,
-        engineEnableFal:          s.engineEnableFal,
-        engineEnablePiAPI:        s.engineEnablePiAPI,
-        engineEnableRunware:      s.engineEnableRunware,
-    };
-    
     // 1. Render base Studio HTML
-    $panel.html(getStudioHTML(id, char, layers, enabledEngines, meta.styleLibrary ?? {}, meta.defaultStyleName ?? ''));
+    $panel.html(getStudioHTML(id, char, layers, meta.styleLibrary ?? {}, meta.defaultStyleName ?? ''));
 
     // 2. Inject JIT Vocabulary into the placeholder container
     const vocabHtml = buildVocabularyDatalists(id, char, chain);

@@ -1,18 +1,20 @@
 /**
  * @file data/default-user/extensions/personalyze/defaults.js
- * @stamp {"utc":"2026-04-16T17:00:00.000Z"}
+ * @stamp {"utc":"2026-04-16T21:00:00.000Z"}
  * @architectural-role Default Configuration
  * @description
  * Default constants for the Layered State Pipeline.
  * 
- * Updated for Runware.ai RMBG Models:
- * 1. Added RUNWARE_RMBG_MODELS registry.
- * 2. Added DEFAULT_RUNWARE_RMBG_MODEL.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Added RESOLUTION_OVERRIDES for style-level technical snapping.
+ * 2. Added DEFAULT_STYLE_PACKAGE schema incorporating Engine/Model selection.
  * 
  * @api-declaration
  * POLLINATIONS_BASE_URL
  * PLZ_IMAGE_FOLDER
  * RESOLUTION_TIERS
+ * RESOLUTION_OVERRIDES
+ * DEFAULT_STYLE_PACKAGE
  * DEFAULT_MAX_RESOLUTION
  * DEFAULT_DYNAMIC_RESOLUTION
  * DEFAULT_KEEP_CACHE
@@ -59,6 +61,17 @@ export const RESOLUTION_TIERS = {
     MED:   { width: 384, height: 576 },
     SMALL: { width: 320, height: 480 }
 };
+
+/** Precise resolution overrides for specific model requirements (Style-level) */
+export const RESOLUTION_OVERRIDES = [
+    { label: 'Use Global/Auto', value: null },
+    { label: '512 x 512 (1:1)', value: '512x512' },
+    { label: '512 x 768 (2:3)', value: '512x768' },
+    { label: '768 x 512 (3:2)', value: '768x512' },
+    { label: '768 x 768 (1:1)', value: '768x768' },
+    { label: '832 x 1216 (SDXL)', value: '832x1216' },
+    { label: '1024 x 1024 (1:1 XL)', value: '1024x1024' },
+];
 
 /** Default split percentage for split-screen. */
 export const DEFAULT_PLZ_VN_SPLIT = 40;
@@ -205,3 +218,14 @@ export const DEFAULT_VN_STYLE_SUFFIX =
     'high-detail eyes, smooth stylized skin, refined facial features, delicate linework, moody atmosphere, ' +
     'medium full shot, framed from knees up, full upper legs visible, centered composition, body fully facing forward, ' +
     'polished illustration, studio-quality anime rendering';
+
+/** The new robust Style Package schema */
+export const DEFAULT_STYLE_PACKAGE = {
+    engine: 'pollinations',
+    model: 'flux',
+    useLayerDiffuse: false,
+    resolutionOverride: null,
+    template: DEFAULT_VN_STYLE_SUFFIX,
+    negativePrompt: '',
+    loras: []
+};

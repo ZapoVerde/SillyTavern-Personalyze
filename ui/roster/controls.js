@@ -1,13 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/roster/controls.js
- * @stamp {"utc":"2026-04-15T13:20:00.000Z"}
+ * @stamp {"utc":"2026-04-16T23:00:00.000Z"}
  * @architectural-role UI Orchestrator
  * @description
  * Manages global event delegation for the character roster UI.
  * Handles card-level interactions including flipping, removal, and addition.
  *
- * Updated for Generation Economy:
- * 1. Broadened Ephemeral Cache cleanup to target all character-prefixed images.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Removed engine derivation logic from the refresh handler.
+ * 2. Updated generate() call to remove legacy provider argument.
  *
  * @api-declaration
  * bindRosterControls() -> void
@@ -94,7 +95,6 @@ export function bindRosterControls() {
         const prompt = compilePrompt(char.identityAnchor, layers);
         const emotionSlug = slugify(layers.emotion);
         const s = getSettings();
-        const engine = char.engine || s.defaultEngine || 'pollinations';
 
         try {
             // Trigger generation with cache-bust to force fresh image while keeping seed
@@ -107,7 +107,6 @@ export function bindRosterControls() {
                 layers.pose, 
                 char.identityAnchor, 
                 char.seed, 
-                engine, 
                 true
             );
 

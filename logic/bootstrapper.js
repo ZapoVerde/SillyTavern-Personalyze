@@ -1,15 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/bootstrapper.js
- * @stamp {"utc":"2026-04-14T11:30:00.000Z"}
+ * @stamp {"utc":"2026-04-16T22:10:00.000Z"}
  * @architectural-role Orchestrator / Boot Sequence
  * @description
  * Manages the initialization of the PersonaLyze environment for the active chat.
  *
- * Updated for the Multi-Character Architecture:
- * 1. Reconstructs chat DNA to derive local ensembles and active roster.
- * 2. Reconciles all characters in the active roster against the filesystem.
- * 3. Multi-Character Healing: Triggers background generation for any character 
- *    in the scene whose required portrait asset is missing from disk.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. Updated healCharacter to call generate() without the legacy provider argument.
  *
  * @api-declaration
  * runBoot() → Promise<void>
@@ -22,14 +19,13 @@
  */
 
 import { getContext } from '../../../../extensions.js';
-import { log, warn, error } from '../utils/logger.js';
+import { log, error } from '../utils/logger.js';
 import { state, bulkInitState, setFileIndex, addToFileIndex, updateChainLayers } from '../state.js';
 import { reconstruct } from '../reconstruction.js';
 import { fetchFileIndex, generate } from '../imageCache.js';
 import { lockedPatchVisualStateImage } from '../io/dnaWriter.js';
 import { compilePrompt } from './promptCompiler.js';
 import { slugify } from '../utils/history.js';
-import { getSettings } from '../settings.js';
 
 /**
  * Heals a specific character's missing portrait if requirements are met.
@@ -48,7 +44,6 @@ async function healCharacter(characterId, lastAiIdx) {
     log('Boot', `Healing missing portrait for: ${characterId}`);
     
     const prompt = compilePrompt(character.identityAnchor, chain.layers);
-    const s = getSettings();
 
     try {
         const filename = await generate(
@@ -59,8 +54,7 @@ async function healCharacter(characterId, lastAiIdx) {
             chain.layers.emotion,
             chain.layers.pose || 'upright',
             character.identityAnchor,
-            character.seed,
-            character.engine || s.defaultEngine || 'pollinations'
+            character.seed
         );
 
         addToFileIndex(filename);

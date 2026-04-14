@@ -1,12 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/turn.js
- * @stamp {"utc":"2026-04-15T13:00:00.000Z"}
+ * @stamp {"utc":"2026-04-16T22:30:00.000Z"}
  * @architectural-role Orchestrator (Turn Logic)
  * @description
  * Implements the Hybrid Multi-Character Turn pipeline.
  * 
- * Updated for Generation Economy:
- * 1. Broadened Ephemeral Cache cleanup to target all character-prefixed images.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. processKnownSubject calls generate() without the legacy engine argument.
+ * 2. Derives engine/model configuration automatically from the assigned Style.
  *
  * @api-declaration
  * runTurnPipeline(messageId) -> Promise<void>
@@ -223,7 +224,6 @@ export async function processKnownSubject(messageId, characterId, text, history,
 
     const prompt = compilePrompt(character.identityAnchor, nextLayers);
     const recordId = await lockedWriteVisualState(messageId, characterId, nextLayers, null);
-    const engine = character.engine || s.defaultEngine || 'pollinations';
 
     try {
         const emotionSlug = slugify(nextLayers.emotion);
@@ -235,8 +235,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
             nextLayers.emotion, 
             nextLayers.pose,
             character.identityAnchor, 
-            character.seed,
-            engine
+            character.seed
         );
 
         addToFileIndex(file);

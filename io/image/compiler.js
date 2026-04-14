@@ -1,18 +1,19 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/compiler.js
- * @stamp {"utc":"2026-04-16T18:50:00.000Z"}
+ * @stamp {"utc":"2026-04-16T21:50:00.000Z"}
  * @architectural-role State Derivation (Visual Requirements)
  * @description
  * Handles resolution measurement and prompt synthesis.
- * Determines the target dimensions based on UI footprint and compiles 
- * template variables into a final prompt string for image engines.
+ * Determines the target dimensions based on UI footprint or style overrides,
+ * and compiles template variables into a final prompt string.
  * 
- * Updated for Style-Specific Negative Prompts:
- * 1. resolveStyle now returns the complete Style Package including negativePrompt.
+ * Updated for Style-Specific Render Pipeline:
+ * 1. resolveStyle() returns the fully expanded Render Pipeline configuration.
+ * 2. resolveDimensions() prioritizes styleObj.resolutionOverride.
  * 
  * @api-declaration
- * resolveDimensions(characterId) -> { width: number, height: number }
- * resolveStyle(characterId) -> { template: string, loras: Array, negativePrompt: string }
+ * resolveDimensions(characterId, styleObj) -> { width: number, height: number }
+ * resolveStyle(characterId) -> Object (The expanded Style Package)
  * finalizePrompt(subjectPrompt, anchor, emotion, pose, template) -> string
  * 
  * @contract
@@ -27,25 +28,45 @@ import {
     DEV_IMAGE_WIDTH,
     DEV_IMAGE_HEIGHT,
     DEFAULT_VN_STYLE_SUFFIX,
+    DEFAULT_STYLE_PACKAGE,
 } from '../../defaults.js';
 import { getSettings, getMetaSettings } from '../../settings.js';
 import { state } from '../../state.js';
 
 /**
  * Resolves the target generation dimensions.
- * Respects devMode, user-selected max tiers, and Dynamic Resolution DOM-measuring.
+ * Priority: 
+ * 1. Style-Specific Override (e.g. "832x1216")
+ * 2. Developer Mode (Fixed tiny size)
+ * 3. Dynamic Resolution (DOM-measuring capped by Global Max)
+ * 4. Global Max Tier
  * 
  * @param {string} characterId 
+ * @param {Object} [styleObj] - The resolved style package for the character.
  * @returns {{ width: number, height: number }}
  */
-export function resolveDimensions(characterId) {
+export function resolveDimensions(characterId, styleObj = null) {
+    // 1. Style-Specific Resolution Override
+    if (styleObj?.resolutionOverride) {
+        const parts = String(styleObj.resolutionOverride).split('x');
+        if (parts.length === 2) {
+            const w = parseInt(parts[0]);
+            const h = parseInt(parts[1]);
+            if (!isNaN(w) && !isNaN(h)) return { width: w, height: h };
+        }
+    }
+
     const s = getSettings();
+    
+    // 2. Dev Mode
     if (s.devMode) return { width: DEV_IMAGE_WIDTH, height: DEV_IMAGE_HEIGHT };
     
     const tier = RESOLUTION_TIERS[s.maxResolution] || RESOLUTION_TIERS.MAX;
+    
+    // 3. Global Static Max Resolution
     if (!s.dynamicResolution) return tier;
 
-    // Measurement logic: find the card in the DOM to see its current display footprint
+    // 4. Dynamic Measurement Logic
     const el = document.querySelector(`.plz-portrait-card[data-id="${CSS.escape(characterId)}"]`);
     if (!el || el.clientWidth === 0) return tier; 
 
@@ -57,31 +78,36 @@ export function resolveDimensions(characterId) {
 }
 
 /**
- * Retrieves the style package for a character.
+ * Retrieves the complete render pipeline configuration (style package) for a character.
  * Checks for character-pinned styles, then the global default style.
  * 
  * @param {string} characterId 
- * @returns {{ template: string, loras: Array, negativePrompt: string }}
+ * @returns {Object} The expanded Style Package including engine, model, and overrides.
  */
 export function resolveStyle(characterId) {
     const meta = getMetaSettings();
     const lib = meta.styleLibrary;
     
-    const fallback = { 
-        template: getSettings().vnStyleSuffix || DEFAULT_VN_STYLE_SUFFIX, 
-        loras: [],
-        negativePrompt: ''
-    };
+    // Default fallback if library is missing or corrupt
+    const fallback = structuredClone(DEFAULT_STYLE_PACKAGE);
 
     if (lib) {
         const pin = state.chatCharacters[characterId]?.styleName;
-        const style = (pin && lib[pin]) ? lib[pin] : (meta.defaultStyleName && lib[meta.defaultStyleName]) ? lib[meta.defaultStyleName] : null;
+        const styleName = (pin && lib[pin]) 
+            ? pin 
+            : (meta.defaultStyleName && lib[meta.defaultStyleName]) ? meta.defaultStyleName : null;
         
+        const style = styleName ? lib[styleName] : null;
+
         if (style) {
             return {
-                template: style.template,
-                loras: style.loras || [],
-                negativePrompt: style.negativePrompt || ''
+                template:           style.template           || DEFAULT_VN_STYLE_SUFFIX,
+                loras:              style.loras              || [],
+                negativePrompt:     style.negativePrompt     || '',
+                engine:             style.engine             || DEFAULT_STYLE_PACKAGE.engine,
+                model:              style.model              || DEFAULT_STYLE_PACKAGE.model,
+                useLayerDiffuse:    !!style.useLayerDiffuse,
+                resolutionOverride: style.resolutionOverride || null
             };
         }
     }
