@@ -1,15 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/panel/models.js
- * @stamp {"utc":"2026-04-17T13:40:00.000Z"}
+ * @stamp {"utc":"2026-04-17T14:10:00.000Z"}
  * @architectural-role UI Logic (API Discovery)
  * @description
  * Handles dynamic discovery for image generation engines. 
  * 
  * Updated:
- * 1. Implemented dual-path fallback logic: Browser Direct -> Server Proxy.
- * 2. Added detailed debug logging for request start, responses, and failures.
- * 3. Maintains browser-direct fetch as priority to leverage local VPN for Civitai metadata.
- * 4. Integrated getRequestHeaders for fallback proxy authentication.
+ * 1. Removed strict API key checks that were blocking the discovery fallback.
+ * 2. Logic now attempts Browser Direct only if a key is found, then always tries Server Proxy.
+ * 3. Maintains detailed debug logging for both success and failure paths.
  *
  * @api-declaration
  * refreshModelDropdown(currentModel) -> Promise<void>
@@ -127,43 +126,41 @@ export async function refreshModelDropdown(currentModel) {
 
 /**
  * Fetches latest Checkpoints from Runware.
- * Attempts Browser Direct first, then falls back to Server Proxy.
+ * Attempts Browser Direct if key is found, then falls back to Server Proxy.
  */
 export async function fetchRunwareModels() {
     const apiKey = await findSecret(SECRET_RUNWARE);
-    if (!apiKey) {
-        log('Models', 'Runware model fetch skipped: No API key found.');
-        return;
-    }
-
-    const taskUUID = generateUUID();
-    const taskPayload = [{
-        taskType: "modelSearch",
-        taskUUID: taskUUID,
-        category: "checkpoint",
-        search: "realistic",
-        limit: 100
-    }];
 
     // --- Path A: Browser Direct (VPN check) ---
-    try {
-        log('Models', 'Path A: Fetching Runware checkpoints (Browser Direct)...');
-        const res = await fetch('https://api.runware.ai/v1', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-            body: JSON.stringify(taskPayload)
-        });
+    if (apiKey) {
+        try {
+            log('Models', 'Path A: Fetching Runware checkpoints (Browser Direct)...');
+            const taskUUID = generateUUID();
+            const res = await fetch('https://api.runware.ai/v1', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                body: JSON.stringify([{
+                    taskType: "modelSearch",
+                    taskUUID: taskUUID,
+                    category: "checkpoint",
+                    search: "realistic",
+                    limit: 100
+                }])
+            });
 
-        if (!res.ok) throw new Error(`Browser direct failed: ${res.status}`);
-        
-        const data = await res.json();
-        const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
-        
-        cachedRunwareModels = taskResult?.models || [];
-        log('Models', `Success (Browser): Cached ${cachedRunwareModels.length} checkpoints.`);
-        return;
-    } catch (err) {
-        log('Models', `Path A failed: ${err.message}. Attempting Path B (Server Proxy)...`);
+            if (!res.ok) throw new Error(`Browser direct failed: ${res.status}`);
+            
+            const data = await res.json();
+            const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
+            
+            cachedRunwareModels = taskResult?.models || [];
+            log('Models', `Success (Browser): Cached ${cachedRunwareModels.length} checkpoints.`);
+            return;
+        } catch (err) {
+            log('Models', `Path A failed: ${err.message}. Attempting Path B (Server Proxy)...`);
+        }
+    } else {
+        log('Models', 'Path A skipped: No API key found in browser vault. Attempting Path B (Server Proxy)...');
     }
 
     // --- Path B: Server Proxy (Fallback) ---
@@ -187,46 +184,46 @@ export async function fetchRunwareModels() {
 
 /**
  * Fetches top 200 LoRAs related to a specific search term.
- * Attempts Browser Direct first, then falls back to Server Proxy.
+ * Attempts Browser Direct if key is found, then falls back to Server Proxy.
  * 
  * @param {string} searchTerm - Query related to the active model (e.g. "flux", "pony")
  */
 export async function fetchRunwareLoras(searchTerm = "flux") {
     const apiKey = await findSecret(SECRET_RUNWARE);
-    if (!apiKey) {
-        throw new Error('Runware API key not found in vault.');
-    }
-
-    const taskUUID = generateUUID();
-    const taskPayload = [{
-        taskType: "modelSearch",
-        taskUUID: taskUUID,
-        category: "lora",
-        search: searchTerm,
-        limit: 200
-    }];
-
     let newModels = [];
 
     // --- Path A: Browser Direct (VPN check) ---
-    try {
-        log('Models', `Path A: Fetching LoRAs for "${searchTerm}" (Browser Direct)...`);
-        const res = await fetch('https://api.runware.ai/v1', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-            body: JSON.stringify(taskPayload)
-        });
+    if (apiKey) {
+        try {
+            log('Models', `Path A: Fetching LoRAs for "${searchTerm}" (Browser Direct)...`);
+            const taskUUID = generateUUID();
+            const res = await fetch('https://api.runware.ai/v1', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                body: JSON.stringify([{
+                    taskType: "modelSearch",
+                    taskUUID: taskUUID,
+                    category: "lora",
+                    search: searchTerm,
+                    limit: 200
+                }])
+            });
 
-        if (!res.ok) throw new Error(`Browser direct failed: ${res.status}`);
-        
-        const data = await res.json();
-        const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
-        newModels = taskResult?.models || [];
-        log('Models', `Path A Response: Found ${newModels.length} LoRAs.`);
-    } catch (err) {
-        log('Models', `Path A failed: ${err.message}. Attempting Path B (Server Proxy)...`);
-        
-        // --- Path B: Server Proxy (Fallback) ---
+            if (!res.ok) throw new Error(`Browser direct failed: ${res.status}`);
+            
+            const data = await res.json();
+            const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
+            newModels = taskResult?.models || [];
+            log('Models', `Path A Response: Found ${newModels.length} LoRAs.`);
+        } catch (err) {
+            log('Models', `Path A failed: ${err.message}. Attempting Path B (Server Proxy)...`);
+        }
+    } else {
+        log('Models', 'Path A skipped: No API key found in browser vault.');
+    }
+
+    // --- Path B: Server Proxy (Fallback) ---
+    if (newModels.length === 0) {
         try {
             log('Models', `Path B: Fetching LoRAs for "${searchTerm}" (Server Proxy)...`);
             const res = await fetch('/api/plugins/personalyze/runware-search', {
@@ -242,7 +239,6 @@ export async function fetchRunwareLoras(searchTerm = "flux") {
             log('Models', `Path B Response: Found ${newModels.length} LoRAs.`);
         } catch (serverErr) {
             error('Models', `CRITICAL: Both discovery paths for LoRA "${searchTerm}" failed.`, serverErr);
-            throw serverErr;
         }
     }
 

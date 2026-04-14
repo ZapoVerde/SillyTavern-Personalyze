@@ -19,7 +19,7 @@
  *     external_io: [PiAPI API, SillyTavern Secrets]
  */
 
-import { readSecret } from '../../src/endpoints/secrets.js';
+import { readSecret } from '../../../src/endpoints/secrets.js';
 import { 
     fetchChecked, 
     withRetry, 

@@ -1,25 +1,26 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/engines/listeners.js
- * @stamp {"utc":"2026-04-16T23:00:00.000Z"}
+ * @stamp {"utc":"2026-04-17T11:00:00.000Z"}
  * @architectural-role UI Logic (Engines Modal)
  * @description
  * Event bindings for the Engines configuration modal. 
  * 
- * Updated for Style-Specific Render Pipeline:
- * 1. Removed "Default Engine" selection logic.
- * 2. Updated runEngineTest to pass explicit parameters to fetchPreviewBlob.
- * 3. Pruned character-level engine/LoRA settings sync (moved to Global Styles).
+ * Updated:
+ * 1. Refactored updateEngineKeyStatuses to be async.
+ * 2. Implemented server-side key verification for custom keys (Runware, Fal, PiAPI)
+ *    to bypass SillyTavern's frontend filtering of custom secret keys.
+ * 3. Updated refreshEnginesUI to accommodate the async status update.
  *
  * @api-declaration
  * bindEnginesHandlers($modal) → void
- * refreshEnginesUI() → void
- * updateEngineKeyStatuses() → void
+ * refreshEnginesUI() → Promise<void>
+ * updateEngineKeyStatuses() → Promise<void>
  *
  * @contract
  *   assertions:
  *     purity: IO
  *     state_ownership: [settings]
- *     external_io:[DOM, writeSecret, fetchPreviewBlob, toastr, models.js]
+ *     external_io:[DOM, writeSecret, fetchPreviewBlob, toastr, models.js, getRequestHeaders]
  */
 
 import { getSettings, updateSetting } from '../../settings.js';
@@ -28,6 +29,7 @@ import { DEFAULT_TEST_PROMPT, SECRET_RUNWARE } from '../../defaults.js';
 import { log, error } from '../../utils/logger.js';
 import { pingPollinations, pingFal, pingPiAPI, pingRunware } from '../../utils/ping.js';
 import { writeSecret, secret_state } from '../../../../../secrets.js';
+import { getRequestHeaders } from '../../../../../../script.js';
 import { callPopup } from '../../../../../../script.js';
 import { getCachedModels } from '../panel/models.js';
 import { smartResize } from '../../utils/dom.js';
@@ -36,25 +38,42 @@ import { smartResize } from '../../utils/dom.js';
 
 /**
  * Updates all engine key status indicators in the engines modal.
+ * Uses a hybrid approach: secret_state for standard keys, plugin proxy for custom keys.
  */
-export function updateEngineKeyStatuses() {
-    const polState     = secret_state['api_key_pollinations'];
-    const falState     = secret_state['api_key_fal'];
-    const piapiState   = secret_state['api_key_piapi'];
-    const runwareState = secret_state[SECRET_RUNWARE];
+export async function updateEngineKeyStatuses() {
+    // 1. Pollinations check (Standard ST key, exists in secret_state)
+    const polState = secret_state['api_key_pollinations'];
+    const hasPol = Array.isArray(polState) && polState.length > 0;
 
-    const hasPol     = Array.isArray(polState)     && polState.length     > 0;
-    const hasFal     = Array.isArray(falState)     && falState.length     > 0;
-    const hasPiAPI   = Array.isArray(piapiState)   && piapiState.length   > 0;
-    const hasRunware = Array.isArray(runwareState) && runwareState.length > 0;
+    // 2. Custom Extension keys check (Do not exist in frontend secret_state)
+    const customKeys = ['api_key_fal', 'api_key_piapi', SECRET_RUNWARE];
+    let customStatus = {
+        'api_key_fal': false,
+        'api_key_piapi': false,
+        [SECRET_RUNWARE]: false
+    };
+
+    try {
+        const response = await fetch('/api/plugins/personalyze/keys-status', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ keys: customKeys })
+        });
+
+        if (response.ok) {
+            customStatus = await response.json();
+        }
+    } catch (err) {
+        error('EnginesModal', 'Failed to fetch key statuses from server proxy:', err);
+    }
 
     const okHtml  = '<span style="color:var(--SmartThemeQuoteColor,#28a745); font-size:0.9em;">● Key saved in vault</span>';
     const errHtml = '<span style="color:var(--SmartThemeErrorColor,#e05555); font-size:0.9em;">○ No key found</span>';
 
     $('#plz-eng-pol-key-status').html(hasPol ? okHtml : errHtml);
-    $('#plz-eng-fal-key-status').html(hasFal ? okHtml : errHtml);
-    $('#plz-eng-piapi-key-status').html(hasPiAPI ? okHtml : errHtml);
-    $('#plz-eng-runware-key-status').html(hasRunware ? okHtml : errHtml);
+    $('#plz-eng-fal-key-status').html(customStatus['api_key_fal'] ? okHtml : errHtml);
+    $('#plz-eng-piapi-key-status').html(customStatus['api_key_piapi'] ? okHtml : errHtml);
+    $('#plz-eng-runware-key-status').html(customStatus[SECRET_RUNWARE] ? okHtml : errHtml);
 }
 
 // ─── UI Refresh ───────────────────────────────────────────────────────────────
@@ -62,7 +81,7 @@ export function updateEngineKeyStatuses() {
 /**
  * Syncs all modal inputs to current settings.
  */
-export function refreshEnginesUI() {
+export async function refreshEnginesUI() {
     const s = getSettings();
 
     // 1. Availability Toggles
@@ -98,7 +117,7 @@ export function refreshEnginesUI() {
     $testArea.val(s.testPrompt ?? DEFAULT_TEST_PROMPT);
     smartResize($testArea[0]);
 
-    updateEngineKeyStatuses();
+    await updateEngineKeyStatuses();
 }
 
 // ─── Event Bindings ───────────────────────────────────────────────────────────
@@ -126,7 +145,7 @@ export function bindEnginesHandlers($modal) {
             const result = await writeSecret(secretName, key, label);
             if (result !== null) {
                 $(inputId).val('');
-                updateEngineKeyStatuses();
+                await updateEngineKeyStatuses();
                 if (window.toastr) window.toastr.success('API key saved to vault.');
             }
         } catch (err) { error('EnginesModal', 'Vault write failed:', err); }
@@ -170,7 +189,7 @@ export function bindEnginesHandlers($modal) {
         } catch (err) {
             $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${err.message.slice(0, 80)}</span>`);
             error('EnginesModal', 'Test failed:', err);
-        } finally { $btn.prop('disabled', false); }
+        } finally { $btn.prop('disabled', false).html(originalHtml); }
     }
 
     // 4. Settings Sync

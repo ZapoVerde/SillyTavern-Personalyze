@@ -20,7 +20,7 @@
  */
 
 import crypto from 'crypto';
-import { readSecret } from '../../src/endpoints/secrets.js';
+import { readSecret } from '../../../src/endpoints/secrets.js';
 import { fetchChecked, withRetry, FATAL_HTTP_CODES } from '../utils/network.js';
 
 /**
