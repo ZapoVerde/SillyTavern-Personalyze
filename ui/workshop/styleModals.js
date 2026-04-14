@@ -1,16 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleModals.js
- * @stamp {"utc":"2026-04-18T10:20:00.000Z"}
+ * @stamp {"utc":"2026-04-18T10:40:00.000Z"}
  * @architectural-role UI Logic (Global Style Modals)
  * @description
  * Manages specialized popups for editing a Global Style's technical render pipeline
  * and LoRA configuration. 
  * 
- * Updated for Parallel Manual Path:
- * 1. Added "Import Model" button to Pipeline modal with secondary AIR input popup.
- * 2. Added "Manual Entry" button to LoRA modal.
- * 3. Manual LoRAs are strictly associated with the current model AIR to ensure compatibility.
- * 4. Refined LoRA filtering logic to prioritize model-associated manual entries.
+ * Updated for Inline Manual Entry:
+ * 1. Replaced multi-step popups with direct Label/AIR inputs inside the main modals.
+ * 2. Manual models are added to settings and immediately auto-selected in the dropdown.
+ * 3. Manual LoRAs are registered and automatically appended to the active stack.
+ * 4. Maintained strict association between manual LoRAs and the active model AIR.
  * 
  * @api-declaration
  * openPipelineModal(styleObj) -> Promise<Object>
@@ -80,14 +80,22 @@ export async function openPipelineModal(styleObj) {
         </div>
 
         <div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                <label style="font-size:0.8em; opacity:0.6;">Model Selection</label>
-                <button id="plz-pop-model-import" class="menu_button ${draft.engine === 'runware' ? '' : 'plz-hidden'}" 
-                        style="font-size:0.7em; padding:1px 6px;">Import AIR</button>
-            </div>
+            <label style="display:block; font-size:0.8em; opacity:0.6; margin-bottom:4px;">Model Selection</label>
             <select id="plz-pop-model" class="text_pole" style="width:100%;">
                 ${buildModelOptions(draft.engine)}
             </select>
+        </div>
+
+        <div id="plz-pop-manual-model-container" class="${draft.engine === 'runware' ? '' : 'plz-hidden'}" 
+             style="background:rgba(0,0,0,0.15); border-radius:6px; padding:10px; border:1px solid var(--SmartThemeBorderColor);">
+            <div style="font-size:0.75em; opacity:0.6; margin-bottom:8px; font-weight:bold; text-transform:uppercase;">Manual Import</div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <input id="plz-pop-manual-model-label" type="text" class="text_pole" placeholder="Label (e.g. Fancy Pony)" style="width:100%; font-size:0.85em;" />
+                <div style="display:flex; gap:6px;">
+                    <input id="plz-pop-manual-model-air" type="text" class="text_pole" placeholder="AIR (e.g. xyz@123)" style="flex:1; font-size:0.85em;" />
+                    <button id="plz-pop-manual-model-btn" class="menu_button" style="padding:0 12px; font-size:0.85em;">Register</button>
+                </div>
+            </div>
         </div>
 
         <div>
@@ -119,22 +127,19 @@ export async function openPipelineModal(styleObj) {
             draft.model = defModel;
             $('#plz-pop-model').html(buildModelOptions(draft.engine));
             $('#plz-pop-transparency-container').toggleClass('plz-hidden', draft.engine !== 'runware');
-            $('#plz-pop-model-import').toggleClass('plz-hidden', draft.engine !== 'runware');
+            $('#plz-pop-manual-model-container').toggleClass('plz-hidden', draft.engine !== 'runware');
         });
 
-        $(document).on('click.plzPop', '#plz-pop-model-import', async function() {
-            const AIR_REGEX = /^[\w\-:]+[\w\-@.]+$/;
-            const label = await callPopup('<h3>Model Label</h3> e.g. "Fancy Pony"', 'input', '');
-            if (!label) return;
-            const air = await callPopup(`<h3>AIR for "${label}"</h3> e.g. "civitai:123@456"`, 'input', '');
-            if (!air || !AIR_REGEX.test(air)) {
-                if (window.toastr) window.toastr.warning('Invalid AIR format.');
-                return;
-            }
+        $(document).on('click.plzPop', '#plz-pop-manual-model-btn', function() {
+            const label = $('#plz-pop-manual-model-label').val().trim();
+            const air = $('#plz-pop-manual-model-air').val().trim();
+            if (!label || !air) return;
 
             saveManualModel(label, air);
             draft.model = air;
             $('#plz-pop-model').html(buildModelOptions(draft.engine)).val(air);
+            $('#plz-pop-manual-model-label, #plz-pop-manual-model-air').val('');
+            if (window.toastr) window.toastr.success(`Model registered: ${label}`);
         });
 
         $(document).on('change.plzPop', '#plz-pop-model', function() {
@@ -162,7 +167,7 @@ export async function openLoraModal(currentLoras, engine, selectedModelAir) {
 
     if (engine === 'runware') {
         const models = getCachedRunwareModels();
-        const activeModel = models.find(m => m.air === selectedModelAir);
+        const activeModel = models.find(m => (m.air || m.modelId) === selectedModelAir);
         const label = (activeModel?.label || "").toLowerCase();
         targetArch = (activeModel?.architecture || "").toLowerCase();
         
@@ -187,16 +192,13 @@ export async function openLoraModal(currentLoras, engine, selectedModelAir) {
             const air = l.air || l.modelId;
             if (!air || seen.has(air)) return false;
             
-            // Priority: Manual association
             if (l.modelAir === selectedModelAir) {
                 seen.add(air);
                 return true;
             }
 
-            // Architecture fallback
             if (targetArch) {
                 const loraArch = (l.architecture || '').toLowerCase();
-                // If LoRA has no architecture (defaults), we allow it. Otherwise, strictly filter.
                 if (loraArch) {
                     const match = (targetArch === 'sdxl') 
                         ? (loraArch === 'sdxl' || loraArch.includes('pony')) 
@@ -224,16 +226,30 @@ export async function openLoraModal(currentLoras, engine, selectedModelAir) {
 
     const archLabel = targetArch ? ` <small style="opacity:0.5;">(Filtered for ${targetArch.toUpperCase()})</small>` : '';
     const html = `
-    <div id="plz-lora-modal">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <div id="plz-lora-modal" style="display:flex; flex-direction:column; gap:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
             <h3 style="margin:0;">Manage LoRAs${archLabel}</h3>
             <div style="display:flex; gap:5px;">
-                <button id="plz-pop-lora-manual" class="menu_button" title="Manually link a LoRA to this model"><i class="fa-solid fa-link"></i> Manual</button>
-                <button id="plz-pop-lora-fetch" class="menu_button" title="Fetch related LoRAs"><i class="fa-solid fa-cloud-arrow-down"></i> Fetch ${searchKeyword.toUpperCase()}</button>
-                <button id="plz-pop-lora-add" class="menu_button"><i class="fa-solid fa-plus"></i> Add</button>
+                <button id="plz-pop-lora-fetch" class="menu_button" style="font-size:0.75em;" title="Fetch discovered LoRAs"><i class="fa-solid fa-cloud-arrow-down"></i> Fetch ${searchKeyword.toUpperCase()}</button>
+                <button id="plz-pop-lora-add" class="menu_button" style="font-size:0.75em;"><i class="fa-solid fa-plus"></i> Add Stack</button>
             </div>
         </div>
-        <div id="plz-pop-lora-list" style="max-height:300px; overflow-y:auto;">${renderList()}</div>
+
+        <div id="plz-pop-manual-lora-container" style="background:rgba(0,0,0,0.15); border-radius:6px; padding:10px; border:1px solid var(--SmartThemeBorderColor);">
+            <div style="font-size:0.72em; opacity:0.6; margin-bottom:8px; font-weight:bold; text-transform:uppercase;">Register New LoRA (Link to this Model)</div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <input id="plz-pop-manual-lora-label" type="text" class="text_pole" placeholder="LoRA Label" style="width:100%; font-size:0.85em;" />
+                <div style="display:flex; gap:6px;">
+                    <input id="plz-pop-manual-lora-air" type="text" class="text_pole" placeholder="AIR (e.g. civitai:123@456)" style="flex:1; font-size:0.85em;" />
+                    <button id="plz-pop-manual-lora-btn" class="menu_button" style="padding:0 12px; font-size:0.85em;">Link</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="plz-pop-lora-list" style="max-height:240px; overflow-y:auto; border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:5px;">
+            ${renderList()}
+        </div>
+        ${engine !== 'runware' ? '<p style="font-size:0.8em; opacity:0.6; margin-top:0;">Note: LoRAs are only supported by Runware.</p>' : ''}
     </div>`;
 
     return new Promise((resolve) => {
@@ -242,15 +258,17 @@ export async function openLoraModal(currentLoras, engine, selectedModelAir) {
             resolve(ok ? loras.filter(l => l.air) : null);
         });
 
-        $(document).on('click.plzLora', '#plz-pop-lora-manual', async function() {
-            const label = await callPopup('<h3>LoRA Label</h3> e.g. "Oil Paint Style"', 'input', '');
-            if (!label) return;
-            const air = await callPopup(`<h3>AIR for "${label}"</h3>`, 'input', '');
-            if (!air) return;
+        $(document).on('click.plzLora', '#plz-pop-manual-lora-btn', function() {
+            const label = $('#plz-pop-manual-lora-label').val().trim();
+            const air = $('#plz-pop-manual-lora-air').val().trim();
+            if (!label || !air) return;
 
             saveManualLora(label, air, selectedModelAir);
             loras.push({ air: air, weight: 0.8 });
+            
             $('#plz-pop-lora-list').html(renderList());
+            $('#plz-pop-manual-lora-label, #plz-pop-manual-lora-air').val('');
+            if (window.toastr) window.toastr.success(`LoRA linked to model.`);
         });
 
         $(document).on('click.plzLora', '#plz-pop-lora-fetch', async function() {
