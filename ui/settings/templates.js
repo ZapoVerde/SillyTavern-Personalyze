@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/templates.js
- * @stamp {"utc":"2026-04-18T23:45:00.000Z"}
+ * @stamp {"utc":"2026-04-18T23:55:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Pure functions for generating the Personalyze settings panel and forensic logs.
@@ -8,7 +8,8 @@
  * JSON pretty-printing, and debug bundle exports.
  * 
  * Updated: 
- * 1. Fixed Debug Bundle copy failure by using ID-based DOM lookup for clipboard text.
+ * 1. Implemented visual "Copied!" feedback for all clipboard actions.
+ * 2. Optimized onclick handlers to handle label swapping and color pulsing.
  * 
  * @api-declaration
  * buildPanelHTML(settings, meta, profileNames) -> string
@@ -42,6 +43,28 @@ export function buildLogModalHTML(pipelineLogs, workshopLogs, systemLogs) {
         }
     };
 
+    /** 
+     * Shared logic for copying text with a visual feedback pulse.
+     * @param {string} targetId - The ID of the element containing text to copy.
+     * @param {string} feedbackText - Text to show on the button (e.g. "✓ Copied").
+     */
+    const copyWithFeedback = (targetId, feedbackText = '✓ Copied') => {
+        return `
+            const btn = this;
+            const original = btn.innerHTML;
+            const text = document.getElementById('${targetId}').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                btn.innerHTML = '${feedbackText}';
+                btn.style.color = 'var(--SmartThemeQuoteColor)';
+                setTimeout(() => {
+                    btn.innerHTML = original;
+                    btn.style.color = '';
+                }, 2000);
+            });
+            event.stopPropagation();
+        `.replace(/\n/g, ' ').trim();
+    };
+
     /** Builds a code block with a dedicated copy button. */
     const forensicBlock = (label, rawData, color = 'var(--SmartThemeQuoteColor)') => {
         if (!rawData) return '';
@@ -51,7 +74,7 @@ export function buildLogModalHTML(pipelineLogs, workshopLogs, systemLogs) {
         <div style="margin-top:8px;">
             <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.72em; opacity:0.6; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.05em;">
                 <span style="color:${color}; font-weight:bold;">${label}</span>
-                <button onclick="navigator.clipboard.writeText(document.getElementById('${id}').textContent); event.stopPropagation();" 
+                <button onclick="${copyWithFeedback(id, 'Copied!')}" 
                         class="menu_button" style="font-size:0.9em; padding:1px 6px;">Copy</button>
             </div>
             <pre id="${id}" style="font-family:monospace; font-size:0.75em; background:rgba(0,0,0,0.3); padding:8px; border-radius:4px; max-height:250px; overflow:auto; margin:0; border:1px solid rgba(255,255,255,0.05); white-space:pre-wrap; word-break:break-all;">${escapeHtml(content)}</pre>
@@ -64,8 +87,6 @@ export function buildLogModalHTML(pipelineLogs, workshopLogs, systemLogs) {
             const calls = turn.calls.map(c => {
                 const status = c.error ? `<span style="color:var(--SmartThemeErrorColor);">✗ FAIL</span>` : `<span style="color:var(--SmartThemeQuoteColor);">✓ OK</span>`;
                 
-                // INDUSTRIAL FIX: Use hidden DOM elements to store bundle text.
-                // Inline Javascript template literals in 'onclick' attributes break on JSON quotes/newlines.
                 const bundleId = `plz-bundle-v-${_copyId++}`;
                 const debugBundleText = `--- DEBUG BUNDLE: ${c.label} ---\n\nREQUEST:\n${prettyPrint(c.requestBundle || c.prompt)}\n\nRESPONSE:\n${prettyPrint(c.responseDocument || c.response)}${c.error ? `\n\nERROR:\n${c.error}` : ''}`;
 
@@ -78,9 +99,8 @@ export function buildLogModalHTML(pipelineLogs, workshopLogs, systemLogs) {
                         </div>
                         <div style="display:flex; align-items:center; gap:10px;">
                             ${status}
-                            <!-- Hidden source for the copy command to ensure valid JS string handling -->
                             <div id="${bundleId}" style="display:none;">${escapeHtml(debugBundleText)}</div>
-                            <button onclick="navigator.clipboard.writeText(document.getElementById('${bundleId}').textContent); event.stopPropagation();" 
+                            <button onclick="${copyWithFeedback(bundleId, '✓ Copied')}" 
                                     class="menu_button" style="font-size:0.75em; padding:1px 8px;" title="Copy Full Request/Response Bundle">Debug Bundle</button>
                         </div>
                     </summary>
