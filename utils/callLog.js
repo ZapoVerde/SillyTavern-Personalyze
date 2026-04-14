@@ -1,46 +1,40 @@
 /**
  * @file data/default-user/extensions/personalyze/utils/callLog.js
- * @stamp {"utc":"2026-04-06T00:00:00.000Z"}
- * @architectural-role Utility (In-Memory Log)
+ * @stamp {"utc":"2026-04-18T15:00:00.000Z"}
+ * @architectural-role Utility (Forensic Flight Recorder)
  * @description
- * Rolling in-memory logs for the two sources of LLM calls in PersonaLyze.
+ * Rolling in-memory logs for all extension network traffic. 
+ * Implements the Forensic Observability Protocol by mirroring full request/response 
+ * documents across three distinct buffers.
  *
- * PIPELINE store — last 4 pipeline runs (= 2 full user↔AI turn pairs).
- *   Opened by startTurn().  Filled by every dispatch() call that fires
- *   during a pipeline execution.
- *
- * WORKSHOP store — last 3 workshop queries (Anchor Scan, etc.).
- *   Opened by startWorkshopTurn().  Filled by every dispatch() call that
- *   fires during a user-initiated workshop action.
- *
- * logCall() routes to whichever store was most recently opened.  A 10-second
- * stale-fallback auto-creates a new Standalone entry in the active store when
- * a call arrives long after the last startTurn/startWorkshopTurn, preventing
- * workshop calls from silently appending to an old pipeline turn.
+ * PIPELINE store  — last 4 narrative turns (2 full message pairs).
+ * WORKSHOP store  — last 3 user-initiated manual actions (Scans/Extractions).
+ * SYSTEM store    — last 5 discovery/infrastructure events (Model fetching/Pings).
  *
  * @api-declaration
- * startTurn(label)                            → void   (pipeline)
- * startWorkshopTurn(label)                    → void   (workshop)
- * logCall(label, prompt, response, errorMsg)  → void   (routes to active store)
- * logPatchLast(response, errorMsg)            → void   (patches the most recent call entry)
- * getLogs()                                   → TurnRecord[]   (pipeline, oldest-first)
- * getWorkshopLogs()                           → TurnRecord[]   (workshop, oldest-first)
+ * startTurn(label)                             → void
+ * startWorkshopTurn(label)                     → void
+ * startSystemTurn(label)                       → void
+ * logCall(label, prompt, resp, err, reqBundle) → void
+ * logPatchLast(resp, err, meta, respDoc)       → void
+ * getLogs()                                    → TurnRecord[]
+ * getWorkshopLogs()                            → TurnRecord[]
+ * getSystemLogs()                              → TurnRecord[]
  *
  * @contract
  *   assertions:
- *     purity: Stateful (session-scoped, in-memory only)
- *     state_ownership: [_pipelineTurns, _workshopTurns, _target, _turnCounter]
+ *     purity: Stateful (In-memory session only)
+ *     state_ownership: [_pipelineTurns, _workshopTurns, _systemTurns, _target, _turnCounter]
  *     external_io: []
  */
 
-// Each pipeline run = one AI response = one half of a user↔AI pair.
-// Keeping 4 runs covers the last 2 full turn pairs.
 const MAX_PIPELINE_TURNS = 4;
 const MAX_WORKSHOP_TURNS = 3;
+const MAX_SYSTEM_TURNS   = 5;
 
 let _turnCounter = 0;
 
-/** Which store logCall() currently routes to: 'pipeline' | 'workshop'. */
+/** Which store logCall() currently routes to: 'pipeline' | 'workshop' | 'system'. */
 let _target = 'pipeline';
 
 /** ID of the turn that is currently receiving logCall() entries. */
@@ -52,6 +46,9 @@ let _pipelineTurns = [];
 /** @type {{ id: number, label: string, timestamp: number, calls: object[] }[]} */
 let _workshopTurns = [];
 
+/** @type {{ id: number, label: string, timestamp: number, calls: object[] }[]} */
+let _systemTurns = [];
+
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
 function _openTurn(label, store, maxTurns) {
@@ -61,103 +58,105 @@ function _openTurn(label, store, maxTurns) {
     if (store.length > maxTurns) store.shift();
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+// ─── Public API: Turn Lifecycle ───────────────────────────────────────────────
 
-/**
- * Opens a new pipeline log group.  Routes subsequent logCall() entries to the
- * pipeline store until another start* call is made.
- * Evicts the oldest entry once the buffer exceeds MAX_PIPELINE_TURNS (4).
- * @param {string} label  e.g. "Pipeline"
- */
+/** Opens a new pipeline log group. */
 export function startTurn(label) {
     _target = 'pipeline';
     _openTurn(label, _pipelineTurns, MAX_PIPELINE_TURNS);
 }
 
-/**
- * Opens a new workshop log group.  Routes subsequent logCall() entries to the
- * workshop store until another start* call is made.
- * Evicts the oldest entry once the buffer exceeds MAX_WORKSHOP_TURNS (3).
- * @param {string} label  e.g. "Anchor Scan"
- */
+/** Opens a new workshop log group. */
 export function startWorkshopTurn(label) {
     _target = 'workshop';
     _openTurn(label, _workshopTurns, MAX_WORKSHOP_TURNS);
 }
 
+/** Opens a new system discovery log group. */
+export function startSystemTurn(label) {
+    _target = 'system';
+    _openTurn(label, _systemTurns, MAX_SYSTEM_TURNS);
+}
+
+// ─── Public API: Data Entry ───────────────────────────────────────────────────
+
 /**
- * Records one LLM call under the current turn in the active store.
- * If no matching turn exists, or the last call in the current turn is more
- * than 10 seconds old (stale-fallback), a new Standalone entry is auto-created
- * in the active store.
- *
- * @param {string}      label     e.g. 'SubjectMatch', 'Combined', 'AnchorScan'
- * @param {string}      prompt    The full prompt string that was sent.
- * @param {string|null} response  Raw LLM response text, or null on failure.
- * @param {string|null} errorMsg  Error message string, or null on success.
+ * Records one technical transaction.
+ * 
+ * @param {string}      label         The specific stage (e.g. 'SubjectDetect').
+ * @param {string}      prompt        Legacy prompt string or summary.
+ * @param {any}         response      Raw result or filename identifier.
+ * @param {string|null} errorMsg      Human-readable error summary.
+ * @param {object|null} requestBundle Mirror of the full JSON payload sent.
  */
-export function logCall(label, prompt, response, errorMsg) {
-    const store    = _target === 'workshop' ? _workshopTurns : _pipelineTurns;
-    const maxTurns = _target === 'workshop' ? MAX_WORKSHOP_TURNS : MAX_PIPELINE_TURNS;
+export function logCall(label, prompt, response, errorMsg, requestBundle = null) {
+    const storeMap = {
+        'pipeline': { store: _pipelineTurns, max: MAX_PIPELINE_TURNS },
+        'workshop': { store: _workshopTurns, max: MAX_WORKSHOP_TURNS },
+        'system':   { store: _systemTurns,   max: MAX_SYSTEM_TURNS }
+    };
+    
+    const { store, max } = storeMap[_target] || storeMap.pipeline;
 
     let turn = store.find(t => t.id === _currentTurnId);
 
     // Stale-fallback: auto-open a Standalone turn if the active one is absent
-    // or its last call is more than 10 s old.
+    // or its last call is more than 15s old.
     const lastCallTs = turn?.calls.at(-1)?.timestamp ?? 0;
-    if (!turn || (turn.calls.length > 0 && Date.now() - lastCallTs > 10_000)) {
+    if (!turn || (turn.calls.length > 0 && Date.now() - lastCallTs > 15_000)) {
         _turnCounter++;
         _currentTurnId = _turnCounter;
         store.push({ id: _currentTurnId, label: 'Standalone', timestamp: Date.now(), calls: [] });
-        if (store.length > maxTurns) store.shift();
+        if (store.length > max) store.shift();
         turn = store[store.length - 1];
     }
 
     turn.calls.push({
         label,
-        prompt:    prompt    ?? '',
-        response:  response  ?? null,
-        error:     errorMsg  ?? null,
-        meta:      null,
-        timestamp: Date.now(),
+        prompt:        prompt        ?? '',
+        response:      response      ?? null,
+        error:         errorMsg      ?? null,
+        requestBundle: requestBundle ? structuredClone(requestBundle) : null,
+        responseDocument: null,
+        meta:          null,
+        timestamp:     Date.now(),
     });
 }
 
 /**
- * Patches the most recently added call entry in the active store.
- * Used to fill in async results (e.g. image filename or error) after the
- * initial logCall() was made before the async work completed.
- *
- * @param {string|null} response  The completed response (e.g. filename).
- * @param {string|null} errorMsg  Error message, or null on success.
+ * Patches the most recent entry with forensic response data.
+ * 
+ * @param {any}         response          The completed result.
+ * @param {string|null} errorMsg          Error summary.
+ * @param {object|null} meta              Task-specific metadata.
+ * @param {object|null} responseDocument  Mirror of the full response body/JSON.
  */
-/**
- * @param {string|null} response
- * @param {string|null} errorMsg
- * @param {object|null} [meta]  Optional structured metadata (e.g. PiAPI task summary).
- */
-export function logPatchLast(response, errorMsg, meta = undefined) {
-    const store = _target === 'workshop' ? _workshopTurns : _pipelineTurns;
+export function logPatchLast(response, errorMsg, meta = undefined, responseDocument = undefined) {
+    const store = (_target === 'workshop') ? _workshopTurns : (_target === 'system' ? _systemTurns : _pipelineTurns);
     const turn  = store.find(t => t.id === _currentTurnId);
     if (!turn || !turn.calls.length) return;
+    
     const last = turn.calls[turn.calls.length - 1];
-    if (response !== undefined) last.response = response;
-    if (errorMsg !== undefined) last.error    = errorMsg;
-    if (meta     !== undefined) last.meta     = meta;
+    
+    if (response !== undefined)         last.response = response;
+    if (errorMsg !== undefined)         last.error    = errorMsg;
+    if (meta !== undefined)             last.meta     = meta;
+    if (responseDocument !== undefined) last.responseDocument = responseDocument ? structuredClone(responseDocument) : null;
 }
 
-/**
- * Returns a shallow copy of the pipeline turn buffer (oldest first).
- * @returns {{ id: number, label: string, timestamp: number, calls: object[] }[]}
- */
+// ─── Public API: Retrieval ────────────────────────────────────────────────────
+
+/** Returns pipeline turns (oldest first). */
 export function getLogs() {
     return [..._pipelineTurns];
 }
 
-/**
- * Returns a shallow copy of the workshop turn buffer (oldest first).
- * @returns {{ id: number, label: string, timestamp: number, calls: object[] }[]}
- */
+/** Returns manual workshop turns (oldest first). */
 export function getWorkshopLogs() {
     return [..._workshopTurns];
+}
+
+/** Returns system discovery turns (oldest first). */
+export function getSystemLogs() {
+    return [..._systemTurns];
 }

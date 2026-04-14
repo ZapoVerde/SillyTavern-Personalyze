@@ -1,10 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/utils/network.js
- * @stamp {"utc":"2026-04-16T12:20:00.000Z"}
+ * @stamp {"utc":"2026-04-18T14:30:00.000Z"}
  * @architectural-role Server-Side Utility
  * @description
  * Shared networking utilities for PersonaLyze server-side components.
- * Provides exponential backoff retry logic and concurrency management for external APIs.
+ * Provides exponential backoff retry logic and enhanced forensic error extraction
+ * to ensure API failure documents are preserved for the Call Logs.
  * 
  * @api-declaration
  * piapiAcquire() -> Promise<void>
@@ -51,7 +52,7 @@ export function piapiRelease() {
     }
 }
 
-// ─── Retry Utility ────────────────────────────────────────────────────────────
+// ─── Forensic Networking ──────────────────────────────────────────────────────
 
 /** Network error codes that indicate a transient connectivity failure. */
 const TRANSIENT_NET_CODES = new Set(['EAI_AGAIN', 'ECONNRESET', 'ETIMEDOUT']);
@@ -63,7 +64,8 @@ const MAX_RETRY_ATTEMPTS = 5;
 const RETRY_BASE_MS      = 100;
 
 /**
- * Performs a fetch and throws a typed error for non-ok HTTP responses.
+ * Performs a fetch and extracts the response body on failure for forensic audit.
+ * Implements the "Fail-Loud" principle.
  * 
  * @param {string} url
  * @param {object} [options]
@@ -71,18 +73,40 @@ const RETRY_BASE_MS      = 100;
  */
 export async function fetchChecked(url, options) {
     const response = await fetch(url, options);
+    
     if (!response.ok) {
-        const text = await response.text();
-        const err = new Error(`HTTP ${response.status}: ${text.slice(0, 300)}`);
-        err.httpStatus   = response.status;
-        err.responseText = text;
+        let bodyText = '';
+        let bodyJSON = null;
+
+        try {
+            // Attempt to capture the raw error document for the forensic logs
+            bodyText = await response.text();
+            try {
+                bodyJSON = JSON.parse(bodyText);
+            } catch (e) {
+                // Not JSON, fallback to raw text already captured
+            }
+        } catch (err) {
+            bodyText = `[Could not read response body: ${err.message}]`;
+        }
+
+        const errorLabel = bodyJSON?.error || bodyJSON?.message || bodyText.slice(0, 300);
+        const err = new Error(`HTTP ${response.status}: ${errorLabel}`);
+        
+        // Hydrate error with forensic data
+        err.httpStatus = response.status;
+        err.responseText = bodyText;
+        err.responseJSON = bodyJSON;
+        
         throw err;
     }
+    
     return response;
 }
 
 /**
  * Executes an async task with exponential backoff retry on transient failures.
+ * Preserves forensic error documents across retry attempts.
  *
  * @param {() => Promise<any>} fn    - Async task to execute.
  * @param {string}             label - Tag for console warnings.
@@ -97,6 +121,8 @@ export async function withRetry(fn, label) {
             lastErr = err;
 
             const httpStatus = err.httpStatus;
+            
+            // Do not retry client errors or auth failures
             if (httpStatus && FATAL_HTTP_CODES.has(httpStatus)) throw err;
 
             const netCode  = err.cause?.code || err.code;
@@ -116,8 +142,14 @@ export async function withRetry(fn, label) {
                 await new Promise(r => setTimeout(r, delay));
             } else {
                 console.warn(`[PLZ:${label}] All ${MAX_RETRY_ATTEMPTS} attempts failed. Last error: ${reason}`);
+                
+                // Re-wrap to indicate exhaustion while preserving the forensic body
                 const exhausted = new Error(`${label} failed after ${MAX_RETRY_ATTEMPTS} attempts: ${lastErr.message}`);
                 exhausted.exhausted = true;
+                exhausted.httpStatus = lastErr.httpStatus;
+                exhausted.responseText = lastErr.responseText;
+                exhausted.responseJSON = lastErr.responseJSON;
+                
                 throw exhausted;
             }
         }

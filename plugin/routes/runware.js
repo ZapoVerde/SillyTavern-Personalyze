@@ -1,14 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/routes/runware.js
- * @stamp {"utc":"2026-04-16T19:40:00.000Z"}
+ * @stamp {"utc":"2026-04-18T18:20:00.000Z"}
  * @architectural-role Server-Side Route Handler
  * @description
  * Implements proxy routes for the Runware.ai API. 
- * Supports high-performance image inference with native transparency (LayerDiffuse),
- * visual preset LoRAs, and standalone background removal.
- * 
- * Updated:
- * 1. Added /runware-search route to handle dynamic model and LoRA discovery.
+ * Updated to support Schema-Driven parameters: the generate route now 
+ * dynamically spreads engineParams into the inference task.
  * 
  * @api-declaration
  * registerRunwareRoutes(router) -> void
@@ -41,11 +38,10 @@ export function registerRunwareRoutes(router) {
 
             const taskUUID = crypto.randomUUID();
             
-            // Construct Runware Model Search Task
             const task = {
                 taskType: "modelSearch",
                 taskUUID: taskUUID,
-                category: category || "checkpoint", // "checkpoint" or "lora"
+                category: category || "checkpoint",
                 limit: limit || 100,
             };
 
@@ -88,27 +84,36 @@ export function registerRunwareRoutes(router) {
     // ─── Runware: Image Generation ────────────────────────────────────────────
     router.post('/runware-generate', async (req, res) => {
         try {
-            const { positivePrompt, negativePrompt, model, width, height, seed, loras, useLayerDiffuse } = req.body;
+            const { 
+                positivePrompt, 
+                negativePrompt, 
+                model, 
+                width, 
+                height, 
+                seed, 
+                loras, 
+                useLayerDiffuse,
+                engineParams 
+            } = req.body;
+            
             const apiKey = readSecret(req.user.directories, 'api_key_runware');
 
             if (!apiKey) {
                 return res.status(401).json({ error: 'Runware API key not configured.' });
             }
 
-            // Runware requires a strict UUID v4 for taskUUID
             const taskUUID = crypto.randomUUID();
             
-            // Server-side prompt enhancement for better isolation during LayerDiffuse
             const finalPrompt = useLayerDiffuse 
                 ? `${positivePrompt}, transparent background, isolated on white background`
                 : positivePrompt;
 
-            // Construct Runware Task Object
+            // Construct Base Task Object
             const task = {
                 taskType: "imageInference",
                 taskUUID: taskUUID,
                 positivePrompt: finalPrompt,
-                model: model || "runware:101@1",
+                model: model || "runware:100@1",
                 width: width || 512,
                 height: height || 768,
                 numberResults: 1,
@@ -117,10 +122,12 @@ export function registerRunwareRoutes(router) {
                 seed: seed || -1,
                 loras: loras || [], 
                 layerDiffuse: !!useLayerDiffuse, 
-                checkNSFW: false
+                checkNSFW: false,
+                // DYNAMIC BRIDGE: Spread all schema-driven parameters directly into the task.
+                // This allows the frontend to send "steps", "guidance", "scheduler", etc.
+                ...(engineParams || {})
             };
 
-            // Industrial Fix: Only include negativePrompt if it has content.
             if (negativePrompt && String(negativePrompt).trim().length > 0) {
                 task.negativePrompt = String(negativePrompt).trim();
             }
@@ -137,7 +144,9 @@ export function registerRunwareRoutes(router) {
             const data = await response.json();
             
             if (data.error) {
-                throw new Error(`Runware API Error: ${data.errorMessage || data.error}`);
+                const err = new Error(`Runware API Error: ${data.errorMessage || data.error}`);
+                err.responseDocument = data;
+                throw err;
             }
 
             const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
@@ -147,7 +156,6 @@ export function registerRunwareRoutes(router) {
                 throw new Error('Runware failed to return an image URL for the generated task.');
             }
 
-            // Step 2: Fetch binary from CDN
             const imgRes = await withRetry(() => fetchChecked(imageUrl), 'RunwareCDN');
 
             res.setHeader('Content-Type', useLayerDiffuse ? 'image/png' : 'image/jpeg');
@@ -158,10 +166,11 @@ export function registerRunwareRoutes(router) {
                 const fatal = FATAL_HTTP_CODES.has(err.httpStatus);
                 return res.status(err.httpStatus).json({ 
                     error: err.responseText || err.message,
-                    fatal 
+                    fatal,
+                    responseDocument: err.responseDocument
                 });
             }
-            res.status(500).json({ error: err.message });
+            res.status(500).json({ error: err.message, responseDocument: err.responseDocument });
         }
     });
 

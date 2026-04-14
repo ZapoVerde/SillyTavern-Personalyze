@@ -1,14 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/panel/models.js
- * @stamp {"utc":"2026-04-18T10:10:00.000Z"}
+ * @stamp {"utc":"2026-04-18T18:00:00.000Z"}
  * @architectural-role UI Logic (API Discovery)
  * @description
  * Handles dynamic discovery and manual registry management for image generation engines. 
- * 
- * Updated:
- * 1. Refactored getCachedRunwareModels to merge Defaults, Session Discovery, and Manual Registry.
- * 2. Added saveManualModel and saveManualLora for persistent user-defined AIRs.
- * 3. LoRAs saved manually are associated with a specific modelAir to ensure compatibility.
+ * Updated to implement the Forensic Observability Standard: all background discovery
+ * traffic is mirrored to the System Log.
  *
  * @api-declaration
  * refreshModelDropdown(currentModel) -> Promise<void>
@@ -23,7 +20,7 @@
  *   assertions:
  *     purity: IO / Side-effect
  *     state_ownership: [cachedModels, cachedRunwareModels]
- *     external_io: [fetch (Direct & Proxy), settings.js, secrets.js, SillyTavern script.js]
+ *     external_io: [fetch, callLog.js, settings.js, secrets.js]
  */
 
 import { findSecret } from '../../../../../secrets.js';
@@ -36,20 +33,15 @@ import {
 } from '../../defaults.js';
 import { log, error } from '../../utils/logger.js';
 import { updateSetting, getSettings } from '../../settings.js';
+import { startSystemTurn, logCall, logPatchLast } from '../../utils/callLog.js';
 
-/**
- * Global cache of fetched Pollinations models.
- */
+/** Session cache of fetched Pollinations models. */
 let cachedModels = [...POLLINATIONS_MODELS];
 
-/**
- * Session cache of fetched Runware models (checkpoints).
- */
+/** Session cache of fetched Runware models (checkpoints). */
 let cachedRunwareModels = [];
 
-/**
- * Returns a UUID v4. 
- */
+/** Returns a UUID v4. */
 function generateUUID() {
     try {
         if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -61,18 +53,12 @@ function generateUUID() {
     });
 }
 
-/**
- * Returns the latest known list of Pollinations models.
- */
+/** Returns the latest known list of Pollinations models. */
 export function getCachedModels() {
     return cachedModels;
 }
 
-/**
- * Returns a merged list of Runware models from all sources.
- * Priority: 1. Manual Registry (Settings), 2. Session Discovery, 3. Hardcoded Defaults.
- * @returns {Object[]} [{ label, air }]
- */
+/** Returns a merged list of Runware models from all sources. */
 export function getCachedRunwareModels() {
     const s = getSettings();
     const manual = s.runwareModels || [];
@@ -86,222 +72,129 @@ export function getCachedRunwareModels() {
                 seen.add(air);
                 merged.push({ 
                     label: m.label || m.name || air, 
-                    air 
+                    air,
+                    architecture: m.architecture || 'unknown'
                 });
             }
         }
     };
 
-    // Add in order of priority to ensure first-seen (manual) labels are used
     add(manual);
     add(cachedRunwareModels);
     add(RUNWARE_MODELS);
-    
     return merged;
 }
 
-/**
- * Persistently saves a manual model AIR to the user settings.
- */
 export function saveManualModel(label, air) {
     const s = getSettings();
     const current = s.runwareModels || [];
     if (current.some(m => m.air === air)) return;
-    
-    updateSetting('runwareModels', [...current, { label, air }]);
-    log('Models', `Manual Model added: ${label} (${air})`);
+    updateSetting('runwareModels', [...current, { label, air, architecture: 'unknown' }]);
 }
 
-/**
- * Persistently saves a manual LoRA AIR to the user settings, associated with a model.
- */
 export function saveManualLora(label, air, modelAir) {
     const s = getSettings();
     const current = s.runwareLoras || [];
-    // Check if exactly this combo exists
     if (current.some(l => l.air === air && l.modelAir === modelAir)) return;
-    
-    const newItem = { label, air, modelAir };
-    updateSetting('runwareLoras', [...current, newItem]);
-    log('Models', `Manual LoRA added for model ${modelAir}: ${label} (${air})`);
+    updateSetting('runwareLoras', [...current, { label, air, modelAir }]);
 }
 
-/**
- * Fetches latest models from Pollinations and updates the Engines Modal dropdown.
- */
+/** Fetches latest models from Pollinations with forensic logging. */
 export async function refreshModelDropdown(currentModel) {
-    const selector = '#plz-eng-pol-model';
-    const $select  = $(selector);
+    startSystemTurn('Pollinations Discovery');
+    logCall('FetchModels', 'Requesting model list from Pollinations API', null, null, { url: `${POLLINATIONS_BASE_URL}/image/models` });
 
     try {
-        log('Models', `Refreshing Pollinations models (Current: ${currentModel})...`);
         const response = await fetch(`${POLLINATIONS_BASE_URL}/image/models`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
         const data = await response.json();
-        let models = [];
+        logPatchLast('Success', null, null, data);
 
-        if (Array.isArray(data)) {
-            models = data.map(m => typeof m === 'object' ? (m.id || m.name) : m).filter(Boolean);
-        } else if (data.data && Array.isArray(data.data)) {
-            models = data.data.map(m => typeof m === 'object' ? (m.id || m.name) : m).filter(Boolean);
-        }
-
-        if (models.length === 0) {
-            log('Models', 'Empty model list received, falling back to defaults.');
-            models = [...POLLINATIONS_MODELS];
-        }
-
-        if (currentModel && !models.includes(currentModel)) {
-            models.unshift(currentModel);
-        }
-
-        cachedModels = [...new Set(models)];
-
-        if ($select.length) {
-            const options = cachedModels
-                .map(m => `<option value="${m}" ${m === currentModel ? 'selected' : ''}>${m}</option>`)
-                .join('');
-
-            $select.html(options);
-            $select.val(currentModel);
-        }
-
-        log('Models', `Discovered ${cachedModels.length} models from Pollinations API.`);
-    } catch (err) {
-        log('Models', 'Pollinations discovery failed, utilizing fallback list.', err);
+        let models = Array.isArray(data) ? data.map(m => m.id || m.name || m) : (data.data || []);
+        if (currentModel && !models.includes(currentModel)) models.unshift(currentModel);
         
-        if ($select.length && $select.find('option').length === 0) {
-            const fallback = [...new Set([...POLLINATIONS_MODELS, currentModel])].filter(Boolean);
-            $select.html(fallback.map(m => `<option value="${m}">${m}</option>`).join(''));
-            $select.val(currentModel);
+        cachedModels = [...new Set(models.filter(Boolean))];
+        const $select = $('#plz-eng-pol-model');
+        if ($select.length) {
+            $select.html(cachedModels.map(m => `<option value="${m}" ${m === currentModel ? 'selected' : ''}>${m}</option>`).join(''));
         }
+    } catch (err) {
+        logPatchLast(null, `Discovery Failed: ${err.message}`, null, null);
     }
 }
 
-/**
- * Fetches latest Checkpoints from Runware.
- */
+/** Fetches Runware Checkpoints with forensic logging. */
 export async function fetchRunwareModels() {
     const apiKey = await findSecret(SECRET_RUNWARE);
+    const reqBundle = { category: 'checkpoint', search: 'realistic', limit: 100 };
+    
+    startSystemTurn('Runware Model Discovery');
+    logCall('FetchCheckpoints', 'Requesting checkpoint list from Runware', null, null, reqBundle);
 
-    if (apiKey) {
-        try {
-            log('Models', 'Path A: Fetching Runware checkpoints (Browser Direct)...');
+    try {
+        let data;
+        if (apiKey) {
             const taskUUID = generateUUID();
             const res = await fetch('https://api.runware.ai/v1', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-                body: JSON.stringify([{
-                    taskType: "modelSearch",
-                    taskUUID: taskUUID,
-                    category: "checkpoint",
-                    search: "realistic",
-                    limit: 100
-                }])
+                body: JSON.stringify([{ ...reqBundle, taskType: "modelSearch", taskUUID }])
             });
-
-            if (!res.ok) throw new Error(`Browser direct failed: ${res.status}`);
-            
-            const data = await res.json();
-            const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
-            
-            cachedRunwareModels = taskResult?.models || [];
-            log('Models', `Success (Browser): Cached ${cachedRunwareModels.length} checkpoints.`);
-            return;
-        } catch (err) {
-            log('Models', `Path A failed: ${err.message}. Attempting Path B (Server Proxy)...`);
+            const raw = await res.json();
+            data = raw.data?.find(t => t.taskUUID === taskUUID)?.models || [];
+        } else {
+            const res = await fetch('/api/plugins/personalyze/runware-search', {
+                method: 'POST', headers: getRequestHeaders(),
+                body: JSON.stringify(reqBundle),
+            });
+            const raw = await res.json();
+            data = raw.models || [];
         }
-    }
-
-    try {
-        log('Models', 'Path B: Fetching Runware checkpoints (Server Proxy)...');
-        const res = await fetch('/api/plugins/personalyze/runware-search', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ category: 'checkpoint', search: 'realistic', limit: 100 }),
-        });
-
-        if (!res.ok) throw new Error(`Server proxy failed: ${res.status}`);
         
-        const { models } = await res.json();
-        cachedRunwareModels = models || [];
-        log('Models', `Success (Server): Cached ${cachedRunwareModels.length} checkpoints.`);
+        cachedRunwareModels = data;
+        logPatchLast('Success', null, null, data);
     } catch (err) {
-        error('Models', 'CRITICAL: Both discovery paths for Runware checkpoints failed.', err);
+        logPatchLast(null, `Discovery Failed: ${err.message}`, null, null);
     }
 }
 
-/**
- * Fetches top 200 LoRAs related to a specific search term.
- * 
- * @param {string} searchTerm - Query related to the active model (e.g. "flux", "pony")
- */
+/** Fetches Runware LoRAs with forensic logging. */
 export async function fetchRunwareLoras(searchTerm = "flux") {
     const apiKey = await findSecret(SECRET_RUNWARE);
-    let newModels = [];
+    const reqBundle = { category: 'lora', search: searchTerm, limit: 200 };
 
-    if (apiKey) {
-        try {
-            log('Models', `Path A: Fetching LoRAs for "${searchTerm}" (Browser Direct)...`);
+    startSystemTurn('Runware LoRA Discovery');
+    logCall('FetchLoras', `Searching LoRAs for keyword: ${searchTerm}`, null, null, reqBundle);
+
+    try {
+        let newModels = [];
+        if (apiKey) {
             const taskUUID = generateUUID();
             const res = await fetch('https://api.runware.ai/v1', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-                body: JSON.stringify([{
-                    taskType: "modelSearch",
-                    taskUUID: taskUUID,
-                    category: "lora",
-                    search: searchTerm,
-                    limit: 200
-                }])
+                body: JSON.stringify([{ ...reqBundle, taskType: "modelSearch", taskUUID }])
             });
-
-            if (!res.ok) throw new Error(`Browser direct failed: ${res.status}`);
-            
-            const data = await res.json();
-            const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
-            newModels = taskResult?.models || [];
-        } catch (err) {
-            log('Models', `Path A failed: ${err.message}. Attempting Path B (Server Proxy)...`);
-        }
-    }
-
-    if (newModels.length === 0) {
-        try {
-            log('Models', `Path B: Fetching LoRAs for "${searchTerm}" (Server Proxy)...`);
+            const raw = await res.json();
+            newModels = raw.data?.find(t => t.taskUUID === taskUUID)?.models || [];
+        } else {
             const res = await fetch('/api/plugins/personalyze/runware-search', {
-                method: 'POST',
-                headers: getRequestHeaders(),
-                body: JSON.stringify({ category: 'lora', search: searchTerm, limit: 200 }),
+                method: 'POST', headers: getRequestHeaders(),
+                body: JSON.stringify(reqBundle),
             });
-
-            if (!res.ok) throw new Error(`Server proxy failed: ${res.status}`);
-            
-            const data = await res.json();
-            newModels = data.models || [];
-        } catch (serverErr) {
-            error('Models', `CRITICAL: Both discovery paths for LoRA "${searchTerm}" failed.`, serverErr);
+            const raw = await res.json();
+            newModels = raw.models || [];
         }
-    }
 
-    if (newModels.length > 0) {
-        const currentSettings = getSettings();
-        const existingLoras = currentSettings.runwareLoras || [];
-        
-        const loraMap = new Map();
-        existingLoras.forEach(l => {
-            const air = l.air || l.modelId;
-            if (air) loraMap.set(air, l);
-        });
-        
-        newModels.forEach(l => {
-            const air = l.air || l.modelId;
-            if (air) loraMap.set(air, l);
-        });
+        logPatchLast('Success', null, null, newModels);
 
-        const merged = Array.from(loraMap.values());
-        updateSetting('runwareLoras', merged);
-        log('Models', `Persistent registry updated. Total entries: ${merged.length}.`);
+        if (newModels.length > 0) {
+            const current = getSettings().runwareLoras || [];
+            const loraMap = new Map();
+            current.forEach(l => loraMap.set(l.air || l.modelId, l));
+            newModels.forEach(l => loraMap.set(l.air || l.modelId, l));
+            updateSetting('runwareLoras', Array.from(loraMap.values()));
+        }
+    } catch (err) {
+        logPatchLast(null, `Discovery Failed: ${err.message}`, null, null);
     }
 }

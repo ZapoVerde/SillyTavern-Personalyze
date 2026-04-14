@@ -54,13 +54,19 @@ Here is the new section for **PLZ_principles.md**, drafted to be code-agnostic a
 
 ***
 
-## 9. Observability and Audit Logging
-Transparency is a core requirement. Because the system relies on multiple cascading LLM calls, the user must always have access to exactly what was sent and received to diagnose logic failures or "hallucinations."
+## 9. Forensic Observability and System Audit
+Transparency and technical traceability are non-negotiable. Because the system relies on a multi-stage, multi-model pipeline, the user must have access to a "Forensic Flight Recorder" that captures every byte exchanged between the extension and external services.
 
-*   **Total Capture:** Every exchange between the extension and an external service (LLM or Image Provider) must be captured in a rolling in-memory audit log accessible via the settings utility.
-*   **Narrative Pipeline Logging:** The system maintains an audit trail of the last **two complete turn pairs** (four distinct narrative events). This allows the user to inspect the full context of how the detection logic arrived at its current visual state.
-*   **Utility & Modal Logging:** For non-narrative actions—such as manual character scans, wardrobe extractions, or engine tests—the system maintains a separate log of the **last three exchanges**.
-*   **The Data Payload:** To ensure a complete audit, every log entry must contain:
-    1.  **The Input:** The full, un-redacted prompt exactly as it was dispatched to the plugin.
-    2.  **The Result:** The raw text response from the LLM or the resulting asset reference (e.g., the generated image filename).
-    3.  **Technical Metadata:** The complete response details (JSON) provided by the service, including performance metrics, token usage, and task identifiers.
+*   **Total Mirror Protocol:** Every exchange—whether a narrative inference, an image generation request, or a background discovery task—must be captured in a rolling in-memory audit log. This includes successes, transient blips, and hard failures.
+*   **The Three-Tier Log Architecture:**
+    1.  **Narrative Pipeline:** Captures the last **two complete turn pairs** (four distinct narrative events). This is the primary tool for diagnosing "logic hallucinations" or incorrect subject identification.
+    2.  **Workshop & Manual Tools:** Captures the last **three manual interactions** (Anchor Scans, Force Costume extractions, or Style tests). 
+    3.  **System Discovery & Infrastructure:** Captures the last **five background events**, including model discovery queries, LoRA registry fetches, and engine connectivity pings. This ensures that "missing model" errors or "failed loads" are immediately traceable to the source API response.
+*   **Deep-Trace Data Payloads:** To facilitate immediate troubleshooting without code changes, every log entry must contain:
+    1.  **The Request Bundle:** The exact JSON payload, headers (masked), and technical parameters (seed, guidance, architecture) dispatched to the provider.
+    2.  **The Response Document:** The raw, un-redacted response document. For successful calls, this includes the content/asset reference. For failed calls (400, 500, etc.), this must include the **complete Error JSON** or HTML body returned by the service.
+    3.  **Network Metadata:** Precise execution timestamps (start/end), latency measurements, and provider-specific task identifiers (e.g., PiAPI Task IDs).
+*   **The "Forensic" UI Standard:** The Log Viewer must render technical data in a monospace, syntax-aware format. It must prioritize "pretty-printed" JSON and provide a "Copy Debug Bundle" feature to allow users to export the full request/response pair for external validation.
+*   **Fail-Loud Exception Handling:** The IO layer must never "swallow" a technical response. If a service returns an error, the system must **clone the response stream**, extract the body, and hydrate the audit log with the actual service document before bubbling the error to the UI.
+
+---

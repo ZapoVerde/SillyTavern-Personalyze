@@ -1,13 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-18T10:00:00.000Z"}
+ * @stamp {"utc":"2026-04-18T16:00:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
- * Implements the "Working Table" architecture for the Layered State Pipeline.
- *
- * Updated for Manual Model/LoRA Import:
- * 1. Added runwareModels to SETTINGS_DEFAULTS for persistent storage of custom checkpoints.
+ * Implements the "Working Table" architecture and now hosts the 
+ * modelParameterSchema used for dynamic UI generation.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -61,6 +59,23 @@ import {
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
+
+/** Default Dynamic Schema for Model Parameters */
+const DEFAULT_PARAMETER_SCHEMA = {
+    "flux": {
+        "steps": { "type": "slider", "min": 1, "max": 50, "default": 20, "label": "Steps" },
+        "guidance": { "type": "slider", "min": 1, "max": 20, "default": 3.5, "step": 0.1, "label": "Guidance" }
+    },
+    "sdxl": {
+        "steps": { "type": "slider", "min": 1, "max": 100, "default": 30, "label": "Steps" },
+        "cfgScale": { "type": "slider", "min": 1, "max": 30, "default": 7, "step": 0.5, "label": "CFG Scale" },
+        "scheduler": { "type": "select", "options": ["Euler A", "DPM++ 2M Karras", "UniPC"], "default": "Euler A", "label": "Scheduler" }
+    },
+    "sd15": {
+        "steps": { "type": "slider", "min": 1, "max": 100, "default": 20, "label": "Steps" },
+        "cfgScale": { "type": "slider", "min": 1, "max": 30, "default": 7, "step": 0.5, "label": "CFG Scale" }
+    }
+};
 
 /** Global defaults for every new profile. */
 export const SETTINGS_DEFAULTS = Object.freeze({
@@ -119,6 +134,9 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     maxResolution:            DEFAULT_MAX_RESOLUTION,
     dynamicResolution:        DEFAULT_DYNAMIC_RESOLUTION,
     keepCache:                DEFAULT_KEEP_CACHE,
+
+    // Dynamic Parameter Schema
+    modelParameterSchema:     JSON.stringify(DEFAULT_PARAMETER_SCHEMA, null, 4),
 });
 
 /** Returns the active working copy. */
@@ -173,25 +191,17 @@ export function initSettings() {
         root.styleLibrary = { 'Default': structuredClone(DEFAULT_STYLE_PACKAGE) };
         root.defaultStyleName = 'Default';
     } else {
-        // Migration: Convert String-based styles to Object-based packages, and ensure Render Pipeline fields exist
         let migrated = false;
         for (const key of Object.keys(root.styleLibrary)) {
             let val = root.styleLibrary[key];
             
-            // 1. Handle legacy string-only styles
             if (typeof val === 'string') {
-                log('Settings', `Migrating style "${key}" to package format...`);
-                root.styleLibrary[key] = {
-                    ...DEFAULT_STYLE_PACKAGE,
-                    template: val
-                };
+                root.styleLibrary[key] = { ...DEFAULT_STYLE_PACKAGE, template: val };
                 migrated = true;
                 continue;
             }
 
-            // 2. Non-destructive patch for new Render Pipeline fields
             if (val.engine === undefined) {
-                log('Settings', `Patching engine/model fields for style "${key}"...`);
                 Object.assign(val, {
                     engine: DEFAULT_STYLE_PACKAGE.engine,
                     model: DEFAULT_STYLE_PACKAGE.model,
@@ -201,9 +211,14 @@ export function initSettings() {
                 migrated = true;
             }
 
-            // 3. Ensure negativePrompt field exists in existing packages
             if (val.negativePrompt === undefined) {
                 val.negativePrompt = '';
+                migrated = true;
+            }
+
+            // Migration: Ensure engineParams exists
+            if (val.engineParams === undefined) {
+                val.engineParams = {};
                 migrated = true;
             }
         }

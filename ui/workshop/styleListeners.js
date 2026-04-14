@@ -1,15 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleListeners.js
- * @stamp {"utc":"2026-04-17T01:40:00.000Z"}
+ * @stamp {"utc":"2026-04-18T19:00:00.000Z"}
  * @architectural-role UI Controller (Global Styles)
  * @description
  * Orchestrates the management and editing of Global Style Render Pipelines.
- * Implements the "Working Table" pattern: edits are live in memory (localDraft)
- * but must be saved to persist. Includes Revert and dirty indicator logic.
- * 
- * Updated:
- * 1. Added fetchRunwareModels() trigger to renderStylesView for pre-fetching.
- * 2. Updated LoRA modal call to pass engine and model for filtered discovery.
+ * Implements the "Working Table" pattern for style editing.
+ * Updated to support Schema-Driven engineParams during test generation.
  * 
  * @api-declaration
  * renderStylesView() -> void
@@ -51,7 +47,8 @@ function _isDraftDirty() {
         localDraft.model !== (original.model || DEFAULT_STYLE_PACKAGE.model) ||
         localDraft.resolutionOverride !== (original.resolutionOverride || null) ||
         localDraft.useLayerDiffuse !== !!original.useLayerDiffuse ||
-        JSON.stringify(localDraft.loras || []) !== JSON.stringify(original.loras || [])
+        JSON.stringify(localDraft.loras || []) !== JSON.stringify(original.loras || []) ||
+        JSON.stringify(localDraft.engineParams || {}) !== JSON.stringify(original.engineParams || {})
     );
 }
 
@@ -137,7 +134,6 @@ export function bindStyleHandlers() {
     });
 
     $overlay.on('click', '#plz-style-edit-loras', async () => {
-        // Updated to pass engine and model for filtered Runware LoRA discovery
         const result = await openLoraModal(localDraft.loras, localDraft.engine, localDraft.model);
         if (result) {
             localDraft.loras = result;
@@ -213,8 +209,16 @@ export function bindStyleHandlers() {
         try {
             const resParts = (localDraft.resolutionOverride || '512x768').split('x');
             const url = await fetchPreviewBlob(
-                localDraft.engine, localDraft.model, localDraft.template, localDraft.negativePrompt,
-                parseInt(resParts[0]), parseInt(resParts[1]), 1, localDraft.loras, localDraft.useLayerDiffuse
+                localDraft.engine, 
+                localDraft.model, 
+                localDraft.template, 
+                localDraft.negativePrompt,
+                parseInt(resParts[0]), 
+                parseInt(resParts[1]), 
+                1, 
+                localDraft.loras, 
+                localDraft.useLayerDiffuse,
+                localDraft.engineParams // Pass dynamic parameters to test render
             );
             await callPopup(`<h3>Test OK</h3><img src="${url}" style="width:100%; border-radius:6px;" />`, 'text');
         } catch (err) {
