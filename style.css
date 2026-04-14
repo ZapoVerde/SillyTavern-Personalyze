@@ -846,7 +846,7 @@ body.plz-focus-active::after {
     top: 0; left: 0; right: 0; bottom: 0;
     background: #000; /* Solid black takeover */
     backdrop-filter: blur(4px);
-    z-index: 9998;
+    z-index: 99998; /* Higher than ST popups */
     pointer-events: all;
 }
 
@@ -859,7 +859,7 @@ textarea.plz-fullscreen-input {
     /* Leaves room for the keyboard and the top button */
     height: 80dvh !important; 
     max-height: none !important;
-    z-index: 9999 !important;
+    z-index: 99999 !important; /* Above backdrop */
     border-radius: 8px !important;
     box-shadow: 0 10px 40px rgba(0,0,0,0.8) !important;
     /* 16px font size prevents iOS Safari from auto-zooming! */
@@ -872,7 +872,7 @@ textarea.plz-fullscreen-input {
     position: fixed;
     top: calc(5dvh - 15px);
     right: 3vw;
-    z-index: 10000;
+    z-index: 100000; /* Always on top */
     background: var(--SmartThemeQuoteColor, #7c9ef0);
     color: #fff;
     border: none;
@@ -882,4 +882,10 @@ textarea.plz-fullscreen-input {
     font-size: 0.85em;
     cursor: pointer;
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+/* --- Focus Mode Stability --- */
+.plz-focus-placeholder {
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
