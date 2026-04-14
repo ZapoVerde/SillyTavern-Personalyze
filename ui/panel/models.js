@@ -1,18 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/panel/models.js
- * @stamp {"utc":"2026-04-14T10:10:00.000Z"}
+ * @stamp {"utc":"2026-04-17T10:30:00.000Z"}
  * @architectural-role UI Logic (API Discovery)
  * @description
- * Handles dynamic model discovery for image generation engines.
- * 
- * Functions:
- * 1. Pollinations: Fetches and caches available models for UI dropdowns.
- * 2. Runware: Fetches checkpoints (session-cache) and LoRAs (persistent storage).
+ * Handles dynamic discovery for image generation engines.
  * 
  * Updated:
- * 1. Added fetchRunwareModels() for non-persistent checkpoint discovery.
- * 2. Added fetchRunwareLoras() for persistent LoRA discovery (top 300).
- * 3. Integrated getRequestHeaders for proxy authentication.
+ * 1. Rewired Runware discovery to call the API directly from the browser.
+ * 2. Bypasses server-side proxy to utilize local browser VPN for Civitai/Runware metadata.
+ * 3. Integrated findSecret for secure frontend key retrieval.
  *
  * @api-declaration
  * refreshModelDropdown(currentModel) -> Promise<void>
@@ -25,13 +21,13 @@
  *   assertions:
  *     purity: IO / Side-effect
  *     state_ownership: [cachedModels, cachedRunwareModels]
- *     external_io: [fetch, settings.js, SillyTavern script.js]
+ *     external_io: [fetch (Direct API), settings.js, secrets.js]
  */
 
-import { getRequestHeaders } from '../../../../../../script.js';
-import { POLLINATIONS_BASE_URL, POLLINATIONS_MODELS } from '../../defaults.js';
+import { findSecret } from '../../../../../secrets.js';
+import { POLLINATIONS_BASE_URL, POLLINATIONS_MODELS, SECRET_RUNWARE } from '../../defaults.js';
 import { log, error } from '../../utils/logger.js';
-import { getSettings, updateSetting } from '../../settings.js';
+import { updateSetting } from '../../settings.js';
 
 /**
  * Global cache of fetched Pollinations models.
@@ -114,51 +110,88 @@ export async function refreshModelDropdown(currentModel) {
 }
 
 /**
- * Fetches latest Checkpoints from Runware.
- * Stored in session memory (cachedRunwareModels).
+ * Fetches latest Checkpoints from Runware directly from the browser.
+ * Utilizes local browser network (VPN) to bypass server-side tunnel restrictions.
  */
 export async function fetchRunwareModels() {
     try {
-        log('Models', 'Fetching Runware checkpoints...');
-        const res = await fetch('/api/plugins/personalyze/runware-search', {
+        const apiKey = await findSecret(SECRET_RUNWARE);
+        if (!apiKey) {
+            log('Models', 'Runware model fetch skipped: No API key found.');
+            return;
+        }
+
+        log('Models', 'Fetching Runware checkpoints (Browser Direct)...');
+        
+        const task = {
+            taskType: "modelSearch",
+            taskUUID: crypto.randomUUID(),
+            category: "checkpoint",
+            limit: 100
+        };
+
+        const res = await fetch('https://api.runware.ai/v1', {
             method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ category: 'checkpoint', limit: 100 }),
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}` 
+            },
+            body: JSON.stringify([task])
         });
 
-        if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+        if (!res.ok) throw new Error(`API Error: ${res.status}`);
         
-        const { models } = await res.json();
-        cachedRunwareModels = models || [];
-        log('Models', `Cached ${cachedRunwareModels.length} Runware checkpoints.`);
+        const data = await res.json();
+        const taskResult = data.data?.find(t => t.taskUUID === task.taskUUID);
+        
+        cachedRunwareModels = taskResult?.models || [];
+        log('Models', `Cached ${cachedRunwareModels.length} Runware checkpoints via browser.`);
     } catch (err) {
-        error('Models', 'Runware checkpoint fetch failed:', err);
+        error('Models', 'Browser-direct Runware checkpoint fetch failed:', err);
     }
 }
 
 /**
- * Fetches top 300 LoRAs from Runware.
- * Stored persistently in extension settings to handle VPN/Civitai availability.
+ * Fetches top 300 LoRAs from Runware directly from the browser.
+ * Utilizes local browser network (VPN) for Civitai access.
  */
 export async function fetchRunwareLoras() {
     try {
-        log('Models', 'Fetching top 300 Runware LoRAs...');
-        const res = await fetch('/api/plugins/personalyze/runware-search', {
+        const apiKey = await findSecret(SECRET_RUNWARE);
+        if (!apiKey) {
+            throw new Error('Runware API key not found in vault.');
+        }
+
+        log('Models', 'Fetching top 300 Runware LoRAs (Browser Direct)...');
+        
+        const task = {
+            taskType: "modelSearch",
+            taskUUID: crypto.randomUUID(),
+            category: "lora",
+            limit: 300
+        };
+
+        const res = await fetch('https://api.runware.ai/v1', {
             method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ category: 'lora', limit: 300 }),
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}` 
+            },
+            body: JSON.stringify([task])
         });
 
-        if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+        if (!res.ok) throw new Error(`API Error: ${res.status}`);
         
-        const { models } = await res.json();
-        if (models && Array.isArray(models)) {
-            // Persistent write to extension settings
+        const data = await res.json();
+        const taskResult = data.data?.find(t => t.taskUUID === task.taskUUID);
+        const models = taskResult?.models || [];
+
+        if (models.length > 0) {
             updateSetting('runwareLoras', models);
-            log('Models', `Saved ${models.length} Runware LoRAs to persistent storage.`);
+            log('Models', `Saved ${models.length} Runware LoRAs to persistent storage via browser.`);
         }
     } catch (err) {
-        error('Models', 'Runware LoRA fetch failed:', err);
-        throw err; // Re-throw to allow UI to show failure (spinner etc)
+        error('Models', 'Browser-direct Runware LoRA fetch failed:', err);
+        throw err;
     }
 }
