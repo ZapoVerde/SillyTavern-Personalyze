@@ -1,12 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/index.js
- * @stamp {"utc":"2026-04-14T14:00:00.000Z"} 
+ * @stamp {"utc":"2026-04-18T21:10:00.000Z"} 
  * @architectural-role Feature Entry Point / Orchestrator
  * @description
  * SillyTavern Personalyze extension entry point.
  *
  * Coordinates the initialization of the Multi-Character Hybrid architecture, 
  * binding SillyTavern lifecycle events to the Master Pipeline.
+ * 
+ * Updated to initialize Global Mobile Focus Mode for text entry.
  * 
  * @api-declaration
  * handleMessageReceived(messageId) — routes new AI messages to the Master Pipeline.
@@ -37,6 +39,7 @@ import { bindRosterControls } from './ui/roster/controls.js';
 import { initRenderer } from './ui/roster/renderer.js';
 import { openWorkshop } from './ui/workshop/core.js';
 import { smartResize, initMobileFocusMode } from './utils/dom.js';
+
 /**
  * Pipeline Dispatcher.
  * Triggered whenever a new AI message is received or swiped.
@@ -101,13 +104,14 @@ async function init() {
         injectPortraitContainer();
         injectVnPanel();
         injectToolbarButton();
-        initMobileFocusMode(); 
 
         // 3. Control & Rendering Layer — Bind global roster interactions
         bindRosterControls();
-        initRenderer();        
+        initRenderer();
 
         // 4. Global Responsiveness
+        initMobileFocusMode();
+        
         window.addEventListener('resize', () => {
             $('.plz-auto-textarea:visible').each(function() {
                 smartResize(this);

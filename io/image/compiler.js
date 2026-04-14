@@ -1,15 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/compiler.js
- * @stamp {"utc":"2026-04-16T21:50:00.000Z"}
+ * @stamp {"utc":"2026-04-18T20:10:00.000Z"}
  * @architectural-role State Derivation (Visual Requirements)
  * @description
  * Handles resolution measurement and prompt synthesis.
  * Determines the target dimensions based on UI footprint or style overrides,
  * and compiles template variables into a final prompt string.
  * 
- * Updated for Style-Specific Render Pipeline:
- * 1. resolveStyle() returns the fully expanded Render Pipeline configuration.
- * 2. resolveDimensions() prioritizes styleObj.resolutionOverride.
+ * Updated for Sandbox vs. Checkpoint Pattern:
+ * 1. resolveStyle() prioritizes styleWorkspaces (Live Sandbox) over styleLibrary (Checkpoint).
+ * 2. Included engineParams in the resolved style package for dynamic model support.
  * 
  * @api-declaration
  * resolveDimensions(characterId, styleObj) -> { width: number, height: number }
@@ -79,37 +79,41 @@ export function resolveDimensions(characterId, styleObj = null) {
 
 /**
  * Retrieves the complete render pipeline configuration (style package) for a character.
- * Checks for character-pinned styles, then the global default style.
+ * Priority: Workspace (Live/Dirty) -> Library (Checkpoint/Saved) -> Default Fallback.
  * 
  * @param {string} characterId 
  * @returns {Object} The expanded Style Package including engine, model, and overrides.
  */
 export function resolveStyle(characterId) {
     const meta = getMetaSettings();
-    const lib = meta.styleLibrary;
+    const lib = meta.styleLibrary || {};
+    const ws  = meta.styleWorkspaces || {};
     
     // Default fallback if library is missing or corrupt
     const fallback = structuredClone(DEFAULT_STYLE_PACKAGE);
 
-    if (lib) {
-        const pin = state.chatCharacters[characterId]?.styleName;
-        const styleName = (pin && lib[pin]) 
-            ? pin 
-            : (meta.defaultStyleName && lib[meta.defaultStyleName]) ? meta.defaultStyleName : null;
-        
-        const style = styleName ? lib[styleName] : null;
+    const pin = state.chatCharacters[characterId]?.styleName;
+    const styleName = (pin && lib[pin]) 
+        ? pin 
+        : (meta.defaultStyleName && lib[meta.defaultStyleName]) ? meta.defaultStyleName : null;
+    
+    if (!styleName) return fallback;
 
-        if (style) {
-            return {
-                template:           style.template           || DEFAULT_VN_STYLE_SUFFIX,
-                loras:              style.loras              || [],
-                negativePrompt:     style.negativePrompt     || '',
-                engine:             style.engine             || DEFAULT_STYLE_PACKAGE.engine,
-                model:              style.model              || DEFAULT_STYLE_PACKAGE.model,
-                useLayerDiffuse:    !!style.useLayerDiffuse,
-                resolutionOverride: style.resolutionOverride || null
-            };
-        }
+    // ─── Workspace Priority (The Sandbox) ───
+    // We check the workspace first so that "dirty" content is functional immediately.
+    const style = ws[styleName] || lib[styleName];
+
+    if (style) {
+        return {
+            template:           style.template           || DEFAULT_VN_STYLE_SUFFIX,
+            loras:              style.loras              || [],
+            negativePrompt:     style.negativePrompt     || '',
+            engine:             style.engine             || DEFAULT_STYLE_PACKAGE.engine,
+            model:              style.model              || DEFAULT_STYLE_PACKAGE.model,
+            engineParams:       style.engineParams       || {},
+            useLayerDiffuse:    !!style.useLayerDiffuse,
+            resolutionOverride: style.resolutionOverride || null
+        };
     }
     
     return fallback;

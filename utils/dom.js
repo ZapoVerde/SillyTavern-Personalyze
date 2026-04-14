@@ -1,21 +1,20 @@
 /**
  * @file data/default-user/extensions/personalyze/utils/dom.js
- * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-18T21:00:00.000Z"}
  * @architectural-role Utility / DOM Helper
  * @description
  * Provides layout and sizing utilities for the Personalyze UI. 
- * Includes the smartResize logic used to manage auto-expanding textareas.
- * Modified to allow unlimited expansion so that the parent modal container
- * handles scrolling rather than the textarea itself.
+ * Includes the smartResize logic and the Mobile Focus Mode takeover engine.
  *
  * @api-declaration
  * smartResize(el) -> void
+ * initMobileFocusMode() -> void
  *
  * @contract
  *   assertions:
  *     purity: Side-effect (DOM Mutation)
  *     state_ownership: []
- *     external_io: [Element.style, Element.scrollHeight]
+ *     external_io: [Element.style, Element.scrollHeight, document.body]
  */
 
 /**
@@ -31,8 +30,6 @@ export function smartResize(el) {
     el.style.overflow = 'hidden';
 
     // 2. Reset to 'auto' so the browser re-measures natural content height.
-    //    Using '0px' causes some engines to return the previous pixel value from
-    //    scrollHeight on the next read, producing runaway growth on each keystroke.
     el.style.height = 'auto';
 
     // 3. Set height exactly to content height.
@@ -43,12 +40,13 @@ export function smartResize(el) {
 
 /**
  * Initializes Global Focus Mode for mobile text entry.
- * Call this once when the extension initializes.
+ * Rips large textareas into a full-screen fixed view on small devices
+ * to prevent the on-screen keyboard from squishing the composition area.
  */
 export function initMobileFocusMode() {
     let $exitBtn = null;
 
-    // Helper to close focus mode
+    // Helper to close focus mode and restore layout
     const exitFocusMode = (el) => {
         document.body.classList.remove('plz-focus-active');
         el.classList.remove('plz-fullscreen-input');
@@ -56,28 +54,29 @@ export function initMobileFocusMode() {
             $exitBtn.remove();
             $exitBtn = null;
         }
-        // Run your existing resize logic to snap it back to normal size
+        // Restore natural auto-height sizing
         smartResize(el);
     };
 
     // 1. Listen for focus (tapping into the box)
     $(document).on('focusin', '.plz-auto-textarea', function() {
-        // Only trigger on mobile/small tablet screens
+        // Breakpoint: Only trigger on mobile/small tablet screens
         if (window.innerWidth > 768) return;
 
         const el = this;
         document.body.classList.add('plz-focus-active');
         el.classList.add('plz-fullscreen-input');
 
-        // Create the Top-Right "Done" button
+        // Create the Top-Right "Done" escape hatch
         if (!$exitBtn) {
             $exitBtn = $('<button class="plz-focus-exit-btn">Done</button>');
             $('body').append($exitBtn);
 
             // Exit when clicking "Done"
+            // Use mousedown/touchstart to fire before the input blurs naturally
             $exitBtn.on('mousedown touchstart', (e) => {
-                e.preventDefault(); // Prevents keyboard from flashing
-                el.blur(); // Blur naturally triggers the focusout event below
+                e.preventDefault(); 
+                el.blur(); 
             });
         }
     });

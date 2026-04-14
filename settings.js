@@ -1,11 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-18T16:00:00.000Z"}
+ * @stamp {"utc":"2026-04-18T20:00:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
- * Implements the "Working Table" architecture and now hosts the 
- * modelParameterSchema used for dynamic UI generation.
+ * Implements the "Working Table" (Sandbox vs. Checkpoint) architecture.
+ * 
+ * Added:
+ * 1. styleWorkspaces: Persistent storage for uncommitted "Dirty" style experiments.
+ * 2. Enhanced migration to synchronize Library and Workspace on boot.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -190,44 +193,79 @@ export function initSettings() {
     if (!root.styleLibrary) {
         root.styleLibrary = { 'Default': structuredClone(DEFAULT_STYLE_PACKAGE) };
         root.defaultStyleName = 'Default';
-    } else {
-        let migrated = false;
-        for (const key of Object.keys(root.styleLibrary)) {
-            let val = root.styleLibrary[key];
-            
-            if (typeof val === 'string') {
-                root.styleLibrary[key] = { ...DEFAULT_STYLE_PACKAGE, template: val };
-                migrated = true;
-                continue;
-            }
+    }
 
-            if (val.engine === undefined) {
-                Object.assign(val, {
-                    engine: DEFAULT_STYLE_PACKAGE.engine,
-                    model: DEFAULT_STYLE_PACKAGE.model,
-                    useLayerDiffuse: DEFAULT_STYLE_PACKAGE.useLayerDiffuse,
-                    resolutionOverride: DEFAULT_STYLE_PACKAGE.resolutionOverride
-                });
-                migrated = true;
-            }
+    // --- Sandbox vs Checkpoint Initialization ---
+    if (!root.styleWorkspaces) {
+        root.styleWorkspaces = {};
+    }
 
-            if (val.negativePrompt === undefined) {
-                val.negativePrompt = '';
-                migrated = true;
-            }
+    let migrated = false;
 
-            // Migration: Ensure engineParams exists
-            if (val.engineParams === undefined) {
-                val.engineParams = {};
+    // Helper to ensure schema compliance for a style object
+    const ensureSchema = (val) => {
+        let changed = false;
+        if (typeof val === 'string') {
+            return { ...DEFAULT_STYLE_PACKAGE, template: val, _migrated: true };
+        }
+        if (val.engine === undefined) {
+            Object.assign(val, {
+                engine: DEFAULT_STYLE_PACKAGE.engine,
+                model: DEFAULT_STYLE_PACKAGE.model,
+                useLayerDiffuse: DEFAULT_STYLE_PACKAGE.useLayerDiffuse,
+                resolutionOverride: DEFAULT_STYLE_PACKAGE.resolutionOverride
+            });
+            changed = true;
+        }
+        if (val.negativePrompt === undefined) {
+            val.negativePrompt = '';
+            changed = true;
+        }
+        if (val.engineParams === undefined) {
+            val.engineParams = {};
+            changed = true;
+        }
+        if (changed) val._migrated = true;
+        return val;
+    };
+
+    // 1. Process Library (Checkpoints)
+    for (const key of Object.keys(root.styleLibrary)) {
+        const processed = ensureSchema(root.styleLibrary[key]);
+        if (processed._migrated) {
+            delete processed._migrated;
+            root.styleLibrary[key] = processed;
+            migrated = true;
+        }
+
+        // 2. Synchronize Workspaces (Sandboxes)
+        // If workspace doesn't exist for a library entry, clone the checkpoint into it
+        if (!root.styleWorkspaces[key]) {
+            root.styleWorkspaces[key] = structuredClone(root.styleLibrary[key]);
+            migrated = true;
+        } else {
+            // Ensure the existing workspace also meets the schema requirements
+            const processedWs = ensureSchema(root.styleWorkspaces[key]);
+            if (processedWs._migrated) {
+                delete processedWs._migrated;
+                root.styleWorkspaces[key] = processedWs;
                 migrated = true;
             }
         }
-        if (migrated) saveSettingsDebounced();
+    }
+
+    // 3. Orphan Cleanup
+    // If a workspace exists for a style that no longer exists in the library, delete it
+    for (const key of Object.keys(root.styleWorkspaces)) {
+        if (!root.styleLibrary[key]) {
+            delete root.styleWorkspaces[key];
+            migrated = true;
+        }
     }
 
     if (!root.defaultStyleName) {
         root.defaultStyleName = Object.keys(root.styleLibrary)[0] || 'Default';
     }
 
-    saveSettingsDebounced();
+    if (migrated) saveSettingsDebounced();
 }

@@ -1,11 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleModals.js
- * @stamp {"utc":"2026-04-18T16:50:00.000Z"}
+ * @stamp {"utc":"2026-04-18T20:30:00.000Z"}
  * @architectural-role UI Logic (Global Style Modals)
  * @description
  * Manages specialized popups for editing a Global Style's technical render pipeline.
  * Implements Schema-Driven UI: Parameters are dynamically generated based on 
  * model architecture and the editable schema in settings.
+ * 
+ * Updated for Sandbox vs. Checkpoint Pattern:
+ * 1. Fixed Data Drop Bug: Explicitly injects saved model AIR into dropdowns if missing from cache.
+ * 2. Optimized Scraper: Guaranteed capture of dynamic engineParams on confirmation.
  * 
  * @api-declaration
  * openPipelineModal(styleObj) -> Promise<Object>
@@ -57,15 +61,35 @@ export async function openPipelineModal(styleObj) {
         engineParams: structuredClone(styleObj.engineParams || {})
     };
 
+    /**
+     * Builds options list with DATA DROP PROTECTION.
+     * Injects the saved model if it's missing from the discovery cache.
+     */
     const buildModelOptions = (engine) => {
+        let options = '';
         if (engine === 'runware') {
-            return getCachedRunwareModels().map(m => {
+            const list = getCachedRunwareModels();
+            const hasSaved = list.some(m => (m.air || m.modelId) === draft.model);
+            
+            options = list.map(m => {
                 const air = m.air || m.modelId;
                 return `<option value="${escapeHtml(air)}" ${draft.model === air ? 'selected' : ''}>${escapeHtml(m.label || air)}</option>`;
             }).join('');
+
+            if (!hasSaved && draft.model) {
+                options = `<option value="${escapeHtml(draft.model)}" selected>${escapeHtml(draft.model)} (Restoring...)</option>` + options;
+            }
+        } else {
+            const list = engine === 'fal' ? FAL_MODELS : engine === 'piapi' ? PIAPI_MODELS : POLLINATIONS_MODELS;
+            const hasSaved = list.includes(draft.model);
+            
+            options = list.map(m => `<option value="${escapeHtml(m)}" ${draft.model === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('');
+
+            if (!hasSaved && draft.model) {
+                options = `<option value="${escapeHtml(draft.model)}" selected>${escapeHtml(draft.model)} (Custom)</option>` + options;
+            }
         }
-        const list = engine === 'fal' ? FAL_MODELS : engine === 'piapi' ? PIAPI_MODELS : POLLINATIONS_MODELS;
-        return list.map(m => `<option value="${escapeHtml(m)}" ${draft.model === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('');
+        return options;
     };
 
     const updateParamsUI = () => {
