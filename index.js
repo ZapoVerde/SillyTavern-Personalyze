@@ -36,8 +36,7 @@ import { injectVnPanel } from './ui/vnPanel.js';
 import { bindRosterControls } from './ui/roster/controls.js';
 import { initRenderer } from './ui/roster/renderer.js';
 import { openWorkshop } from './ui/workshop/core.js';
-import { smartResize } from './utils/dom.js';
-
+import { smartResize, initMobileFocusMode } from './utils/dom.js';
 /**
  * Pipeline Dispatcher.
  * Triggered whenever a new AI message is received or swiped.
@@ -102,10 +101,11 @@ async function init() {
         injectPortraitContainer();
         injectVnPanel();
         injectToolbarButton();
+        initMobileFocusMode(); 
 
         // 3. Control & Rendering Layer — Bind global roster interactions
         bindRosterControls();
-        initRenderer();
+        initRenderer();        
 
         // 4. Global Responsiveness
         window.addEventListener('resize', () => {

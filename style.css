@@ -838,3 +838,48 @@ body.plz-vn-active #plz-vn-cycle-btn {
         pointer-events: none;
     }
 }
+
+/* --- Focus Mode Backdrop --- */
+body.plz-focus-active::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(4px);
+    z-index: 9998;
+    pointer-events: all;
+}
+
+/* --- Focus Mode Text Box --- */
+textarea.plz-fullscreen-input {
+    position: fixed !important;
+    top: 5dvh !important;
+    left: 5vw !important;
+    width: 90vw !important;
+    /* Leaves room for the keyboard and the top button */
+    height: 80dvh !important; 
+    max-height: none !important;
+    z-index: 9999 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8) !important;
+    /* 16px font size prevents iOS Safari from auto-zooming! */
+    font-size: 16px !important; 
+    transition: all 0.2s ease-out;
+}
+
+/* --- Focus Mode Exit Button --- */
+.plz-focus-exit-btn {
+    position: fixed;
+    top: calc(5dvh - 15px);
+    right: 3vw;
+    z-index: 10000;
+    background: var(--SmartThemeQuoteColor, #7c9ef0);
+    color: #fff;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 0.85em;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}

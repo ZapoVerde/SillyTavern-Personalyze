@@ -40,3 +40,61 @@ export function smartResize(el) {
 
     el.style.resize = 'none';
 }
+
+/**
+ * Initializes Global Focus Mode for mobile text entry.
+ * Call this once when the extension initializes.
+ */
+export function initMobileFocusMode() {
+    let $exitBtn = null;
+
+    // Helper to close focus mode
+    const exitFocusMode = (el) => {
+        document.body.classList.remove('plz-focus-active');
+        el.classList.remove('plz-fullscreen-input');
+        if ($exitBtn) {
+            $exitBtn.remove();
+            $exitBtn = null;
+        }
+        // Run your existing resize logic to snap it back to normal size
+        smartResize(el);
+    };
+
+    // 1. Listen for focus (tapping into the box)
+    $(document).on('focusin', '.plz-auto-textarea', function() {
+        // Only trigger on mobile/small tablet screens
+        if (window.innerWidth > 768) return;
+
+        const el = this;
+        document.body.classList.add('plz-focus-active');
+        el.classList.add('plz-fullscreen-input');
+
+        // Create the Top-Right "Done" button
+        if (!$exitBtn) {
+            $exitBtn = $('<button class="plz-focus-exit-btn">Done</button>');
+            $('body').append($exitBtn);
+
+            // Exit when clicking "Done"
+            $exitBtn.on('mousedown touchstart', (e) => {
+                e.preventDefault(); // Prevents keyboard from flashing
+                el.blur(); // Blur naturally triggers the focusout event below
+            });
+        }
+    });
+
+    // 2. Listen for loss of focus (Keyboard dismissed, tapped outside)
+    $(document).on('focusout', '.plz-auto-textarea', function() {
+        exitFocusMode(this);
+    });
+
+    // 3. Listen for clicks on the darkened backdrop to exit
+    $(document).on('mousedown touchstart', function(e) {
+        if (document.body.classList.contains('plz-focus-active')) {
+            // If they clicked the background (not the textarea or the button)
+            if (!$(e.target).closest('.plz-fullscreen-input, .plz-focus-exit-btn').length) {
+                const activeEl = document.querySelector('.plz-fullscreen-input');
+                if (activeEl) activeEl.blur(); 
+            }
+        }
+    });
+}
