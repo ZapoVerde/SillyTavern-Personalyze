@@ -1,11 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleListeners.js
- * @stamp {"utc":"2026-04-17T01:30:00.000Z"}
+ * @stamp {"utc":"2026-04-17T01:40:00.000Z"}
  * @architectural-role UI Controller (Global Styles)
  * @description
  * Orchestrates the management and editing of Global Style Render Pipelines.
  * Implements the "Working Table" pattern: edits are live in memory (localDraft)
  * but must be saved to persist. Includes Revert and dirty indicator logic.
+ * 
+ * Updated:
+ * 1. Added fetchRunwareModels() trigger to renderStylesView for pre-fetching.
+ * 2. Updated LoRA modal call to pass engine and model for filtered discovery.
  * 
  * @api-declaration
  * renderStylesView() -> void
@@ -15,15 +19,16 @@
  *   assertions:
  *     purity: IO / Stateful UI
  *     state_ownership: [localDraft]
- *     external_io: [settings.js, styleModals.js, imageCache.js, DOM]
+ *     external_io: [settings.js, styleModals.js, imageCache.js, models.js, DOM]
  */
 
 import { getSettings, getMetaSettings, updateSetting } from '../../settings.js';
 import { saveSettingsDebounced, callPopup } from '../../../../../../script.js';
 import { fetchPreviewBlob } from '../../imageCache.js';
+import { fetchRunwareModels } from '../panel/models.js';
 import { smartResize } from '../../utils/dom.js';
 import { DEFAULT_STYLE_PACKAGE } from '../../defaults.js';
-import { getStylesTabHTML, getLoraTagsHTML } from './styleTemplates.js';
+import { getStylesTabHTML } from './styleTemplates.js';
 import { openPipelineModal, openLoraModal } from './styleModals.js';
 
 /** Temporary store for edits not yet committed to the Global Library. */
@@ -75,6 +80,9 @@ function _syncDirtyUI() {
  * Renders the Global Styles view into the Workshop panel.
  */
 export function renderStylesView() {
+    // PRERUN DISCOVERY: Fetch latest Runware models in background
+    fetchRunwareModels();
+
     const meta = getMetaSettings();
     const s = getSettings();
     const lib = meta.styleLibrary || {};
@@ -129,7 +137,8 @@ export function bindStyleHandlers() {
     });
 
     $overlay.on('click', '#plz-style-edit-loras', async () => {
-        const result = await openLoraModal(localDraft.loras);
+        // Updated to pass engine and model for filtered Runware LoRA discovery
+        const result = await openLoraModal(localDraft.loras, localDraft.engine, localDraft.model);
         if (result) {
             localDraft.loras = result;
             renderStylesView();

@@ -1,14 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-16T21:10:00.000Z"}
+ * @stamp {"utc":"2026-04-16T21:20:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
  * Implements the "Working Table" architecture for the Layered State Pipeline.
  *
- * Updated for Style-Specific Render Pipeline:
- * 1. initSettings() now performs a non-destructive patch on the Style Library.
- * 2. Injects engine, model, and resolution defaults into existing style objects.
+ * Updated for Runware Discovery:
+ * 1. Added runwareLoras to SETTINGS_DEFAULTS for persistent storage of fetched LoRAs.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -113,6 +112,7 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     runwareUseLayerDiffuse:   DEFAULT_RUNWARE_USE_LAYER_DIFFUSE,
     runwareRemoveBackground:  DEFAULT_RUNWARE_REMOVE_BG,
     runwareRmbgModel:         DEFAULT_RUNWARE_RMBG_MODEL,
+    runwareLoras:             [], // Persistent storage for fetched LoRAs
 
     // Generation Economy
     maxResolution:            DEFAULT_MAX_RESOLUTION,

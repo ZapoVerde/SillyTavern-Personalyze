@@ -1,15 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/routes/runware.js
- * @stamp {"utc":"2026-04-16T19:20:00.000Z"}
+ * @stamp {"utc":"2026-04-16T19:40:00.000Z"}
  * @architectural-role Server-Side Route Handler
  * @description
  * Implements proxy routes for the Runware.ai API. 
  * Supports high-performance image inference with native transparency (LayerDiffuse),
  * visual preset LoRAs, and standalone background removal.
  * 
- * Updated for Robustness:
- * 1. Fixed 400 error: negativePrompt is now conditionally added to the task 
- *    only if it is a non-empty string.
+ * Updated:
+ * 1. Added /runware-search route to handle dynamic model and LoRA discovery.
  * 
  * @api-declaration
  * registerRunwareRoutes(router) -> void
@@ -29,6 +28,62 @@ import { fetchChecked, withRetry, FATAL_HTTP_CODES } from '../utils/network.js';
  * @param {import('express').Router} router 
  */
 export function registerRunwareRoutes(router) {
+
+    // ─── Runware: Model/LoRA Search ───────────────────────────────────────────
+    router.post('/runware-search', async (req, res) => {
+        try {
+            const { category, limit, search } = req.body;
+            const apiKey = readSecret(req.user.directories, 'api_key_runware');
+
+            if (!apiKey) {
+                return res.status(401).json({ error: 'Runware API key not configured.' });
+            }
+
+            const taskUUID = crypto.randomUUID();
+            
+            // Construct Runware Model Search Task
+            const task = {
+                taskType: "modelSearch",
+                taskUUID: taskUUID,
+                category: category || "checkpoint", // "checkpoint" or "lora"
+                limit: limit || 100,
+            };
+
+            if (search) {
+                task.search = search;
+            }
+
+            const response = await withRetry(() => fetchChecked('https://api.runware.ai/v1', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}` 
+                },
+                body: JSON.stringify([task])
+            }), 'RunwareSearch');
+
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(`Runware API Error: ${data.errorMessage || data.error}`);
+            }
+
+            const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
+            const models = taskResult?.models || [];
+
+            return res.json({ models });
+
+        } catch (err) {
+            if (err.httpStatus) {
+                const fatal = FATAL_HTTP_CODES.has(err.httpStatus);
+                return res.status(err.httpStatus).json({ 
+                    error: err.responseText || err.message,
+                    fatal 
+                });
+            }
+            res.status(500).json({ error: err.message });
+        }
+    });
 
     // ─── Runware: Image Generation ────────────────────────────────────────────
     router.post('/runware-generate', async (req, res) => {
@@ -66,7 +121,6 @@ export function registerRunwareRoutes(router) {
             };
 
             // Industrial Fix: Only include negativePrompt if it has content.
-            // Runware returns 400 invalidNegativePrompt if an empty string is passed.
             if (negativePrompt && String(negativePrompt).trim().length > 0) {
                 task.negativePrompt = String(negativePrompt).trim();
             }

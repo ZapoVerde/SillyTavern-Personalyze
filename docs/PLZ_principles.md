@@ -1,79 +1,66 @@
-# Personalyze v1.0 — Project Principles
+
+# PersonaLyze — Project Principles
 *Read before writing any code. Applies to every session.*
 
 ---
 
-## 1. The Core Philosophy
+## 1. The Core Philosophy: Narrative Source of Truth
+PersonaLyze manages **Visual Character Continuity**. The chat ledger is the only database that matters. 
 
-Personalyze manages **Visual Character Continuity**. It captures the evolving appearance of characters—their identity, their wardrobe, and their expressions—and translates them into visual snapshots.
+We do not trust external databases or global settings for a character's current narrative state. If a character puts on a "Winter Coat" in Turn 50 of a story, that visual state belongs to that specific story branch. If the user forks the chat at Turn 40, the "Winter Coat" must not exist in the new branch. All visual transitions and identity definitions are permanently embedded in the chronological chat record.
 
-The system is built on the **DNA Chain** principle. We do not trust external databases or global settings for chat-specific character visuals. If a character is discovered wearing "Golden Armor" in Turn 50 of Chat A, that knowledge belongs to Chat A. If the user forks the chat at Turn 40, the "Golden Armor" should not exist in the new branch. **The chat log is the only source of truth for the narrative state.**
+## 2. Layered Visual States (Ensembles, not Outfits)
+Characters do not wear monolithic "outfits." Visual state is tracked as a composite of independent layers (e.g., outerwear, top, bottom, accessories) alongside expressive states (emotion, pose). 
 
----
+*   **Incremental Updates:** When a character "takes off their jacket," the system only updates the outerwear layer; the rest of the visual state persists automatically.
+*   **Ensembles:** When a user wants to save a specific combination of layers for future use, it is saved as an "Ensemble" (a complete wardrobe snapshot), not a rigid costume.
 
-## 2. The Three Kinds of Code
+## 3. Separation of Narrative and Render Logic
+To keep the chat ledger pure, we strictly separate *what* is happening in the story from *how* it is drawn.
 
-Personalyze enforces strict separation of responsibilities to ensure stability and predictability.
+*   **The Narrative DNA:** Lives in the chat. It dictates the character's physical identity, current clothing, and emotion.
+*   **Global Styles:** Lives in the user's global settings. It dictates the aesthetic (e.g., Anime vs. Realistic), the specific image generation engine, resolution overrides, and LoRAs.
+*   **The Rule:** You should be able to instantly swap a chat's Global Style to render the exact same narrative moments in a completely different art style, without modifying the underlying character data.
 
-### Pure Functions
-Takes data in, returns derived data out. No external reads or writes. It does not know the DOM exists. It does not know about settings. It cannot see the filesystem. Given the same chat log array, a pure function must always produce the identical derived state object.
-*   *Example:* Reconstruction logic that builds a character's current wardrobe by scanning the chat DNA.
+## 4. Proactive and Reactive Detection (The Cascade)
+Detection follows a highly optimized cascade designed to halt as early as possible to minimize LLM costs and latency.
 
-### Stateful Owners
-A strictly bounded set of modules allowed to mutate the runtime state singleton. They bridge the gap between reconstructed data and the active session. If a component needs to update the "Active Character" or the "Current Expression," it must do so through these gatekeepers.
+*   **Phase 0: Scene Proactivity:** When the narrative shifts locations, the system evaluates the entire active roster. Do their current outfits still make sense for the new environment? If not, a background redress is triggered.
+*   **Phase 1: Subject Identification:** A cheap check (using text heuristics first, falling back to a fast LLM) to identify exactly who is acting in the current message.
+*   **Phase 2: The Change Gate:** A fast LLM determines if the active subject actually changed their appearance, emotion, or pose. If no, the pipeline halts.
+*   **Phase 3: Layered Extraction:** Only when a change is confirmed does the Smart LLM perform an extraction, targeting only the specific visual layers that were modified.
 
-### IO Executors
-These are the workers. They talk to LLMs for detection, external APIs for image generation, and the host file system. They execute commands and return raw results. **They contain zero narrative logic.** An IO executor does not decide *if* an outfit changed; it only knows *how* to generate the image once told.
+## 5. Multi-Character Presence (The Roster)
+The system assumes a scene can have multiple actors at any given time. Characters are added to the active roster dynamically as they enter the narrative, and their independent visual states are tracked and generated in parallel. A change to one character's state does not disrupt the persistence of another's.
 
----
+## 6. Eventual Consistency (The Two-Write Pattern)
+Image generation is asynchronous, slow, and prone to failure. To keep the chronological chat record accurate and perfectly synced with the text, we use a two-step commitment process:
 
-## 3. The Data Model: The DNA Chain
-
-**The chat ledger is the database.** All character definitions and visual transitions are stored directly in the metadata of the messages. We use the **Array Pattern** for storage (`message.extra.personalyze = []`) so multiple events can coexist on a single turn.
-
-There are three conceptual record types:
-1.  **Character Definition (`character_def`):** Contains the identity anchor (permanent physical features) and the generation seed.
-2.  **Outfit Definition (`outfit_def`):** Contains the visual description, display label, immutable key, and the specific image engine provider.
-3.  **Visual State (`visual_state`):** A transition record marking the exact turn where a character becomes active and what they are wearing and expressing.
-
-**Last Write Wins:** Definitions are mutable within the DNA. If a user edits an identity anchor, a new `character_def` is appended to the latest message. The forward-pass reconstruction logic always honors the most recent definition for a given key.
-
----
-
-## 4. The Library vs. The DNA
-
-While the chat log is the source of truth, Personalyze maintains a **Global Portfolio (The Library)** in the extension settings.
-
-*   **The Library:** Acts as a "Template Gallery" or "Save Station." It stores characters and outfits the user wants to reuse across different stories.
-*   **The DNA:** The active "Working Copy." When a character is "Imported" from the Library, their definitions are written into the chat DNA. 
-*   **Decoupling:** Once a character is in the DNA, changes to the Library version do not affect existing chats. This ensures chat portability and branch safety.
-
----
-
-## 5. The Detection Pipeline: "Falling Water"
-
-Detection follows a cascading logic to minimize LLM costs and latency.
-
-1.  **The Subject Gate:** A cheap check to see if any character in the active roster is the focus of the message.
-2.  **The Change Check:** A check to see if the current character's visual state has actually changed.
-3.  **The Classifier:** If a change is detected, the system checks the character's *local* wardrobe (derived from the DNA) for a match.
-4.  **The Describer:** Only if the outfit is entirely new does the system perform the expensive extraction and request user approval.
-
----
-
-## 6. Eventual Consistency: The Two-Write Pattern
-
-Image generation is asynchronous and prone to failure. To keep the chat record accurate, we use a two-step process to ensure the chat record remains stable:
-
-*   **Write 1 (Narrative Intent):** As soon as a visual change is confirmed, a `visual_state` record is written marking the character/outfit/expression, but the image filename is set to `null`. The narrative intent is now permanently captured.
-*   **Generation (Async IO):** The image is generated in the background.
-*   **Write 2 (Asset Completion):** Once the file is saved to disk, the exact same record is patched with the localized filename.
-
----
+1.  **Narrative Intent:** As soon as a visual change is confirmed by the LLM (or user), the transition is immediately written to the chat record. The system now knows *what* the character looks like, even if the image doesn't exist yet.
+2.  **Asset Completion:** The heavy image generation runs in the background. Once the file is safely written to the user's hard drive, the system goes back and patches the original transition record with the file pointer.
 
 ## 7. Just-in-Time Self-Healing
+The system must recover gracefully from missing assets (e.g., a user purged their image folder to save space). 
+*   **Requirement-Driven:** The system does not preemptively regenerate missing images buried deep in the chat history. It only heals missing portraits if they are required for the *current* active screen or if the user explicitly requests a refresh.
 
-The system is designed to recover from missing assets gracefully, but conservatively:
+## 8. The Three Kinds of Code
+All code must belong to one of three categories to ensure predictable stability. No module may mix these responsibilities:
 
-*   **Requirement-Driven Healing:** If the system finds a `visual_state` that is **required for display** (e.g., it is the current active portrait or the user is looking at that specific turn in the history) and the image is `null` or missing from disk, it triggers an automatic background regeneration.
-*   **Resource Preservation:** The system does not preemptively heal missing files found in the deep history of the chat unless they are specifically needed. This prevents unnecessary API usage on old or abandoned branches.
+1.  **Pure Functions:** Takes data in, returns derived data out. No external reads or writes. It does not know the UI exists. It does not know about settings. 
+2.  **Stateful Owners:** The strictly bounded gatekeepers of runtime memory. If a component needs to update the "Active Character," it must ask the stateful owner to do it.
+3.  **IO Executors:** The workers. They manipulate the DOM, talk to LLMs, write to the hard drive, or call external APIs. They contain absolutely zero narrative or state-derivation logic.
+
+Here is the new section for **PLZ_principles.md**, drafted to be code-agnostic and focused on the philosophy of transparency and observability.
+
+***
+
+## 9. Observability and Audit Logging
+Transparency is a core requirement. Because the system relies on multiple cascading LLM calls, the user must always have access to exactly what was sent and received to diagnose logic failures or "hallucinations."
+
+*   **Total Capture:** Every exchange between the extension and an external service (LLM or Image Provider) must be captured in a rolling in-memory audit log accessible via the settings utility.
+*   **Narrative Pipeline Logging:** The system maintains an audit trail of the last **two complete turn pairs** (four distinct narrative events). This allows the user to inspect the full context of how the detection logic arrived at its current visual state.
+*   **Utility & Modal Logging:** For non-narrative actions—such as manual character scans, wardrobe extractions, or engine tests—the system maintains a separate log of the **last three exchanges**.
+*   **The Data Payload:** To ensure a complete audit, every log entry must contain:
+    1.  **The Input:** The full, un-redacted prompt exactly as it was dispatched to the plugin.
+    2.  **The Result:** The raw text response from the LLM or the resulting asset reference (e.g., the generated image filename).
+    3.  **Technical Metadata:** The complete response details (JSON) provided by the service, including performance metrics, token usage, and task identifiers.
