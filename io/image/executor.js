@@ -173,7 +173,8 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
 
     try {
         let sourceUrl = null, imgRes = null, meta = null, fallbackB64 = null;
-        let nativeTransparency = !!styleObj.useLayerDiffuse;
+        // Only trust the native transparency flag if the engine is actually Runware
+        let nativeTransparency = (engine === 'runware') ? !!styleObj.useLayerDiffuse : false;
         let finalDoc = null;
 
         if (engine === 'fal') {
@@ -230,6 +231,7 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
                     method: 'POST', headers: getRequestHeaders(), 
                     body: JSON.stringify({ image_url: sourceUrl, image_base64: fallbackB64, model: s.runwareRmbgModel }) 
                 });
+                fallbackB64 = null;
             } else {
                 const subRmbg = await fetch('/api/plugins/personalyze/piapi-remove-bg', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify(fallbackB64 ? { image_base64: fallbackB64, rmbg_model: s.piapiRmbgModel } : { image_url: sourceUrl, rmbg_model: s.piapiRmbgModel }) });
                 const { task_id } = await subRmbg.json();
