@@ -1,15 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleModals.js
- * @stamp {"utc":"2026-04-17T02:00:00.000Z"}
+ * @stamp {"utc":"2026-04-17T12:00:00.000Z"}
  * @architectural-role UI Logic (Global Style Modals)
  * @description
  * Manages specialized popups for editing a Global Style's technical render pipeline
  * and LoRA configuration. 
  * 
  * Updated:
- * 1. openPipelineModal now uses dynamic Runware checkpoints from session cache.
- * 2. openLoraModal now implements architecture-based filtering and a fetch button.
- * 3. Integrated Pony/SDXL architecture grouping for filtering logic.
+ * 1. Rewired openLoraModal to derive a search term from the active model.
+ * 2. Updated fetch logic to perform targeted searches based on model keywords (flux, pony, sdxl).
+ * 3. Results are merged into the persistent global registry via models.js.
  * 
  * @api-declaration
  * openPipelineModal(styleObj) -> Promise<Object>
@@ -134,32 +134,44 @@ export async function openPipelineModal(styleObj) {
 export async function openLoraModal(currentLoras, engine, selectedModelAir) {
     const loras = structuredClone(currentLoras || []);
     
-    // Determine target architecture for filtering
+    // 1. Determine target architecture and search keyword for the current model
     let targetArch = null;
+    let searchKeyword = "flux"; // Default fallback
+
     if (engine === 'runware') {
         const models = getCachedRunwareModels();
         const activeModel = models.find(m => (m.air || m.modelId) === selectedModelAir);
+        
+        const label = (activeModel?.label || activeModel?.name || "").toLowerCase();
         targetArch = activeModel?.architecture?.toLowerCase() || '';
         
-        // Pony grouping: Pony is technically SDXL
+        // Derive optimal search term from model context
+        if (label.includes('pony') || targetArch.includes('pony')) {
+            searchKeyword = "pony";
+            targetArch = "sdxl"; // Group Pony under SDXL for compatibility
+        } else if (label.includes('flux') || targetArch.includes('flux')) {
+            searchKeyword = "flux";
+        } else if (label.includes('sdxl') || targetArch.includes('sdxl')) {
+            searchKeyword = "sdxl";
+        } else if (label.includes('sd 1.5') || targetArch.includes('sd 1.5')) {
+            searchKeyword = "sd 1.5";
+        }
+
         if (targetArch.includes('pony')) targetArch = 'sdxl';
     }
 
     const renderList = () => {
-        // Combined list: Hardcoded Fallbacks + Persistent Settings
         const s = getSettings();
         const combinedRegistry = [...RUNWARE_LORA_REGISTRY, ...(s.runwareLoras || [])];
         
-        // Deduplicate by AIR
         const seen = new Set();
         const registry = combinedRegistry.filter(l => {
-            if (!l.air || seen.has(l.air)) return false;
-            seen.add(l.air);
+            const air = l.air || l.modelId;
+            if (!air || seen.has(air)) return false;
+            seen.add(air);
             
-            // Apply filtering logic if engine is Runware and architecture is known
             if (targetArch) {
                 const loraArch = (l.architecture || '').toLowerCase();
-                // Check for match, including pony/sdxl crossover
                 if (targetArch === 'sdxl') {
                     return loraArch === 'sdxl' || loraArch.includes('pony');
                 }
@@ -188,7 +200,7 @@ export async function openLoraModal(currentLoras, engine, selectedModelAir) {
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
             <h3 style="margin:0;">Manage LoRAs${archLabel}</h3>
             <div style="display:flex; gap:5px;">
-                <button id="plz-pop-lora-fetch" class="menu_button" title="Fetch Top 300 LoRAs (Requires VPN for Civitai)"><i class="fa-solid fa-cloud-arrow-down"></i> Fetch Top 300</button>
+                <button id="plz-pop-lora-fetch" class="menu_button" title="Fetch related LoRAs for ${searchKeyword.toUpperCase()}"><i class="fa-solid fa-cloud-arrow-down"></i> Fetch ${searchKeyword.toUpperCase()}</button>
                 <button id="plz-pop-lora-add" class="menu_button"><i class="fa-solid fa-plus"></i> Add</button>
             </div>
         </div>
@@ -207,11 +219,12 @@ export async function openLoraModal(currentLoras, engine, selectedModelAir) {
             const original = $btn.html();
             $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Fetching...');
             try {
-                await fetchRunwareLoras();
+                // Call rewired fetch with model-specific search term
+                await fetchRunwareLoras(searchKeyword);
                 $('#plz-pop-lora-list').html(renderList());
-                if (window.toastr) window.toastr.success('LoRA registry updated.');
+                if (window.toastr) window.toastr.success(`Registry updated with ${searchKeyword.toUpperCase()} LoRAs.`);
             } catch (err) {
-                if (window.toastr) window.toastr.error('Failed to fetch LoRAs. Ensure VPN is active.');
+                if (window.toastr) window.toastr.error('Failed to fetch LoRAs. Ensure VPN is active in your browser.');
             } finally {
                 $btn.prop('disabled', false).html(original);
             }

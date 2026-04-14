@@ -1,33 +1,35 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/panel/models.js
- * @stamp {"utc":"2026-04-17T10:30:00.000Z"}
+ * @stamp {"utc":"2026-04-17T13:40:00.000Z"}
  * @architectural-role UI Logic (API Discovery)
  * @description
- * Handles dynamic discovery for image generation engines.
+ * Handles dynamic discovery for image generation engines. 
  * 
  * Updated:
- * 1. Rewired Runware discovery to call the API directly from the browser.
- * 2. Bypasses server-side proxy to utilize local browser VPN for Civitai/Runware metadata.
- * 3. Integrated findSecret for secure frontend key retrieval.
+ * 1. Implemented dual-path fallback logic: Browser Direct -> Server Proxy.
+ * 2. Added detailed debug logging for request start, responses, and failures.
+ * 3. Maintains browser-direct fetch as priority to leverage local VPN for Civitai metadata.
+ * 4. Integrated getRequestHeaders for fallback proxy authentication.
  *
  * @api-declaration
  * refreshModelDropdown(currentModel) -> Promise<void>
  * getCachedModels() -> string[]
  * fetchRunwareModels() -> Promise<void>
- * fetchRunwareLoras() -> Promise<void>
+ * fetchRunwareLoras(searchTerm) -> Promise<void>
  * getCachedRunwareModels() -> Object[]
  * 
  * @contract
  *   assertions:
  *     purity: IO / Side-effect
  *     state_ownership: [cachedModels, cachedRunwareModels]
- *     external_io: [fetch (Direct API), settings.js, secrets.js]
+ *     external_io: [fetch (Direct & Proxy), settings.js, secrets.js, SillyTavern script.js]
  */
 
 import { findSecret } from '../../../../../secrets.js';
+import { getRequestHeaders } from '../../../../../../script.js';
 import { POLLINATIONS_BASE_URL, POLLINATIONS_MODELS, SECRET_RUNWARE } from '../../defaults.js';
 import { log, error } from '../../utils/logger.js';
-import { updateSetting } from '../../settings.js';
+import { updateSetting, getSettings } from '../../settings.js';
 
 /**
  * Global cache of fetched Pollinations models.
@@ -38,6 +40,21 @@ let cachedModels = [...POLLINATIONS_MODELS];
  * Session cache of fetched Runware models (checkpoints).
  */
 let cachedRunwareModels = [];
+
+/**
+ * Returns a UUID v4. 
+ * Includes a fallback for browsers where crypto.randomUUID is restricted (non-HTTPS).
+ */
+function generateUUID() {
+    try {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    } catch (e) {}
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
 
 /**
  * Returns the latest known list of Pollinations models.
@@ -57,14 +74,13 @@ export function getCachedRunwareModels() {
 
 /**
  * Fetches latest models from Pollinations and updates the Engines Modal dropdown.
- * 
- * @param {string|null} currentModel — The currently selected model in the settings.
  */
 export async function refreshModelDropdown(currentModel) {
     const selector = '#plz-eng-pol-model';
     const $select  = $(selector);
 
     try {
+        log('Models', `Refreshing Pollinations models (Current: ${currentModel})...`);
         const response = await fetch(`${POLLINATIONS_BASE_URL}/image/models`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
@@ -110,88 +126,146 @@ export async function refreshModelDropdown(currentModel) {
 }
 
 /**
- * Fetches latest Checkpoints from Runware directly from the browser.
- * Utilizes local browser network (VPN) to bypass server-side tunnel restrictions.
+ * Fetches latest Checkpoints from Runware.
+ * Attempts Browser Direct first, then falls back to Server Proxy.
  */
 export async function fetchRunwareModels() {
+    const apiKey = await findSecret(SECRET_RUNWARE);
+    if (!apiKey) {
+        log('Models', 'Runware model fetch skipped: No API key found.');
+        return;
+    }
+
+    const taskUUID = generateUUID();
+    const taskPayload = [{
+        taskType: "modelSearch",
+        taskUUID: taskUUID,
+        category: "checkpoint",
+        search: "realistic",
+        limit: 100
+    }];
+
+    // --- Path A: Browser Direct (VPN check) ---
     try {
-        const apiKey = await findSecret(SECRET_RUNWARE);
-        if (!apiKey) {
-            log('Models', 'Runware model fetch skipped: No API key found.');
-            return;
-        }
-
-        log('Models', 'Fetching Runware checkpoints (Browser Direct)...');
-        
-        const task = {
-            taskType: "modelSearch",
-            taskUUID: crypto.randomUUID(),
-            category: "checkpoint",
-            limit: 100
-        };
-
+        log('Models', 'Path A: Fetching Runware checkpoints (Browser Direct)...');
         const res = await fetch('https://api.runware.ai/v1', {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}` 
-            },
-            body: JSON.stringify([task])
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+            body: JSON.stringify(taskPayload)
         });
 
-        if (!res.ok) throw new Error(`API Error: ${res.status}`);
+        if (!res.ok) throw new Error(`Browser direct failed: ${res.status}`);
         
         const data = await res.json();
-        const taskResult = data.data?.find(t => t.taskUUID === task.taskUUID);
+        const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
         
         cachedRunwareModels = taskResult?.models || [];
-        log('Models', `Cached ${cachedRunwareModels.length} Runware checkpoints via browser.`);
+        log('Models', `Success (Browser): Cached ${cachedRunwareModels.length} checkpoints.`);
+        return;
     } catch (err) {
-        error('Models', 'Browser-direct Runware checkpoint fetch failed:', err);
+        log('Models', `Path A failed: ${err.message}. Attempting Path B (Server Proxy)...`);
+    }
+
+    // --- Path B: Server Proxy (Fallback) ---
+    try {
+        log('Models', 'Path B: Fetching Runware checkpoints (Server Proxy)...');
+        const res = await fetch('/api/plugins/personalyze/runware-search', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ category: 'checkpoint', search: 'realistic', limit: 100 }),
+        });
+
+        if (!res.ok) throw new Error(`Server proxy failed: ${res.status}`);
+        
+        const { models } = await res.json();
+        cachedRunwareModels = models || [];
+        log('Models', `Success (Server): Cached ${cachedRunwareModels.length} checkpoints.`);
+    } catch (err) {
+        error('Models', 'CRITICAL: Both discovery paths for Runware checkpoints failed.', err);
     }
 }
 
 /**
- * Fetches top 300 LoRAs from Runware directly from the browser.
- * Utilizes local browser network (VPN) for Civitai access.
+ * Fetches top 200 LoRAs related to a specific search term.
+ * Attempts Browser Direct first, then falls back to Server Proxy.
+ * 
+ * @param {string} searchTerm - Query related to the active model (e.g. "flux", "pony")
  */
-export async function fetchRunwareLoras() {
+export async function fetchRunwareLoras(searchTerm = "flux") {
+    const apiKey = await findSecret(SECRET_RUNWARE);
+    if (!apiKey) {
+        throw new Error('Runware API key not found in vault.');
+    }
+
+    const taskUUID = generateUUID();
+    const taskPayload = [{
+        taskType: "modelSearch",
+        taskUUID: taskUUID,
+        category: "lora",
+        search: searchTerm,
+        limit: 200
+    }];
+
+    let newModels = [];
+
+    // --- Path A: Browser Direct (VPN check) ---
     try {
-        const apiKey = await findSecret(SECRET_RUNWARE);
-        if (!apiKey) {
-            throw new Error('Runware API key not found in vault.');
-        }
-
-        log('Models', 'Fetching top 300 Runware LoRAs (Browser Direct)...');
-        
-        const task = {
-            taskType: "modelSearch",
-            taskUUID: crypto.randomUUID(),
-            category: "lora",
-            limit: 300
-        };
-
+        log('Models', `Path A: Fetching LoRAs for "${searchTerm}" (Browser Direct)...`);
         const res = await fetch('https://api.runware.ai/v1', {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}` 
-            },
-            body: JSON.stringify([task])
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+            body: JSON.stringify(taskPayload)
         });
 
-        if (!res.ok) throw new Error(`API Error: ${res.status}`);
+        if (!res.ok) throw new Error(`Browser direct failed: ${res.status}`);
         
         const data = await res.json();
-        const taskResult = data.data?.find(t => t.taskUUID === task.taskUUID);
-        const models = taskResult?.models || [];
-
-        if (models.length > 0) {
-            updateSetting('runwareLoras', models);
-            log('Models', `Saved ${models.length} Runware LoRAs to persistent storage via browser.`);
-        }
+        const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
+        newModels = taskResult?.models || [];
+        log('Models', `Path A Response: Found ${newModels.length} LoRAs.`);
     } catch (err) {
-        error('Models', 'Browser-direct Runware LoRA fetch failed:', err);
-        throw err;
+        log('Models', `Path A failed: ${err.message}. Attempting Path B (Server Proxy)...`);
+        
+        // --- Path B: Server Proxy (Fallback) ---
+        try {
+            log('Models', `Path B: Fetching LoRAs for "${searchTerm}" (Server Proxy)...`);
+            const res = await fetch('/api/plugins/personalyze/runware-search', {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify({ category: 'lora', search: searchTerm, limit: 200 }),
+            });
+
+            if (!res.ok) throw new Error(`Server proxy failed: ${res.status}`);
+            
+            const data = await res.json();
+            newModels = data.models || [];
+            log('Models', `Path B Response: Found ${newModels.length} LoRAs.`);
+        } catch (serverErr) {
+            error('Models', `CRITICAL: Both discovery paths for LoRA "${searchTerm}" failed.`, serverErr);
+            throw serverErr;
+        }
+    }
+
+    // --- Shared Registry Update ---
+    if (newModels.length > 0) {
+        const currentSettings = getSettings();
+        const existingLoras = currentSettings.runwareLoras || [];
+        
+        const loraMap = new Map();
+        existingLoras.forEach(l => {
+            const air = l.air || l.modelId;
+            if (air) loraMap.set(air, l);
+        });
+        
+        newModels.forEach(l => {
+            const air = l.air || l.modelId;
+            if (air) loraMap.set(air, l);
+        });
+
+        const merged = Array.from(loraMap.values());
+        updateSetting('runwareLoras', merged);
+        log('Models', `Persistent registry updated. Total entries: ${merged.length}.`);
+    } else {
+        log('Models', `Query for "${searchTerm}" returned 0 results across both paths.`);
     }
 }
