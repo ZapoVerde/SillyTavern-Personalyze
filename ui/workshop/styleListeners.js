@@ -1,11 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleListeners.js
- * @stamp {"utc":"2026-04-17T01:10:00.000Z"}
+ * @stamp {"utc":"2026-04-17T01:30:00.000Z"}
  * @architectural-role UI Controller (Global Styles)
  * @description
  * Orchestrates the management and editing of Global Style Render Pipelines.
- * Manages draft state ("dirty" edits), clones/clobbers style packages,
- * and handles connectivity testing for the active configuration.
+ * Implements the "Working Table" pattern: edits are live in memory (localDraft)
+ * but must be saved to persist. Includes Revert and dirty indicator logic.
  * 
  * @api-declaration
  * renderStylesView() -> void
@@ -30,6 +30,48 @@ import { openPipelineModal, openLoraModal } from './styleModals.js';
 let localDraft = null;
 
 /**
+ * Checks if the current draft differs from the saved version in the library.
+ * @returns {boolean}
+ */
+function _isDraftDirty() {
+    if (!localDraft) return false;
+    const meta = getMetaSettings();
+    const original = meta.styleLibrary[localDraft._originalName];
+    if (!original) return false;
+
+    return (
+        localDraft.template !== original.template ||
+        localDraft.negativePrompt !== (original.negativePrompt || '') ||
+        localDraft.engine !== (original.engine || DEFAULT_STYLE_PACKAGE.engine) ||
+        localDraft.model !== (original.model || DEFAULT_STYLE_PACKAGE.model) ||
+        localDraft.resolutionOverride !== (original.resolutionOverride || null) ||
+        localDraft.useLayerDiffuse !== !!original.useLayerDiffuse ||
+        JSON.stringify(localDraft.loras || []) !== JSON.stringify(original.loras || [])
+    );
+}
+
+/**
+ * Updates the UI state (Save/Revert buttons and asterisk) without a full re-render.
+ * Prevents losing focus in textareas during typing.
+ */
+function _syncDirtyUI() {
+    const dirty = _isDraftDirty();
+    const meta = getMetaSettings();
+    
+    // 1. Update Button States
+    $('#plz-style-save, #plz-style-revert').prop('disabled', !dirty);
+
+    // 2. Update Dropdown Label
+    const name = localDraft._originalName;
+    const $opt = $(`#plz-style-selector option[value="${CSS.escape(name)}"]`);
+    if ($opt.length) {
+        const isDefault = name === meta.defaultStyleName;
+        const newLabel = name + (isDefault ? ' ⭐' : '') + (dirty ? ' *' : '');
+        $opt.text(newLabel);
+    }
+}
+
+/**
  * Renders the Global Styles view into the Workshop panel.
  */
 export function renderStylesView() {
@@ -41,8 +83,7 @@ export function renderStylesView() {
         ? s.currentStyleName 
         : (meta.defaultStyleName || Object.keys(lib)[0]);
 
-    // Initialize draft if needed or if switching styles
-    // Merges defaults to ensure all technical fields exist even on legacy styles
+    // Initialize draft from library if name changed or draft is empty
     if (!localDraft || localDraft._originalName !== activeName) {
         localDraft = { 
             ...structuredClone(DEFAULT_STYLE_PACKAGE), 
@@ -51,33 +92,10 @@ export function renderStylesView() {
         };
     }
 
-    const html = getStylesTabHTML(lib, meta.defaultStyleName, activeName, localDraft);
+    const html = getStylesTabHTML(lib, meta.defaultStyleName, activeName, localDraft, _isDraftDirty());
     const $panel = $('#plz-tab-styles').html(html);
 
     $panel.find('.plz-auto-textarea').each(function() { smartResize(this); });
-    _updateDirtyUI();
-}
-
-/**
- * Compares draft to library to show/hide the save button.
- */
-function _updateDirtyUI() {
-    const meta = getMetaSettings();
-    const original = meta.styleLibrary[localDraft._originalName];
-    if (!original) return;
-
-    // Deep compare prompts and technical fields
-    const isDirty = (
-        localDraft.template !== original.template ||
-        localDraft.negativePrompt !== original.negativePrompt ||
-        localDraft.engine !== original.engine ||
-        localDraft.model !== original.model ||
-        localDraft.resolutionOverride !== original.resolutionOverride ||
-        localDraft.useLayerDiffuse !== original.useLayerDiffuse ||
-        JSON.stringify(localDraft.loras) !== JSON.stringify(original.loras)
-    );
-
-    $('#plz-style-dirty-notice').toggleClass('plz-hidden', !isDirty);
 }
 
 /**
@@ -90,23 +108,23 @@ export function bindStyleHandlers() {
     $overlay.on('change', '#plz-style-selector', function() {
         const newName = $(this).val();
         updateSetting('currentStyleName', newName);
-        localDraft = null; // Force draft reset
+        localDraft = null; // Clear draft to force reload from lib on next render
         renderStylesView();
     });
 
-    // 2. Prompt Edits
+    // 2. Live Draft Edits
     $overlay.on('input', '#plz-style-template, #plz-style-negative', function() {
         localDraft.template = $('#plz-style-template').val();
         localDraft.negativePrompt = $('#plz-style-negative').val();
-        _updateDirtyUI();
+        _syncDirtyUI();
     });
 
-    // 3. Technical Popups
+    // 3. Technical Popups (Forces re-render on return)
     $overlay.on('click', '#plz-style-edit-pipeline', async () => {
         const result = await openPipelineModal(localDraft);
         if (result) {
             Object.assign(localDraft, result);
-            _updateDirtyUI();
+            renderStylesView();
         }
     });
 
@@ -114,20 +132,28 @@ export function bindStyleHandlers() {
         const result = await openLoraModal(localDraft.loras);
         if (result) {
             localDraft.loras = result;
-            $('#plz-style-lora-tags').html(getLoraTagsHTML(localDraft.loras));
-            _updateDirtyUI();
+            renderStylesView();
         }
     });
 
-    // 4. CRUD Operations
-    $overlay.on('click', '#plz-style-save-changes', () => {
+    // 4. Action Row (CRUD & Working Table)
+    $overlay.on('click', '#plz-style-save', () => {
         const meta = getMetaSettings();
+        const name = localDraft._originalName;
         const saveObj = structuredClone(localDraft);
-        delete saveObj._originalName; // Don't save internal marker
-        meta.styleLibrary[localDraft._originalName] = saveObj;
+        delete saveObj._originalName;
+        
+        meta.styleLibrary[name] = saveObj;
         saveSettingsDebounced();
         renderStylesView();
-        if (window.toastr) window.toastr.success(`Style "${localDraft._originalName}" updated.`);
+        if (window.toastr) window.toastr.success(`Style "${name}" saved.`);
+    });
+
+    $overlay.on('click', '#plz-style-revert', async () => {
+        const ok = await callPopup('Discard unsaved changes?', 'confirm');
+        if (!ok) return;
+        localDraft = null; // Reset draft
+        renderStylesView();
     });
 
     $overlay.on('click', '#plz-style-set-default', () => {
@@ -176,24 +202,14 @@ export function bindStyleHandlers() {
         $btn.prop('disabled', true).text('Generating test...');
 
         try {
-            // Priority: Override -> Square -> Vertical Fallback
             const resParts = (localDraft.resolutionOverride || '512x768').split('x');
             const url = await fetchPreviewBlob(
-                localDraft.engine, 
-                localDraft.model, 
-                localDraft.template, 
-                localDraft.negativePrompt,
-                parseInt(resParts[0]), 
-                parseInt(resParts[1]), 
-                1, 
-                localDraft.loras, 
-                localDraft.useLayerDiffuse
+                localDraft.engine, localDraft.model, localDraft.template, localDraft.negativePrompt,
+                parseInt(resParts[0]), parseInt(resParts[1]), 1, localDraft.loras, localDraft.useLayerDiffuse
             );
             await callPopup(`<h3>Test OK</h3><img src="${url}" style="width:100%; border-radius:6px;" />`, 'text');
         } catch (err) {
             if (window.toastr) window.toastr.error('Test failed: ' + err.message);
-        } finally {
-            $btn.prop('disabled', false).html(originalHtml);
-        }
+        } finally { $btn.prop('disabled', false).html(originalHtml); }
     });
 }

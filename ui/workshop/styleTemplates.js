@@ -1,21 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleTemplates.js
- * @stamp {"utc":"2026-04-16T23:58:00.000Z"}
+ * @stamp {"utc":"2026-04-17T01:20:00.000Z"}
  * @architectural-role Pure UI Template (Global Styles)
  * @description
  * Generates the HTML for the Global Styles management tab.
- * Implements a dropdown-first layout for mobile compatibility.
+ * Implements the "Working Table" pattern with Save/Revert actions and dirty indicators.
  * 
  * @api-declaration
- * getStylesTabHTML(styleLibrary, defaultName, activeName, styleObj)
- * getVariableLegendHTML()
- * getLoraTagsHTML(loras)
- * 
- * @contract
- *   assertions:
- *     purity: Pure Function
- *     state_ownership: []
- *     external_io: []
+ * getStylesTabHTML(styleLibrary, defaultName, activeName, styleObj, isDirty)
+ * ...
  */
 
 import { escapeHtml } from '../../utils/history.js';
@@ -24,22 +17,26 @@ import { RUNWARE_LORA_REGISTRY } from '../../defaults.js';
 /**
  * Main Styles Tab Layout.
  */
-export function getStylesTabHTML(styleLibrary, defaultName, activeName, styleObj) {
+export function getStylesTabHTML(styleLibrary, defaultName, activeName, styleObj, isDirty) {
     const options = Object.keys(styleLibrary).map(name => {
         const isDefault = name === defaultName;
-        return `<option value="${escapeHtml(name)}" ${name === activeName ? 'selected' : ''}>${escapeHtml(name)}${isDefault ? ' ⭐' : ''}</option>`;
+        const isActive = name === activeName;
+        const label = name + (isDefault ? ' ⭐' : '') + (isActive && isDirty ? ' *' : '');
+        return `<option value="${escapeHtml(name)}" ${isActive ? 'selected' : ''}>${escapeHtml(label)}</option>`;
     }).join('');
 
     return `
     <div id="plz-styles-container" style="display:flex; flex-direction:column; gap:12px; padding:5px;">
         <h3 style="margin:0;">Global Portrait Styles</h3>
         
-        <!-- Compact Style Selection Row (Restored) -->
-        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+        <!-- Style Selection & Action Row -->
+        <div style="display:flex; align-items:center; gap:5px; margin-bottom:4px;">
             <select id="plz-style-selector" class="text_pole" style="flex:1; font-weight:bold;">
                 ${options}
             </select>
             <button id="plz-style-set-default" class="menu_button" title="Set as global default">⭐</button>
+            <button id="plz-style-save" class="menu_button" title="Save changes" ${!isDirty ? 'disabled' : ''}>💾</button>
+            <button id="plz-style-revert" class="menu_button" title="Revert to saved" ${!isDirty ? 'disabled' : ''}>↺</button>
             <button id="plz-style-new" class="menu_button" title="Create new from current">➕</button>
             <button id="plz-style-delete" class="menu_button" style="color:var(--SmartThemeErrorColor);" title="Delete style">🗑️</button>
         </div>
@@ -79,11 +76,6 @@ export function getStylesTabHTML(styleLibrary, defaultName, activeName, styleObj
             <textarea id="plz-style-negative" class="text_pole plz-auto-textarea" rows="2" 
                       placeholder="Exclusions..." style="width:100%; font-family:monospace; font-size:0.85em; margin-top:5px;">${escapeHtml(styleObj.negativePrompt)}</textarea>
         </details>
-
-        <div id="plz-style-dirty-notice" class="plz-hidden" style="padding:10px; background:rgba(var(--SmartThemeQuoteColor-rgb), 0.15); border:1px solid var(--SmartThemeQuoteColor); border-radius:6px; text-align:center;">
-            <div style="font-size:0.85em; margin-bottom:8px;">You have unsaved changes to this style.</div>
-            <button id="plz-style-save-changes" class="menu_button" style="background:var(--SmartThemeQuoteColor); color:white; width:100%;">Update Style Package</button>
-        </div>
 
         <button id="plz-style-test-render" class="menu_button" style="margin-top:10px;">
             <i class="fa-solid fa-flask"></i> Test Render
