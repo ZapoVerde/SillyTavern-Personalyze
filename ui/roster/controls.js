@@ -1,14 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/roster/controls.js
- * @stamp {"utc":"2026-04-16T23:00:00.000Z"}
+ * @stamp {"utc":"2026-04-19T16:00:00.000Z"}
  * @architectural-role UI Orchestrator
  * @description
  * Manages global event delegation for the character roster UI.
  * Handles card-level interactions including flipping, removal, and addition.
- *
- * Updated for Style-Specific Render Pipeline:
- * 1. Removed engine derivation logic from the refresh handler.
- * 2. Updated generate() call to remove legacy provider argument.
+ * 
+ * Updated for Forensic Observability:
+ * 1. Added startWorkshopTurn call to the refresh handler to ensure manual 
+ *    generations are correctly filed in the Workshop logs.
  *
  * @api-declaration
  * bindRosterControls() -> void
@@ -17,7 +17,7 @@
  *   assertions:
  *     purity: IO Executor
  *     state_ownership: [state.activeRoster]
- *     external_io: [DOM, state.js, dnaWriter.js, charPicker.js, imageCache.js, logger.js]
+ *     external_io: [DOM, state.js, dnaWriter.js, charPicker.js, imageCache.js, logger.js, callLog.js]
  */
 
 import { 
@@ -35,6 +35,7 @@ import { slugify } from '../../utils/history.js';
 import { getSettings } from '../../settings.js';
 import { getContext } from '../../../../../extensions.js';
 import { error } from '../../utils/logger.js';
+import { startWorkshopTurn } from '../../utils/callLog.js';
 
 /**
  * Binds delegated click handlers to the document for roster card interactions.
@@ -95,6 +96,9 @@ export function bindRosterControls() {
         const prompt = compilePrompt(char.identityAnchor, layers);
         const emotionSlug = slugify(layers.emotion);
         const s = getSettings();
+
+        // Forensic Logging: Open a Workshop turn so the generation is filed correctly
+        startWorkshopTurn(`Manual Refresh: ${char.label || id}`);
 
         try {
             // Trigger generation with cache-bust to force fresh image while keeping seed

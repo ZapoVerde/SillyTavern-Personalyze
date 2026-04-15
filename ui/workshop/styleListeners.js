@@ -1,12 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleListeners.js
- * @stamp {"utc":"2026-04-18T20:20:00.000Z"}
+ * @stamp {"utc":"2026-04-19T16:20:00.000Z"}
  * @architectural-role UI Controller (Global Styles)
  * @description
  * Orchestrates the management and editing of Global Style Render Pipelines.
  * Implements the "Working Table" (Sandbox vs. Checkpoint) pattern.
  * Edits are applied directly to persistent styleWorkspaces for live testing
  * and multi-device persistence before being committed to the styleLibrary.
+ * 
+ * Updated for Forensic Observability:
+ * 1. Added startWorkshopTurn call to the Test Render handler.
  * 
  * @api-declaration
  * renderStylesView() -> void
@@ -16,7 +19,7 @@
  *   assertions:
  *     purity: IO / Stateful UI
  *     state_ownership: [styleWorkspaces]
- *     external_io: [settings.js, styleModals.js, imageCache.js, models.js, DOM]
+ *     external_io: [settings.js, styleModals.js, imageCache.js, models.js, DOM, callLog.js]
  */
 
 import { getSettings, getMetaSettings, updateSetting } from '../../settings.js';
@@ -26,6 +29,7 @@ import { fetchRunwareModels } from '../panel/models.js';
 import { smartResize } from '../../utils/dom.js';
 import { getStylesTabHTML } from './styleTemplates.js';
 import { openPipelineModal, openLoraModal } from './styleModals.js';
+import { startWorkshopTurn } from '../../utils/callLog.js';
 
 /**
  * Checks if the workspace version of a style differs from its checkpoint in the library.
@@ -222,6 +226,9 @@ export function bindStyleHandlers() {
         const meta = getMetaSettings();
         const activeName = getSettings().currentStyleName;
         const style = meta.styleWorkspaces[activeName];
+
+        // Forensic Logging: Open a Workshop turn so the test generation is filed correctly
+        startWorkshopTurn(`Style Test Render: ${activeName}`);
 
         const $btn = $(this);
         const originalHtml = $btn.html();

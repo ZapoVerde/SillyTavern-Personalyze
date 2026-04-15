@@ -1,13 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-16T22:40:00.000Z"}
+ * @stamp {"utc":"2026-04-19T16:10:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
  * visual state for the current turn using the 5-slot architecture.
  *
- * Updated for Style-Specific Render Pipeline:
- * 1. Updated generate() call to remove the legacy engine argument.
+ * Updated for Forensic Observability:
+ * 1. Added startWorkshopTurn call to ensure manual edits are filed in the 
+ *    Workshop logs instead of defaulting to Standalone Pipeline logs.
  *
  * @api-declaration
  * openCharPicker(initialOverride) → Promise<void>
@@ -16,7 +17,7 @@
  *   assertions:
  *     purity: IO Executor
  *     state_ownership: [state (via setters)]
- *     external_io: [callPopup, dnaWriter.js, vocabularyService.js, state.js, imageCache.js]
+ *     external_io: [callPopup, dnaWriter.js, vocabularyService.js, state.js, imageCache.js, callLog.js]
  */
 
 import { callPopup } from '../../../../../script.js';
@@ -42,6 +43,7 @@ import { applyEnsemble } from '../logic/ensembleEngine.js';
 import { BASE_SLOTS, META_SLOTS } from '../defaults.js';
 import { generateEnsembleLabel, generateEnsembleKey } from '../logic/parsers.js';
 import { buildVocabularyDatalists } from '../logic/vocabularyService.js';
+import { startWorkshopTurn } from '../utils/callLog.js';
 
 // Decomposed Templates
 import { buildGridHTML } from './charPickerTemplates.js';
@@ -207,6 +209,9 @@ export async function openCharPicker(initialOverride = null) {
         const guardOk = await callPopup('<h3>Potential Placeholder Detected</h3>Brackets <b>[ ]</b> found. Save anyway?', 'confirm');
         if (!guardOk) return openCharPicker(layers);
     }
+
+    // Forensic Logging: Open a Workshop turn so the generation is filed correctly
+    startWorkshopTurn(`Manual Appearance Change: ${charId}`);
 
     const ensembleLabel = generateEnsembleLabel(layers);
     const ensembleKey   = generateEnsembleKey(layers);
