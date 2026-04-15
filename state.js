@@ -1,17 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/state.js
- * @stamp {"utc":"2026-04-16T21:20:00.000Z"}
+ * @stamp {"utc":"2026-04-19T21:15:00.000Z"}
  * @architectural-role Stateful Owner (Runtime State)
  * @description
  * Single source of truth for all PersonaLyze in-memory runtime state.
  * 
- * Tracks the active character, their current layered visual state, 
- * and the local DNA derived from chat history.
- *
- * Updated for Style-Specific Render Pipeline:
- * 1. Removed engine and LoRA fields from character state (moved to Global Styles).
- * 2. Pruned redundant DNA setters.
- *
+ * Updated for Explicit Seed Architecture:
+ * 1. ensureChatChar now defaults the seed to a random integer between 1 and 999.
+ * 
  * @api-declaration
  * state                                    — Read-only access to runtime data.
  * toggleCharacterFlip(characterId)         — Toggles the mirror state for a character.
@@ -201,10 +197,14 @@ export function getCleanLayers(slots) {
  */
 export function ensureChatChar(id) {
     if (!state.chatCharacters[id]) {
+        // Deterministic Continuity: Default new characters to a fixed random seed
+        // within the 3-digit range (1-999) instead of -1.
+        const defaultSeed = Math.floor(Math.random() * 999) + 1;
+
         state.chatCharacters[id] = { 
             label: id.replace(/_/g, ' '), 
             identityAnchor: '', 
-            seed: 1, 
+            seed: defaultSeed, 
             ensembles: {}, 
             aka: [], 
             defaultEnsemble: null, 

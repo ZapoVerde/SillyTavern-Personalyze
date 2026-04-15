@@ -1,14 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/roster/controls.js
- * @stamp {"utc":"2026-04-19T16:00:00.000Z"}
+ * @stamp {"utc":"2026-04-19T21:50:00.000Z"}
  * @architectural-role UI Orchestrator
  * @description
  * Manages global event delegation for the character roster UI.
  * Handles card-level interactions including flipping, removal, and addition.
  * 
- * Updated for Forensic Observability:
- * 1. Added startWorkshopTurn call to the refresh handler to ensure manual 
- *    generations are correctly filed in the Workshop logs.
+ * Updated for Explicit Seed Architecture:
+ * 1. Implemented silent 3-digit seed increment loop (1-999) on refresh.
+ * 2. Ensures seed updates are committed to DNA via lockedWriteCharacterDef.
  *
  * @api-declaration
  * bindRosterControls() -> void
@@ -26,9 +26,14 @@ import {
     toggleCharacterFlip, 
     addToFileIndex, 
     updateChainLayers, 
-    removeFromFileIndex 
+    removeFromFileIndex,
+    upsertChatCharacterDef
 } from '../../state.js';
-import { lockedWriteRoster, lockedPatchVisualStateImage } from '../../io/dnaWriter.js';
+import { 
+    lockedWriteRoster, 
+    lockedPatchVisualStateImage,
+    lockedWriteCharacterDef
+} from '../../io/dnaWriter.js';
 import { generate, deleteFiles } from '../../imageCache.js';
 import { compilePrompt } from '../../logic/promptCompiler.js';
 import { slugify } from '../../utils/history.js';
@@ -93,15 +98,29 @@ export function bindRosterControls() {
         const lastAiIdx = getContext().chat.findLastIndex(m => !m.is_user);
         if (lastAiIdx === -1) return;
 
+        const s = getSettings();
+        
+        // Seed Determination Logic
+        let apiSeed = char.seed ?? 1;
+
+        if (s.autoIncrementSeed && apiSeed > -1) {
+            // 3-Digit Loop Logic (1-999)
+            apiSeed = (apiSeed % 999) + 1;
+            
+            // Permanent DNA Commitment: update seed in memory and chat history
+            // We MUST include the existing anchor to prevent it being overwritten with undefined
+            upsertChatCharacterDef(id, char.identityAnchor, apiSeed);
+            await lockedWriteCharacterDef(lastAiIdx, id, char.identityAnchor, apiSeed);
+        }
+
         const prompt = compilePrompt(char.identityAnchor, layers);
         const emotionSlug = slugify(layers.emotion);
-        const s = getSettings();
 
         // Forensic Logging: Open a Workshop turn so the generation is filed correctly
         startWorkshopTurn(`Manual Refresh: ${char.label || id}`);
 
         try {
-            // Trigger generation with cache-bust to force fresh image while keeping seed
+            // Trigger generation with cache-bust to force fresh image while keeping (or incrementing) seed
             const newFile = await generate(
                 id, 
                 'layered', 
@@ -110,7 +129,8 @@ export function bindRosterControls() {
                 layers.emotion, 
                 layers.pose, 
                 char.identityAnchor, 
-                char.seed, 
+                apiSeed, 
+                null,
                 true
             );
 
@@ -118,10 +138,10 @@ export function bindRosterControls() {
             addToFileIndex(newFile);
             updateChainLayers(id, layers, newFile);
             
-            // Patch existing DNA record
+            // Patch existing DNA record with the new file pointer
             await lockedPatchVisualStateImage(lastAiIdx, id, newFile);
 
-            // Ephemeral Cleanup: delete previous active images for this character (regardless of tag/emotion)
+            // Ephemeral Cleanup
             if (!s.keepCache) {
                 const charPrefix = `plz_${id}_`;
                 const staleFiles = Array.from(state.fileIndex).filter(f => 
@@ -139,7 +159,6 @@ export function bindRosterControls() {
 
         } catch (err) {
             error('Controls', `Refresh failed for ${id}:`, err);
-            if (window.toastr) window.toastr.error('Refresh failed. Check console for details.', 'PersonaLyze');
         }
     });
 }

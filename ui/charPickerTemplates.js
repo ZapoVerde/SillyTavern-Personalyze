@@ -1,15 +1,18 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPickerTemplates.js
- * @stamp {"utc":"2026-04-14T23:00:00.000Z"}
+ * @stamp {"utc":"2026-04-19T21:20:00.000Z"}
  * @architectural-role UI Template (Picker)
  * @description
  * Pure HTML generation for the Character Picker modal. Handles the dynamic 
- * construction of the wardrobe grid.
+ * construction of the wardrobe grid and generation controls.
  * 
- * Updated to use domRegistry for space-safe list attributes.
+ * Updated for Explicit Seed Architecture:
+ * 1. buildGridHTML now accepts seed and autoIncrement parameters.
+ * 2. Added a Generation Options row containing the seed input and auto-increment checkbox.
+ * 3. constrained seed input between -1 and 999 to support the requested 3-digit loop.
  * 
  * @api-declaration
- * buildGridHTML(slots, layers, charId) -> string
+ * buildGridHTML(slots, layers, charId, seed, autoIncrement) -> string
  * 
  * @contract
  *   assertions:
@@ -28,9 +31,11 @@ import { getDatalistId } from '../utils/domRegistry.js';
  * @param {string[]} slots 
  * @param {object} layers 
  * @param {string} charId 
+ * @param {number} seed - The character's current DNA seed.
+ * @param {boolean} autoIncrement - Whether to bump seed on refresh.
  * @returns {string}
  */
-export function buildGridHTML(slots, layers, charId) {
+export function buildGridHTML(slots, layers, charId, seed = 1, autoIncrement = false) {
     const effectiveSlots = slots && slots.length > 0 ? slots : BASE_SLOTS;
 
     const clothingHtml = effectiveSlots.map(key => {
@@ -82,6 +87,19 @@ export function buildGridHTML(slots, layers, charId) {
             </div>
         </div>
     </div>
+    
+    <!-- Generation Options Row -->
+    <div class="plz-cp-seed-row" style="display:flex; align-items:center; gap:10px; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.05);">
+        <div style="flex:1; display:flex; align-items:center; gap:8px;">
+            <label style="font-size:0.8em; opacity:0.6;">Seed:</label>
+            <input id="plz-cp-seed" class="text_pole" type="number" min="-1" max="999" value="${seed}" style="width:70px;" />
+        </div>
+        <label class="checkbox_label" style="margin:0; cursor:pointer; font-size:0.85em; opacity:0.8; display:flex; align-items:center; gap:5px;">
+            <input id="plz-cp-inc" type="checkbox" ${autoIncrement ? 'checked' : ''} ${seed === -1 ? 'disabled' : ''} />
+            <span>Auto-increment</span>
+        </label>
+    </div>
+
     <div style="margin-top:10px; display:flex; justify-content:flex-end;">
         <button id="plz-cp-add-slot" class="menu_button" style="font-size:0.75em; opacity:0.7;">
             <i class="fa-solid fa-plus"></i> Add Category

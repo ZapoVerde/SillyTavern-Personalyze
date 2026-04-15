@@ -1,14 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaIdentity.js
- * @stamp {"utc":"2026-04-16T23:20:00.000Z"}
+ * @stamp {"utc":"2026-04-19T22:35:00.000Z"}
  * @architectural-role UI Sub-module (Metadata & Identity)
  * @description
  * Handles basic character metadata and identity management in the Studio.
  * Manages Display Name, Identity Anchor, Aliases (AKA), and style pinning.
  * 
- * Updated for Style-Specific Render Pipeline:
- * 1. Removed event listeners for Engine, LoRA, and LoRA Weight.
- * 2. Updated lockedWriteCharacterDef to exclude legacy engine argument.
+ * Updated for Explicit Seed Architecture (Bug Fixes):
+ * 1. Added listener for #plz-studio-inc to sync global autoIncrementSeed (Fixes Bug 1).
+ * 2. Implemented strict clamping (-1 to 999) for the seed input.
+ * 3. Standardized on parseInt(..., 10) for safe conversion.
  * 
  * @api-declaration
  * bindIdentityHandlers($overlay)
@@ -34,9 +35,11 @@ import {
 import { deleteFiles, fetchFileIndex } from '../../imageCache.js';
 import { clearPortrait } from '../../portrait.js';
 import { smartResize } from '../../utils/dom.js';
+import { updateSetting } from '../../settings.js';
 
 let anchorSaveTimeout = null;
 let labelSaveTimeout  = null;
+let seedSaveTimeout   = null;
 
 /**
  * Binds event listeners for character identity and metadata.
@@ -54,13 +57,49 @@ export function bindIdentityHandlers($overlay) {
             if (!id) return;
             
             const char = state.chatCharacters[id];
-            upsertChatCharacterDef(id, anchor, char.seed); // Memory update
+            // Memory Update
+            upsertChatCharacterDef(id, anchor, char.seed); 
             
             if (id === '__new__') return; // Ghost Guard
             
             const lastMsgId = Math.max(0, getContext().chat.length - 1);
             await lockedWriteCharacterDef(lastMsgId, id, anchor, char.seed);
         }, 600);
+    });
+
+    // ─── Identity Seed ───
+    $overlay.on('input', '#plz-studio-seed', function() {
+        clearTimeout(seedSaveTimeout);
+        seedSaveTimeout = setTimeout(async () => {
+            const id = state._workshopCharacterId;
+            let seedVal = parseInt($(this).val(), 10);
+            if (!id || isNaN(seedVal)) return;
+
+            // Strict 3-Digit Clamping
+            seedVal = Math.max(-1, Math.min(seedVal, 999));
+            
+            // Sync UI to clamped value
+            $(this).val(seedVal);
+
+            const char = state.chatCharacters[id];
+            const currentAnchor = char.identityAnchor || '';
+
+            // Memory Update
+            upsertChatCharacterDef(id, currentAnchor, seedVal);
+
+            if (id === '__new__') return; // Ghost Guard
+
+            const lastMsgId = Math.max(0, getContext().chat.length - 1);
+            // Anchor Trap protection: passing the currentAnchor ensures the bio 
+            // is not wiped during the seed update.
+            await lockedWriteCharacterDef(lastMsgId, id, currentAnchor, seedVal);
+        }, 600);
+    });
+
+    // ─── Seed Increment Preference (Fixes Bug 1) ───
+    $overlay.on('change', '#plz-studio-inc', function() {
+        const checked = $(this).prop('checked');
+        updateSetting('autoIncrementSeed', checked);
     });
 
     // ─── Display Name (Label) ───
@@ -146,7 +185,7 @@ export function bindIdentityHandlers($overlay) {
         const displayName = state.chatCharacters[id]?.label || id.replace(/_/g, ' ');
         const confirmed = await callPopup(
             `Delete all generated portraits for <b>${$('<div>').text(displayName).html()}</b>?<br><br><small>This will free up disk space but requires re-generating images for all visual states.</small>`,
-            'confirm'
+            `confirm`
         );
         if (!confirmed) return;
 

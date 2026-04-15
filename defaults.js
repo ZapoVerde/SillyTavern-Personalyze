@@ -1,13 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/defaults.js
- * @stamp {"utc":"2026-04-18T21:00:00.000Z"}
+ * @stamp {"utc":"2026-04-19T21:00:00.000Z"}
  * @architectural-role Default Configuration
  * @description
  * Default constants for the Layered State Pipeline.
  * 
- * Updated for Dynamic Blueprint Architecture:
- * 1. Added DEFAULT_BLUEPRINTS with UI descriptors (type, min, max, label).
- * 2. Maintained registry of verified models and LoRAs.
+ * Updated for Explicit Seed Architecture:
+ * 1. Added DEFAULT_AUTO_INCREMENT_SEED for global workflow preference.
  * 
  * @api-declaration
  * POLLINATIONS_BASE_URL
@@ -18,6 +17,7 @@
  * DEFAULT_MAX_RESOLUTION
  * DEFAULT_DYNAMIC_RESOLUTION
  * DEFAULT_KEEP_CACHE
+ * DEFAULT_AUTO_INCREMENT_SEED
  * SECRET_RUNWARE
  * RUNWARE_MODELS
  * RUNWARE_LORA_REGISTRY
@@ -94,6 +94,9 @@ export const DEFAULT_DESCRIBER_HISTORY = 3;
 export const DEFAULT_MAX_RESOLUTION = 'MAX';
 export const DEFAULT_DYNAMIC_RESOLUTION = false;
 export const DEFAULT_KEEP_CACHE = false;
+
+/** Global workflow for seed rotation on refresh. */
+export const DEFAULT_AUTO_INCREMENT_SEED = false;
 
 /**
  * Runware API & Registry.

@@ -1,14 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-19T12:30:00.000Z"}
+ * @stamp {"utc":"2026-04-19T21:10:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
  * Implements the "Working Table" (Sandbox vs. Checkpoint) architecture.
  * 
- * Updated for Dynamic Blueprint Architecture:
- * 1. Removed legacy modelParameterSchema from SETTINGS_DEFAULTS.
- * 2. Integrated initModelRegistry into the initialization sequence.
+ * Updated for Explicit Seed Architecture:
+ * 1. Added autoIncrementSeed to SETTINGS_DEFAULTS.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -60,6 +59,7 @@ import {
     DEFAULT_RUNWARE_REMOVE_BG,
     DEFAULT_RUNWARE_RMBG_MODEL,
     DEFAULT_STYLE_PACKAGE,
+    DEFAULT_AUTO_INCREMENT_SEED,
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
@@ -121,6 +121,7 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     maxResolution:            DEFAULT_MAX_RESOLUTION,
     dynamicResolution:        DEFAULT_DYNAMIC_RESOLUTION,
     keepCache:                DEFAULT_KEEP_CACHE,
+    autoIncrementSeed:        DEFAULT_AUTO_INCREMENT_SEED,
 });
 
 /** Returns the active working copy. */

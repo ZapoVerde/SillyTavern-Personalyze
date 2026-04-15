@@ -1,13 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaListeners.js
- * @stamp {"utc":"2026-04-16T23:30:00.000Z"}
+ * @stamp {"utc":"2026-04-19T22:40:00.000Z"}
  * @architectural-role UI Coordinator (Workshop DNA)
  * @description
  * Coordinator hub for the Workshop DNA and Studio tabs. 
  * 
- * Updated for Style-Specific Render Pipeline:
- * 1. Removed enabledEngines mapping (character-level engine selection is obsolete).
- * 2. Updated renderStudioView to match the pruned getStudioHTML signature.
+ * Updated for Explicit Seed Architecture (Bug Fixes):
+ * 1. Fixed Bug 2: Studio seed input now correctly enables/disables the increment checkbox.
+ * 2. Standardized parseInt radix for reactive UI updates.
  * 
  * @api-declaration
  * renderDNAView()
@@ -23,7 +23,7 @@
  */
 
 import { state } from '../../state.js';
-import { getMetaSettings } from '../../settings.js';
+import { getMetaSettings, getSettings, updateSetting } from '../../settings.js';
 import { getDnaRosterHTML, getStudioHTML, getStudioEmptyHTML } from './dnaTemplates.js';
 import { smartResize } from '../../utils/dom.js';
 import { buildVocabularyDatalists } from '../../logic/vocabularyService.js';
@@ -60,9 +60,17 @@ export function renderStudioView() {
     const chain = state.characterChain[id];
     const layers = chain?.layers || state.activeLayers;
     const meta = getMetaSettings();
+    const settings = getSettings();
     
     // 1. Render base Studio HTML
-    $panel.html(getStudioHTML(id, char, layers, meta.styleLibrary ?? {}, meta.defaultStyleName ?? ''));
+    $panel.html(getStudioHTML(
+        id, 
+        char, 
+        layers, 
+        meta.styleLibrary ?? {}, 
+        meta.defaultStyleName ?? '',
+        !!settings.autoIncrementSeed
+    ));
 
     // 2. Inject JIT Vocabulary into the placeholder container
     const vocabHtml = buildVocabularyDatalists(id, char, chain);
@@ -90,7 +98,7 @@ export function getGridLayers() {
         let item = $(this).val().trim();
         let mod = $(`.plz-layer-mod[data-slot="${slot}"]`).val().trim();
 
-        // Orphan Sweeping Logic (Fixed: explicit check for empty string/None)
+        // Orphan Sweeping Logic
         if (item === '' || item.toLowerCase() === 'none') {
             item = null;
             mod  = null;
@@ -124,6 +132,13 @@ export function bindDNAHandlers() {
         if ($input.attr('id') === 'plz-studio-anchor') {
             smartResize($input[0]);
         }
+    });
+
+    // --- Reactive Seed Logic (Bug 2) ---
+    $overlay.on('input', '#plz-studio-seed', function() {
+        const val = parseInt($(this).val(), 10);
+        // Reactive UI: Disable increment if seed is -1 (random)
+        $('#plz-studio-inc').prop('disabled', val === -1);
     });
 
     bindRosterHandlers($overlay);

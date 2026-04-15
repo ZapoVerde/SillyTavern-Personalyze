@@ -1,11 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/blueprintProcessor.js
- * @stamp {"utc":"2026-04-19T10:40:00.000Z"}
+ * @stamp {"utc":"2026-04-19T21:05:00.000Z"}
  * @architectural-role Pure Logic (Technical Data Processor)
  * @description
  * Pure functions for managing technical API Blueprints. 
  * Implements validation logic for raw JSON and sanitization logic to ensure 
- * data from the Visual Editor or JSON imports conforms to the registry schema.
+ * data conforms to the registry schema.
+ * 
+ * Updated for Explicit Seed Architecture:
+ * 1. Added RESERVED_KEYS to prevent Blueprints from hijacking character-level DNA properties.
+ * 2. isValidBlueprint now returns a specific error for reserved keys.
+ * 3. sanitizeBlueprintObject silently strips reserved keys.
  * 
  * @api-declaration
  * isValidBlueprint(jsonString) -> { valid: boolean, error: string|null, data: Object|null }
@@ -19,9 +24,12 @@
  *     external_io: []
  */
 
+/** Keys that are handled by the Character DNA and forbidden in technical blueprints. */
+const RESERVED_KEYS = ['seed'];
+
 /**
  * Validates a JSON string as a valid Technical Blueprint.
- * Ensures the result is a non-null object.
+ * Ensures the result is a non-null object and checks for reserved keywords.
  * 
  * @param {string} jsonString - The raw string from the JSON editor or Import tool.
  * @returns {{ valid: boolean, error: string|null, data: Object|null }}
@@ -40,6 +48,9 @@ export function isValidBlueprint(jsonString) {
 
         // Technical Key Validation
         for (const [key, descriptor] of Object.entries(data)) {
+            if (RESERVED_KEYS.includes(key.toLowerCase())) {
+                return { valid: false, error: `Key "${key}" is a reserved system keyword and cannot be used in a blueprint.`, data: null };
+            }
             if (typeof descriptor !== 'object' || descriptor === null) {
                 return { valid: false, error: `Key "${key}" must be a descriptor object.`, data: null };
             }
@@ -69,6 +80,9 @@ export function sanitizeBlueprintObject(rawObj) {
         // Technical keys must be slug-style
         const safeKey = key.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
         if (!safeKey) continue;
+
+        // Skip Reserved Keywords
+        if (RESERVED_KEYS.includes(safeKey)) continue;
 
         const descriptor = {
             type:    val.type    || 'text',

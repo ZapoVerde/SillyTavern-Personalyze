@@ -1,14 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-19T16:10:00.000Z"}
+ * @stamp {"utc":"2026-04-19T22:30:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
  * visual state for the current turn using the 5-slot architecture.
  *
- * Updated for Forensic Observability:
- * 1. Added startWorkshopTurn call to ensure manual edits are filed in the 
- *    Workshop logs instead of defaulting to Standalone Pipeline logs.
+ * Updated for Explicit Seed Architecture (Bug Fixes):
+ * 1. Seed changes now persist to DNA even without Force Regen.
+ * 2. Implemented strict clamping (-1 to 999) for manual seed inputs.
+ * 3. Standardized on parseInt(..., 10) for all numeric conversions.
  *
  * @api-declaration
  * openCharPicker(initialOverride) → Promise<void>
@@ -25,7 +26,7 @@ import { getContext } from '../../../../extensions.js';
 import {
     state, updateActiveCharacter, updateActiveLayers, updateActiveImage,
     addToFileIndex, updateChainLayers, upsertChatSlots, upsertChatEnsemble,
-    setActiveRoster, removeFromFileIndex
+    setActiveRoster, removeFromFileIndex, upsertChatCharacterDef
 } from '../state.js';
 import { compilePrompt } from '../logic/promptCompiler.js';
 import { buildFilenamePrefix, findCachedImage, generate, deleteFiles } from '../imageCache.js';
@@ -34,11 +35,12 @@ import {
     lockedPatchVisualStateImage, 
     lockedWriteSlots,
     lockedWriteEnsemble,
-    lockedWriteRoster
+    lockedWriteRoster,
+    lockedWriteCharacterDef
 } from '../io/dnaWriter.js';
 import { escapeHtml, slugify } from '../utils/history.js';
 import { error } from '../utils/logger.js';
-import { getSettings } from '../settings.js';
+import { getSettings, updateSetting } from '../settings.js';
 import { applyEnsemble } from '../logic/ensembleEngine.js';
 import { BASE_SLOTS, META_SLOTS } from '../defaults.js';
 import { generateEnsembleLabel, generateEnsembleKey } from '../logic/parsers.js';
@@ -91,11 +93,13 @@ export async function openCharPicker(initialOverride = null) {
         return;
     }
 
+    const s = getSettings();
     const initId = (state.activeCharacterId && dnaChars.includes(state.activeCharacterId))
         ? state.activeCharacterId : dnaChars[0];
 
     const currentLayers = initialOverride || state.characterChain[initId]?.layers || state.activeLayers;
     const currentSlots = state.chatCharacters[initId]?.slots || [...BASE_SLOTS];
+    const initialSeed = state.chatCharacters[initId]?.seed ?? 1;
 
     const charOptions = dnaChars.map(id => {
         const label = state.chatCharacters[id]?.label || id.replace(/_/g, ' ');
@@ -128,7 +132,7 @@ export async function openCharPicker(initialOverride = null) {
                 <select id="plz-cp-char" class="text_pole" style="width:100%; margin-bottom:8px;">${charOptions}</select>
                 <select id="plz-cp-ensemble" class="text_pole" style="width:100%;">${buildEnsembleOptions(initId)}</select>
             </div>
-            <div id="plz-cp-grid-container">${buildGridHTML(currentSlots, currentLayers, initId)}</div>
+            <div id="plz-cp-grid-container">${buildGridHTML(currentSlots, currentLayers, initId, initialSeed, !!s.autoIncrementSeed)}</div>
             <div id="plz-cp-datalists-container">${buildVocabularyDatalists(initId, state.chatCharacters[initId], state.characterChain[initId])}</div>
             <button id="plz-cp-force-regen" class="menu_button" style="width:100%;margin-top:12px;opacity:0.75;">
                 <i class="fa-solid fa-rotate-right"></i> Force New Generation
@@ -154,8 +158,18 @@ export async function openCharPicker(initialOverride = null) {
             $('#plz-cp-ensemble').html(buildEnsembleOptions(id));
             const layers = chain?.layers || state.activeLayers;
             const slots = charData?.slots || [...BASE_SLOTS];
-            $('#plz-cp-grid-container').html(buildGridHTML(slots, layers, id));
+            const seed = charData?.seed ?? 1;
+            $('#plz-cp-grid-container').html(buildGridHTML(slots, layers, id, seed, !!getSettings().autoIncrementSeed));
             $('#plz-cp-datalists-container').html(buildVocabularyDatalists(id, charData, chain));
+        });
+
+        $(document).on('input.plzCp', '#plz-cp-seed', function() {
+            const val = parseInt($(this).val(), 10);
+            $('#plz-cp-inc').prop('disabled', val === -1);
+        });
+
+        $(document).on('change.plzCp', '#plz-cp-inc', function() {
+            updateSetting('autoIncrementSeed', $(this).prop('checked'));
         });
 
         $(document).on('change.plzCp', '#plz-cp-ensemble', function() {
@@ -192,7 +206,10 @@ export async function openCharPicker(initialOverride = null) {
             const newSlots = [...currentSlots, key];
             await lockedWriteSlots(Math.max(0, getContext().chat.length - 1), id, newSlots);
             upsertChatSlots(id, newSlots);
-            $('#plz-cp-grid-container').html(buildGridHTML(newSlots, getPickerCurrentLayers(), id));
+            
+            const layers = getPickerCurrentLayers();
+            const seed = parseInt($('#plz-cp-seed').val(), 10) || 1;
+            $('#plz-cp-grid-container').html(buildGridHTML(newSlots, layers, id, seed, !!getSettings().autoIncrementSeed));
         });
 
         $(document).on('click.plzCp', '#plz-cp-force-regen', () => {
@@ -226,10 +243,35 @@ export async function openCharPicker(initialOverride = null) {
     }
 
     const character = state.chatCharacters[charId];
-    const s = getSettings();
+    const settings = getSettings();
+    
+    // Seed Determination & Clamping Logic
+    let currentSeed = parseInt($('#plz-cp-seed').val(), 10);
+    if (isNaN(currentSeed)) currentSeed = character.seed ?? 1;
+    currentSeed = Math.max(-1, Math.min(currentSeed, 999));
+
+    let apiSeed = currentSeed;
+
+    if (forceRegen) {
+        if ($('#plz-cp-inc').prop('checked') && currentSeed > -1) {
+            // 3-Digit Loop Logic (1-999)
+            apiSeed = (currentSeed % 999) + 1;
+        } else if (currentSeed === -1) {
+            // Truly random request
+            apiSeed = -1;
+        }
+    }
+
+    // UNIVERSAL PERSISTENCE: If the resolved seed (new or incremented) differs from DNA, commit it.
+    if (apiSeed !== character.seed) {
+        upsertChatCharacterDef(charId, character.identityAnchor, apiSeed);
+        await lockedWriteCharacterDef(lastAiIdx, charId, character.identityAnchor, apiSeed);
+    }
+
     const emotionSlug = slugify(layers.emotion);
     const prefix = buildFilenamePrefix(charId, 'layered', emotionSlug);
     let filename = forceRegen ? null : findCachedImage(prefix, state.fileIndex);
+    
     updateActiveCharacter(charId);
     updateActiveLayers(layers);
     updateChainLayers(charId, layers, filename);
@@ -242,7 +284,6 @@ export async function openCharPicker(initialOverride = null) {
     }
 
     try {
-        const seed = forceRegen ? Math.floor(Math.random() * 1000000) : (character.seed ?? 1);
         filename = await generate(
             charId, 
             'layered', 
@@ -251,15 +292,17 @@ export async function openCharPicker(initialOverride = null) {
             layers.emotion, 
             layers.pose, 
             character.identityAnchor, 
-            seed
+            apiSeed,
+            null, // provider
+            forceRegen
         );
         addToFileIndex(filename);
         updateActiveImage(filename);
         updateChainLayers(charId, layers, filename);
         await lockedPatchVisualStateImage(lastAiIdx, charId, filename, recordId);
 
-        // Ephemeral Cleanup: delete previous active images for this character (regardless of tag/emotion)
-        if (!s.keepCache) {
+        // Ephemeral Cleanup
+        if (!settings.keepCache) {
             const charPrefix = `plz_${charId}_`;
             const staleFiles = Array.from(state.fileIndex).filter(f => 
                 f.startsWith(charPrefix) && f !== filename

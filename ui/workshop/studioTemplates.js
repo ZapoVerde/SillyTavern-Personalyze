@@ -1,16 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/studioTemplates.js
- * @stamp {"utc":"2026-04-16T23:10:00.000Z"}
+ * @stamp {"utc":"2026-04-19T22:00:00.000Z"}
  * @architectural-role Pure UI Template (Studio)
  * @description
  * Generates the HTML strings for the Workshop Studio (Character Dashboard).
  * 
- * Updated for Style-Specific Render Pipeline:
- * 1. Removed Preferred Image Engine selection (now controlled by Global Styles).
- * 2. Simplified template logic to focus on identity, layers, and style assignment.
+ * Updated for Explicit Seed Architecture:
+ * 1. Added Seed number input (constrained to 3 digits: -1 to 999).
+ * 2. Added Auto-increment toggle linked to the global workflow preference.
  * 
  * @api-declaration
- * getStudioHTML(characterId, character, layers, styleLibrary, defaultStyleName)
+ * getStudioHTML(characterId, character, layers, styleLibrary, defaultStyleName, autoIncrementSeed)
  * getStudioEmptyHTML()
  * 
  * @contract
@@ -24,8 +24,10 @@ import { escapeHtml } from '../../utils/history.js';
 import { BASE_SLOTS } from '../../defaults.js';
 import { getDatalistId } from '../../utils/domRegistry.js';
 
-/** Renders the Studio dashboard with the Dynamic Layered Grid. */
-export function getStudioHTML(characterId, character, layers, styleLibrary = {}, defaultStyleName = '') {
+/** 
+ * Renders the Studio dashboard with the Dynamic Layered Grid. 
+ */
+export function getStudioHTML(characterId, character, layers, styleLibrary = {}, defaultStyleName = '', autoIncrementSeed = false) {
     const isGhost = characterId === '__new__';
     const displayName = character.label || characterId.replace(/_/g, ' ');
     const akaTagsHTML = (character.aka || []).map(alias => `
@@ -43,6 +45,8 @@ export function getStudioHTML(characterId, character, layers, styleLibrary = {},
     const idLabel = isGhost 
         ? `<small style="opacity:0.35;"><i>Unsaved Character</i></small>`
         : `<small style="opacity:0.35;">System ID: ${escapeHtml(characterId)}</small>`;
+
+    const seed = character.seed ?? 1;
 
     return `
     <div style="margin-bottom:10px;">
@@ -94,12 +98,19 @@ export function getStudioHTML(characterId, character, layers, styleLibrary = {},
         ${isGhost ? '<button id="plz-studio-layers-save" class="menu_button" style="padding:0 15px;">Register &amp; Apply</button>' : ''}
     </div>
 
-    <div style="margin-bottom:8px;"><strong>Saved Ensembles</strong> <small style="opacity:0.5; font-weight:normal;">(★ = Everyday Wear)</small></div>
-    <div id="plz-studio-ensembles">
-        ${getEnsembleListHTML(character.ensembles, character.defaultEnsemble)}
-    </div>
-
     <div style="margin-top:20px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.07);">
+        <!-- Generation DNA Row -->
+        <div style="display:flex; align-items:center; gap:15px; margin-bottom:12px;">
+            <div style="flex:1; display:flex; align-items:center; gap:8px;">
+                <label class="plz-studio-label" style="margin:0;">Identity Seed</label>
+                <input id="plz-studio-seed" class="text_pole" type="number" min="-1" max="999" value="${seed}" style="width:70px; font-family:monospace;" />
+            </div>
+            <label class="checkbox_label" style="margin:0; cursor:pointer; font-size:0.85em; opacity:0.8; display:flex; align-items:center; gap:5px;">
+                <input id="plz-studio-inc" type="checkbox" ${autoIncrementSeed ? 'checked' : ''} ${seed === -1 ? 'disabled' : ''} />
+                <span>Auto-increment on refresh</span>
+            </label>
+        </div>
+
         <label class="plz-studio-label" style="display:block;margin-bottom:6px;">Portrait Style</label>
         <select id="plz-studio-style" class="text_pole" style="width:100%;margin-bottom:8px;">
             <option value="" ${!character.styleName ? 'selected' : ''}>Use Default (${escapeHtml(defaultStyleName || 'Default')})</option>
@@ -118,7 +129,14 @@ export function getStudioHTML(characterId, character, layers, styleLibrary = {},
             </button>
         </div>
     </div>
-    
+
+    <div style="margin-top:20px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.07);">
+        <div style="margin-bottom:8px;"><strong>Saved Ensembles</strong> <small style="opacity:0.5; font-weight:normal;">(★ = Everyday Wear)</small></div>
+        <div id="plz-studio-ensembles">
+            ${getEnsembleListHTML(character.ensembles, character.defaultEnsemble)}
+        </div>
+    </div>
+
     <div id="plz-studio-datalists-container"></div>`;
 }
 
