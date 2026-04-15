@@ -32,10 +32,11 @@ import { runTurnPipeline } from './turn.js';
 /**
  * Main entry point for turn-based processing.
  * Orchestrates Phase 0 (Scene) followed by Phase 1-3 (Turn).
- * 
+ *
  * @param {number} messageId - The index of the message to process.
+ * @param {AbortSignal} [signal] - Optional signal to cancel the pipeline.
  */
-export async function runPipeline(messageId) {
+export async function runPipeline(messageId, signal) {
     const context = getContext();
     const message = context.chat[messageId];
     if (!message || message.is_user) return;
@@ -73,9 +74,10 @@ export async function runPipeline(messageId) {
         if (sceneChanged) {
             log('Master', 'Scene change confirmed. Resetting session blacklist.');
             clearIgnored();
-            
+
             // runScenePipeline handles batch wardrobe validity and redress extraction
-            await runScenePipeline(messageId);
+            if (signal?.aborted) return;
+            await runScenePipeline(messageId, signal);
         }
 
         // ─── Phase 1-3 Execution: Standard Turn ───────────────────────────────
@@ -83,11 +85,13 @@ export async function runPipeline(messageId) {
         // runTurnPipeline handles subject detection, archivist logic, and incremental clothes changes.
         // It runs AFTER scene redress so that message-specific actions (e.g. "She took off her hat")
         // correctly override the background redress.
-        await runTurnPipeline(messageId);
+        if (signal?.aborted) return;
+        await runTurnPipeline(messageId, signal);
 
         log('Master', `Execution complete for message ${messageId}`);
 
     } catch (err) {
+        if (err.name === 'AbortError') return;
         error('Master', 'Pipeline failed:', err.message);
         if (window.toastr) {
             window.toastr.error('PersonaLyze pipeline encountered an error.', 'PersonaLyze');

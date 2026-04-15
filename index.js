@@ -40,17 +40,24 @@ import { initRenderer } from './ui/roster/renderer.js';
 import { openWorkshop } from './ui/workshop/core.js';
 import { smartResize, initMobileFocusMode } from './utils/dom.js';
 
+/** AbortController for the currently-running pipeline, if any. */
+let _pipelineController = null;
+
 /**
  * Pipeline Dispatcher.
  * Triggered whenever a new AI message is received or swiped.
+ * Returns synchronously so SillyTavern's event loop is not held.
  */
-async function handleMessageReceived(messageId) {
-    try {
-        await runPipeline(messageId);
-        injectMessageBadge(messageId);
-    } catch (err) {
-        error('Core', 'Pipeline execution failed:', err);
-    }
+function handleMessageReceived(messageId) {
+    if (_pipelineController) _pipelineController.abort();
+    _pipelineController = new AbortController();
+    const { signal } = _pipelineController;
+
+    runPipeline(messageId, signal)
+        .then(() => { if (!signal.aborted) injectMessageBadge(messageId); })
+        .catch(err => {
+            if (err.name !== 'AbortError') error('Core', 'Pipeline execution failed:', err);
+        });
 }
 
 /**

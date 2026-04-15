@@ -64,8 +64,9 @@ const pipelineQueue = new TaskQueue(2);
 /**
  * Hybrid multi-character processing for a single message.
  * @param {number} messageId
+ * @param {AbortSignal} [signal]
  */
-export async function runTurnPipeline(messageId) {
+export async function runTurnPipeline(messageId, signal) {
     const context = getContext();
     const message = context.chat[messageId];
     const s = getSettings();
@@ -148,10 +149,10 @@ export async function runTurnPipeline(messageId) {
 
     // ─── Phases 2-4: Parallel Execution ───
     log('Turn', `Enqueuing ${targetSubjects.length} character updates.`);
-    
+
     const tasks = targetSubjects.map(id => {
-        return pipelineQueue.enqueue(() => 
-            processKnownSubject(messageId, id, message.mes, history, s)
+        return pipelineQueue.enqueue(() =>
+            processKnownSubject(messageId, id, message.mes, history, s, signal)
         );
     });
 
@@ -160,8 +161,9 @@ export async function runTurnPipeline(messageId) {
 
 /**
  * Executes Phases 2 & 3 for a subject already present in the DNA/Roster.
+ * @param {AbortSignal} [signal]
  */
-export async function processKnownSubject(messageId, characterId, text, history, s) {
+export async function processKnownSubject(messageId, characterId, text, history, s, signal) {
     const character = state.chatCharacters[characterId];
     if (!character) return;
 
@@ -226,16 +228,19 @@ export async function processKnownSubject(messageId, characterId, text, history,
     const recordId = await lockedWriteVisualState(messageId, characterId, nextLayers, null);
 
     try {
+        if (signal?.aborted) return;
         const emotionSlug = slugify(nextLayers.emotion);
         const file = await generate(
-            characterId, 
-            'layered', 
+            characterId,
+            'layered',
             emotionSlug,
-            prompt, 
-            nextLayers.emotion, 
+            prompt,
+            nextLayers.emotion,
             nextLayers.pose,
-            character.identityAnchor, 
-            character.seed
+            character.identityAnchor,
+            character.seed,
+            false,
+            signal
         );
 
         addToFileIndex(file);

@@ -95,12 +95,14 @@ function _dispatchPortraitStatus(characterId, detail) {
     document.dispatchEvent(new CustomEvent('plz:portrait-status', { detail: { characterId, ...detail } }));
 }
 
-async function _pollPiapiTask(taskId, timeoutMs, onStatus) {
+async function _pollPiapiTask(taskId, timeoutMs, onStatus, signal) {
     const POLL_INTERVAL_MS = 1500;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-        const res = await fetch(`/api/plugins/personalyze/piapi-status/${taskId}`, { headers: getRequestHeaders() });
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+        const res = await fetch(`/api/plugins/personalyze/piapi-status/${taskId}`, { headers: getRequestHeaders(), signal });
         if (!res.ok) throw new Error(`PiAPI status check failed (${res.status})`);
         const data = await res.json();
         onStatus(data.status);
@@ -169,7 +171,7 @@ export async function fetchPreviewBlob(engine, model, positivePrompt, negativePr
 /**
  * Standard character generation with total mirroring and dynamic parameters.
  */
-export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed = 1, forceCacheBust = false) {
+export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed = 1, forceCacheBust = false, signal = null) {
     const styleObj = resolveStyle(characterId);
     const engine   = styleObj.engine;
     const model    = styleObj.model;
@@ -202,27 +204,27 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
         let finalDoc = null;
 
         if (engine === 'fal') {
-            imgRes = await fetch('/api/plugins/personalyze/fal-generate', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ model, prompt: fullPrompt, width: w, height: h, engineParams: scrubbedParams }) });
+            imgRes = await fetch('/api/plugins/personalyze/fal-generate', { method: 'POST', headers: getRequestHeaders(), signal, body: JSON.stringify({ model, prompt: fullPrompt, width: w, height: h, engineParams: scrubbedParams }) });
             finalDoc = await _extractForensicDocument(imgRes);
         } else if (engine === 'piapi') {
-            const subRes = await fetch('/api/plugins/personalyze/piapi-generate', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ model, prompt: fullPrompt, negative_prompt: styleObj.negativePrompt, width: w, height: h, seed, engineParams: scrubbedParams }) });
+            const subRes = await fetch('/api/plugins/personalyze/piapi-generate', { method: 'POST', headers: getRequestHeaders(), signal, body: JSON.stringify({ model, prompt: fullPrompt, negative_prompt: styleObj.negativePrompt, width: w, height: h, seed, engineParams: scrubbedParams }) });
             const { task_id } = await subRes.json();
-            const resData = await _pollPiapiTask(task_id, 120000, st => _dispatchPortraitStatus(characterId, { status: st }));
+            const resData = await _pollPiapiTask(task_id, 120000, st => _dispatchPortraitStatus(characterId, { status: st }), signal);
             sourceUrl = resData.image_url; meta = resData.meta; finalDoc = resData;
         } else if (engine === 'runware') {
-            imgRes = await fetch('/api/plugins/personalyze/runware-generate', { 
-                method: 'POST', headers: getRequestHeaders(), 
-                body: JSON.stringify({ 
-                    positivePrompt: fullPrompt, 
-                    negativePrompt: styleObj.negativePrompt, 
-                    model, 
-                    width: w, 
-                    height: h, 
-                    seed, 
-                    loras: styleObj.loras, 
+            imgRes = await fetch('/api/plugins/personalyze/runware-generate', {
+                method: 'POST', headers: getRequestHeaders(), signal,
+                body: JSON.stringify({
+                    positivePrompt: fullPrompt,
+                    negativePrompt: styleObj.negativePrompt,
+                    model,
+                    width: w,
+                    height: h,
+                    seed,
+                    loras: styleObj.loras,
                     useLayerDiffuse: nativeTransparency,
-                    engineParams: scrubbedParams 
-                }) 
+                    engineParams: scrubbedParams
+                })
             });
             finalDoc = await _extractForensicDocument(imgRes);
         } else {
@@ -230,9 +232,9 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
             const params = new URLSearchParams({ width: String(w), height: String(h), model: model || DEFAULT_IMAGE_MODEL, nologo: 'true', seed: String(seed), safe: 'false' });
             if (forceCacheBust) params.append('cb', String(Date.now()));
             const polRes = await fetch(`${POLLINATIONS_BASE_URL}/image/${encodeURIComponent(fullPrompt)}?${params.toString()}`, {
-                headers: key ? { 'Authorization': `Bearer ${key}` } : {}
+                headers: key ? { 'Authorization': `Bearer ${key}` } : {}, signal
             });
-            
+
             if (s.piapiRemoveBackground || s.runwareRemoveBackground) {
                 await validateImageResponse(polRes);
                 const blob = await polRes.blob();
@@ -251,20 +253,20 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
                 imgRes = null;
             }
             if (s.runwareRemoveBackground) {
-                imgRes = await fetch('/api/plugins/personalyze/runware-remove-bg', { 
-                    method: 'POST', headers: getRequestHeaders(), 
-                    body: JSON.stringify({ image_url: sourceUrl, image_base64: fallbackB64, model: s.runwareRmbgModel }) 
+                imgRes = await fetch('/api/plugins/personalyze/runware-remove-bg', {
+                    method: 'POST', headers: getRequestHeaders(), signal,
+                    body: JSON.stringify({ image_url: sourceUrl, image_base64: fallbackB64, model: s.runwareRmbgModel })
                 });
                 fallbackB64 = null;
             } else {
-                const subRmbg = await fetch('/api/plugins/personalyze/piapi-remove-bg', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify(fallbackB64 ? { image_base64: fallbackB64, rmbg_model: s.piapiRmbgModel } : { image_url: sourceUrl, rmbg_model: s.piapiRmbgModel }) });
+                const subRmbg = await fetch('/api/plugins/personalyze/piapi-remove-bg', { method: 'POST', headers: getRequestHeaders(), signal, body: JSON.stringify(fallbackB64 ? { image_base64: fallbackB64, rmbg_model: s.piapiRmbgModel } : { image_url: sourceUrl, rmbg_model: s.piapiRmbgModel }) });
                 const { task_id } = await subRmbg.json();
-                const rmbgRes = await _pollPiapiTask(task_id, 60000, () => _dispatchPortraitStatus(characterId, { status: 'removing_bg' }));
+                const rmbgRes = await _pollPiapiTask(task_id, 60000, () => _dispatchPortraitStatus(characterId, { status: 'removing_bg' }), signal);
                 sourceUrl = rmbgRes.image_url; fallbackB64 = null; imgRes = null;
             }
         }
 
-        if (!imgRes && !fallbackB64) imgRes = await fetch('/api/plugins/personalyze/piapi-fetch', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ image_url: sourceUrl }) });
+        if (!imgRes && !fallbackB64) imgRes = await fetch('/api/plugins/personalyze/piapi-fetch', { method: 'POST', headers: getRequestHeaders(), signal, body: JSON.stringify({ image_url: sourceUrl }) });
         
         const filename = `${buildFilenamePrefix(characterId, tag, emotion)}${Date.now()}.png`;
         let base64 = fallbackB64;

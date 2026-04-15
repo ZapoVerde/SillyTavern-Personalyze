@@ -55,10 +55,11 @@ import { runArchivistPipeline } from './archivist.js';
 
 /**
  * Executes proactive wardrobe management for the entire active roster.
- * 
+ *
  * @param {number} messageId - The index of the trigger message.
+ * @param {AbortSignal} [signal]
  */
-export async function runScenePipeline(messageId) {
+export async function runScenePipeline(messageId, signal) {
     const context = getContext();
     const message = context.chat[messageId];
     const s = getSettings();
@@ -177,7 +178,8 @@ export async function runScenePipeline(messageId) {
             const recordId = await lockedWriteVisualState(messageId, item.id, nextLayers, null);
             updateChainLayers(item.id, nextLayers, null);
 
-            processSceneGeneration(messageId, item, nextLayers, s, recordId);
+            if (signal?.aborted) return;
+            processSceneGeneration(messageId, item, nextLayers, s, recordId, signal);
         }
 
     } catch (err) {
@@ -187,21 +189,25 @@ export async function runScenePipeline(messageId) {
 
 /**
  * Handles image generation for a scene redress.
+ * @param {AbortSignal} [signal]
  */
-async function processSceneGeneration(messageId, item, layers, s, recordId) {
+async function processSceneGeneration(messageId, item, layers, s, recordId, signal) {
     try {
+        if (signal?.aborted) return;
         const prompt = compilePrompt(item.anchor, layers);
         const emotionSlug = slugify(layers.emotion);
 
         const filename = await generate(
-            item.id, 
-            'redress', 
+            item.id,
+            'redress',
             emotionSlug,
-            prompt, 
-            layers.emotion, 
-            layers.pose || 'upright', 
-            item.anchor, 
-            item.seed
+            prompt,
+            layers.emotion,
+            layers.pose || 'upright',
+            item.anchor,
+            item.seed,
+            false,
+            signal
         );
 
         addToFileIndex(filename);
