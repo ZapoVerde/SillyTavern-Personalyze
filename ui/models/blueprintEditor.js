@@ -16,7 +16,7 @@
  *     external_io: [callPopup, modelRegistry.js, blueprintProcessor.js, smartResize]
  */
 
-import { callPopup } from '../../../../../script.js';
+import { callPopup } from '../../../../../../script.js';
 import { getModelBlueprint, saveModelBlueprint, getBaseTemplates } from '../../modelRegistry.js';
 import { isValidBlueprint } from '../../logic/blueprintProcessor.js';
 import { smartResize } from '../../utils/dom.js';

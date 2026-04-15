@@ -17,7 +17,7 @@
  *     external_io: [callPopup, modelRegistry.js, blueprintEditor.js, jQuery]
  */
 
-import { callPopup } from '../../../../../script.js';
+import { callPopup } from '../../../../../../script.js';
 import { 
     getAllRegisteredModels, 
     deleteModelBlueprint, 

@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/modelRegistry.js
- * @stamp {"utc":"2026-04-18T22:30:00.000Z"}
+ * @stamp {"utc":"2026-04-19T14:45:00.000Z"}
  * @architectural-role Stateful Owner (Model Registry)
  * @description
  * Manages the Global Model Blueprint Registry in extension_settings.
@@ -23,8 +23,8 @@
  *     external_io: [saveSettingsDebounced]
  */
 
-import { saveSettingsDebounced } from '../../../script.js';
-import { extension_settings } from '../../extensions.js';
+import { saveSettingsDebounced } from '../../../../script.js';
+import { extension_settings } from '../../../extensions.js';
 import { DEFAULT_BLUEPRINTS } from './defaults.js';
 import { log } from './utils/logger.js';
 
@@ -77,6 +77,7 @@ export function initModelRegistry() {
  */
 export function getModelBlueprint(modelId) {
     const storage = getStorage();
+    if (!storage) return null;
     if (storage[modelId]) return storage[modelId];
 
     // Fuzzy Match Logic: If modelId contains architecture keywords, fallback to defaults
@@ -122,7 +123,8 @@ export function deleteModelBlueprint(modelId) {
  * @returns {string[]}
  */
 export function getAllRegisteredModels() {
-    return Object.keys(getStorage());
+    const storage = getStorage();
+    return storage ? Object.keys(storage) : [];
 }
 
 /**
