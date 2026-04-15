@@ -1,15 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/executor.js
- * @stamp {"utc":"2026-04-19T14:00:00.000Z"}
+ * @stamp {"utc":"2026-04-19T14:15:00.000Z"}
  * @architectural-role IO Executor (Generation Logic)
  * @description
  * Primary execution engine for PersonaLyze image generation.
  * Implements the Forensic Total Mirror Protocol: every outbound request 
  * and inbound response document is mirrored to the Call Logs.
  * 
- * Updated for Dynamic Blueprint Architecture:
- * 1. Integrates scrubEngineParams to strip UI metadata before dispatch.
- * 2. Ensures engineParams are passed to Fal and PiAPI proxy routes.
+ * Updated for Forensic Reality:
+ * 1. Modified _extractForensicDocument to be MIME-aware.
+ * 2. Prevents binary "mojibake" by identifying image streams and logging a marker.
  * 
  * @api-declaration
  * fetchPreviewBlob(engine, model, pos, neg, w, h, seed, loras, useLayerDiffuse, engineParams) -> Promise<string>
@@ -63,19 +63,30 @@ async function validateImageResponse(response) {
 
 /**
  * Clones a response and attempts to extract a forensic document (JSON or Text).
+ * Respects "Reality": returns a marker for binary image streams to prevent log corruption.
  */
 async function _extractForensicDocument(response) {
     if (!response) return null;
+    
+    const contentType = response.headers.get('Content-Type') ?? '';
+
+    // Visual Reality: Do not attempt to parse image binary as text
+    if (contentType.startsWith('image/')) {
+        return `[Binary Image Stream: ${contentType}]`;
+    }
+
     try {
         const clone = response.clone();
         const text = await clone.text();
         try {
+            // Metadata Reality: Return parsed JSON if available
             return JSON.parse(text);
         } catch {
+            // Text Reality: Return raw text (capped)
             return text.slice(0, 1000);
         }
     } catch {
-        return "[Unreadable Response]";
+        return "[Unreadable Response Content]";
     }
 }
 
@@ -227,7 +238,7 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
                 const blob = await polRes.blob();
                 fallbackB64 = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result.split(',')[1]); fr.readAsDataURL(blob); });
             } else imgRes = polRes;
-            finalDoc = "[Pollinations Image Stream]";
+            finalDoc = await _extractForensicDocument(polRes);
         }
 
         // Post-Process RMBG

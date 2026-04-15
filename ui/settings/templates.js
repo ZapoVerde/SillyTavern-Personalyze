@@ -1,14 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/templates.js
- * @stamp {"utc":"2026-04-19T14:40:00.000Z"}
+ * @stamp {"utc":"2026-04-19T14:45:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Pure functions for generating the Personalyze settings panel and forensic logs.
  * Implements the Forensic Observability Standard: full request/response mirroring,
  * JSON pretty-printing, and debug bundle exports.
  * 
- * Updated for Dynamic Blueprint Architecture:
- * 1. Removed legacy "Technical Schema" UI block from the settings panel.
+ * Updated for Forensic Reality:
+ * 1. Added thumbnail rendering logic for image resources.
+ * 2. Updated log render loop to distinguish between JSON metadata and Visual assets.
  * 
  * @api-declaration
  * buildPanelHTML(settings, meta, profileNames) -> string
@@ -22,6 +23,7 @@
  */
 
 import { escapeHtml } from '../../utils/history.js';
+import { PLZ_IMAGE_FOLDER } from '../../defaults.js';
 
 /**
  * Renders the Forensic Call Log modal.
@@ -44,8 +46,6 @@ export function buildLogModalHTML(pipelineLogs, workshopLogs, systemLogs) {
 
     /** 
      * Shared logic for copying text with a visual feedback pulse.
-     * @param {string} targetId - The ID of the element containing text to copy.
-     * @param {string} feedbackText - Text to show on the button (e.g. "✓ Copied").
      */
     const copyWithFeedback = (targetId, feedbackText = '✓ Copied') => {
         return `
@@ -80,6 +80,17 @@ export function buildLogModalHTML(pipelineLogs, workshopLogs, systemLogs) {
         </div>`;
     };
 
+    /** Builds an image thumbnail inset. */
+    const thumbnailBlock = (filename) => {
+        if (!filename || typeof filename !== 'string' || !filename.endsWith('.png')) return '';
+        const src = `user/images/${PLZ_IMAGE_FOLDER}/${encodeURIComponent(filename)}?v=${Date.now()}`;
+        return `
+        <div style="margin-top:10px; border:1px solid rgba(255,255,255,0.1); border-radius:6px; overflow:hidden; background:rgba(0,0,0,0.2); display:inline-block;">
+            <div style="font-size:0.65em; opacity:0.5; padding:4px 8px; background:rgba(255,255,255,0.05); border-bottom:1px solid rgba(255,255,255,0.05); text-transform:uppercase; letter-spacing:0.05em;">Visual Reality: ${escapeHtml(filename)}</div>
+            <img src="${src}" style="display:block; max-width:180px; max-height:270px; object-fit:contain; background: #111;" />
+        </div>`;
+    };
+
     const renderTurns = (turns, limit) => {
         if (!turns.length) return `<p style="opacity:0.4; font-size:0.85em; padding:10px;">No entries recorded.</p>`;
         return [...turns].reverse().slice(0, limit).map(turn => {
@@ -88,6 +99,11 @@ export function buildLogModalHTML(pipelineLogs, workshopLogs, systemLogs) {
                 
                 const bundleId = `plz-bundle-v-${_copyId++}`;
                 const debugBundleText = `--- DEBUG BUNDLE: ${c.label} ---\n\nREQUEST:\n${prettyPrint(c.requestBundle || c.prompt)}\n\nRESPONSE:\n${prettyPrint(c.responseDocument || c.response)}${c.error ? `\n\nERROR:\n${c.error}` : ''}`;
+
+                // Reality Path Determination
+                const isImage = typeof c.response === 'string' && c.response.endsWith('.png');
+                const isJsonDoc = c.responseDocument && typeof c.responseDocument === 'object';
+                const isMarkerDoc = typeof c.responseDocument === 'string' && c.responseDocument.startsWith('[Binary');
 
                 return `
                 <details style="margin-top:6px; border-left:2px solid rgba(255,255,255,0.1); padding-left:10px;">
@@ -104,7 +120,13 @@ export function buildLogModalHTML(pipelineLogs, workshopLogs, systemLogs) {
                         </div>
                     </summary>
                     ${forensicBlock('Request Payload', c.requestBundle || c.prompt, '#aaa')}
-                    ${forensicBlock('Response Document', c.responseDocument || c.response)}
+                    
+                    ${isJsonDoc ? forensicBlock('Response Metadata (JSON)', c.responseDocument) : ''}
+                    
+                    ${isImage ? thumbnailBlock(c.response) : ''}
+                    
+                    ${(!isJsonDoc && !isMarkerDoc && c.responseDocument) ? forensicBlock('Response Content', c.responseDocument) : ''}
+
                     ${c.error ? `<div style="color:var(--SmartThemeErrorColor); font-size:0.8em; margin-top:5px; padding:5px; background:rgba(224,85,85,0.1); border-radius:4px;">${escapeHtml(c.error)}</div>` : ''}
                 </details>`;
             }).join('');
