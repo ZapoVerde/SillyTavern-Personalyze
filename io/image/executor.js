@@ -95,7 +95,7 @@ function _dispatchPortraitStatus(characterId, detail) {
     document.dispatchEvent(new CustomEvent('plz:portrait-status', { detail: { characterId, ...detail } }));
 }
 
-async function _pollPiapiTask(taskId, timeoutMs, onStatus, signal) {
+async function _pollPiapiTask(taskId, timeoutMs, onStatus, signal = undefined) {
     const POLL_INTERVAL_MS = 1500;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -171,7 +171,7 @@ export async function fetchPreviewBlob(engine, model, positivePrompt, negativePr
 /**
  * Standard character generation with total mirroring and dynamic parameters.
  */
-export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed = 1, forceCacheBust = false, signal = null) {
+export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, anchor, seed = 1, forceCacheBust = false, signal = undefined) {
     const styleObj = resolveStyle(characterId);
     const engine   = styleObj.engine;
     const model    = styleObj.model;
