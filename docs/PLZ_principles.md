@@ -50,23 +50,17 @@ All code must belong to one of three categories to ensure predictable stability.
 2.  **Stateful Owners:** The strictly bounded gatekeepers of runtime memory. If a component needs to update the "Active Character," it must ask the stateful owner to do it.
 3.  **IO Executors:** The workers. They manipulate the DOM, talk to LLMs, write to the hard drive, or call external APIs. They contain absolutely zero narrative or state-derivation logic.
 
-Here is the new section for **PLZ_principles.md**, drafted to be code-agnostic and focused on the philosophy of transparency and observability.
-
-***
-
 ## 9. Forensic Observability and System Audit
-Transparency and technical traceability are non-negotiable. Because the system relies on a multi-stage, multi-model pipeline, the user must have access to a "Forensic Flight Recorder" that captures every byte exchanged between the extension and external services.
+Transparency and technical traceability are non-negotiable. Because the system relies on a multi-stage, multi-model pipeline, the user must have access to a "Forensic Flight Recorder" that mirrors the technical reality of every transaction without interpretation or sanitized "dummies."
 
 *   **Total Mirror Protocol:** Every exchange—whether a narrative inference, an image generation request, or a background discovery task—must be captured in a rolling in-memory audit log. This includes successes, transient blips, and hard failures.
 *   **The Three-Tier Log Architecture:**
-    1.  **Narrative Pipeline:** Captures the last **two complete turn pairs** (four distinct narrative events). This is the primary tool for diagnosing "logic hallucinations" or incorrect subject identification.
-    2.  **Workshop & Manual Tools:** Captures the last **three manual interactions** (Anchor Scans, Force Costume extractions, or Style tests). 
-    3.  **System Discovery & Infrastructure:** Captures the last **five background events**, including model discovery queries, LoRA registry fetches, and engine connectivity pings. This ensures that "missing model" errors or "failed loads" are immediately traceable to the source API response.
-*   **Deep-Trace Data Payloads:** To facilitate immediate troubleshooting without code changes, every log entry must contain:
-    1.  **The Request Bundle:** The exact JSON payload, headers (masked), and technical parameters (seed, guidance, architecture) dispatched to the provider.
-    2.  **The Response Document:** The raw, un-redacted response document. For successful calls, this includes the content/asset reference. For failed calls (400, 500, etc.), this must include the **complete Error JSON** or HTML body returned by the service.
-    3.  **Network Metadata:** Precise execution timestamps (start/end), latency measurements, and provider-specific task identifiers (e.g., PiAPI Task IDs).
-*   **The "Forensic" UI Standard:** The Log Viewer must render technical data in a monospace, syntax-aware format. It must prioritize "pretty-printed" JSON and provide a "Copy Debug Bundle" feature to allow users to export the full request/response pair for external validation.
-*   **Fail-Loud Exception Handling:** The IO layer must never "swallow" a technical response. If a service returns an error, the system must **clone the response stream**, extract the body, and hydrate the audit log with the actual service document before bubbling the error to the UI.
-
----
+    1.  **Narrative Pipeline:** Captures the last **four narrative events** (two complete turn pairs).
+    2.  **Workshop & Manual Tools:** Captures the last **three manual interactions** (Scans, Extractions, or Style tests).
+    3.  **System Discovery & Infrastructure:** Captures the last **five background events**, including model discovery and connectivity pings.
+*   **MIME-Aware "Reality" Payloads:** To ensure data fidelity and prevent log corruption, the system follows a strict MIME-aware extraction policy:
+    1.  **Metadata Reality:** If a service returns `application/json` (e.g., Runware/Fal/PiAPI task IDs), the log captures the raw JSON document.
+    2.  **Visual Reality:** If a service returns binary image data (e.g., Pollinations stream), the log identifies the `image/*` MIME type and halts string conversion.
+    3.  **Asset Linking:** The system preserves the link between the **Network Transaction** (the API response) and the **Local Reality** (the file saved to disk), allowing the UI to render the generated result alongside its technical source.
+*   **The "Forensic" UI Standard:** The Log Viewer must render technical data in a monospace, syntax-aware format. It must prioritize "pretty-printed" JSON for metadata and provide **Thumbnail Insets** for image resources. This allows users to visually verify that a prompt resulted in the expected asset.
+*   **Fail-Loud Exception Handling:** The IO layer must never "swallow" a technical response. If a service returns an error, the system must clone the response stream, extract the body, and hydrate the audit log with the actual service document before bubbling the error to the UI.

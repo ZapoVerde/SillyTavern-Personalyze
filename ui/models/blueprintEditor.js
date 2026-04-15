@@ -1,10 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/models/blueprintEditor.js
- * @stamp {"utc":"2026-04-19T09:30:00.000Z"}
+ * @stamp {"utc":"2026-04-19T11:20:00.000Z"}
  * @architectural-role UI Executor (Technical Editor)
  * @description
- * Provides a dedicated modal for editing raw JSON Technical Blueprints.
- * Features real-time validation, template swapping, and auto-sizing.
+ * Implements the visual, row-based API Blueprint Editor.
+ * Features an accordion layout for vertical space management and a bridge 
+ * for JSON Import/Copy to ensure portability and reality-first auditing.
  * 
  * @api-declaration
  * openBlueprintEditor(modelId) -> Promise<boolean>
@@ -13,62 +14,88 @@
  *   assertions:
  *     purity: IO Executor / Stateful UI
  *     state_ownership: []
- *     external_io: [callPopup, modelRegistry.js, blueprintProcessor.js, smartResize]
+ *     external_io: [callPopup, modelRegistry.js, blueprintProcessor.js, blueprintEditorTemplates.js]
  */
 
 import { callPopup } from '../../../../../../script.js';
 import { getModelBlueprint, saveModelBlueprint, getBaseTemplates } from '../../modelRegistry.js';
-import { isValidBlueprint } from '../../logic/blueprintProcessor.js';
-import { smartResize } from '../../utils/dom.js';
+import { isValidBlueprint, sanitizeBlueprintObject } from '../../logic/blueprintProcessor.js';
+import { 
+    getBlueprintShellHTML, 
+    getParameterRowHTML, 
+    getTypeConfigHTML 
+} from './blueprintEditorTemplates.js';
 import { escapeHtml } from '../../utils/history.js';
 
 /**
- * Opens the JSON Blueprint Editor for a specific model.
- * 
- * @param {string} modelId - The technical ID of the model being edited.
- * @returns {Promise<boolean>} Resolves to true if saved, false otherwise.
+ * Scrapes the Visual UI rows and assembles a raw Blueprint Object.
+ * @returns {Object}
+ */
+function scrapeBlueprintFromUI() {
+    const data = {};
+    $('.plz-bp-card').each(function() {
+        const $card = $(this);
+        const key = $card.find('.plz-bp-input-key').val().trim();
+        if (!key) return;
+
+        const type = $card.find('.plz-bp-input-type').val();
+        const descriptor = {
+            type,
+            label: $card.find('.plz-bp-input-label').val().trim()
+        };
+
+        // Type-specific field collection
+        switch (type) {
+            case 'slider':
+                descriptor.min = parseFloat($card.find('.plz-bp-conf-min').val());
+                descriptor.max = parseFloat($card.find('.plz-bp-conf-max').val());
+                descriptor.step = parseFloat($card.find('.plz-bp-conf-step').val());
+                descriptor.default = parseFloat($card.find('.plz-bp-conf-default').val());
+                break;
+            case 'select':
+                descriptor.options = $card.find('.plz-bp-conf-options').val().split(',').map(s => s.trim()).filter(Boolean);
+                descriptor.default = $card.find('.plz-bp-conf-default').val().trim();
+                break;
+            case 'checkbox':
+                descriptor.default = $card.find('.plz-bp-conf-default').prop('checked');
+                break;
+            default:
+                descriptor.default = $card.find('.plz-bp-conf-default').val().trim();
+                break;
+        }
+
+        data[key] = descriptor;
+    });
+    return data;
+}
+
+/**
+ * Renders a list of parameter cards into the container.
+ * @param {Object} blueprint 
+ */
+function renderRowList(blueprint) {
+    const $list = $('#plz-bp-row-list');
+    $list.empty();
+    Object.entries(blueprint).forEach(([key, descriptor]) => {
+        $list.append(getParameterRowHTML(key, descriptor, true));
+    });
+}
+
+/**
+ * Opens the Visual Blueprint Editor.
  */
 export async function openBlueprintEditor(modelId) {
-    const currentBlueprint = getModelBlueprint(modelId);
+    const currentBlueprint = getModelBlueprint(modelId) || {};
     const baseTemplates = getBaseTemplates();
     
-    const templateOptions = Object.keys(baseTemplates).map(t => 
-        `<option value="${escapeHtml(t)}">Apply ${escapeHtml(t.toUpperCase())} Template</option>`
-    ).join('');
-
-    const html = `
-    <div id="plz-blueprint-editor-modal" style="display:flex; flex-direction:column; gap:12px; min-width:min(600px, 90vw);">
-        <h3 style="margin:0;">API Blueprint: <span style="color:var(--SmartThemeQuoteColor);">${escapeHtml(modelId)}</span></h3>
-        
-        <div style="display:flex; align-items:center; gap:8px;">
-            <select id="plz-bp-template-select" class="text_pole" style="flex:1;">
-                <option value="">— Select Base Template —</option>
-                ${templateOptions}
-            </select>
-            <div class="plz-info-icon" title="Resetting to a template will overwrite your current edits."><i class="fa-solid fa-circle-info"></i></div>
-        </div>
-
-        <div style="position:relative;">
-            <textarea id="plz-bp-json-area" class="text_pole plz-auto-textarea" rows="12" 
-                      style="width:100%; font-family:monospace; font-size:0.82em; min-height:350px; white-space:pre; tab-size: 2;" 
-                      spellcheck="false">${JSON.stringify(currentBlueprint, null, 2)}</textarea>
-            <div id="plz-bp-status-indicator" style="position:absolute; top:8px; right:8px; font-size:0.7em; padding:2px 6px; border-radius:4px; pointer-events:none;"></div>
-        </div>
-
-        <div id="plz-bp-error-msg" style="font-size:0.75em; color:var(--SmartThemeErrorColor); min-height:1.2em; white-space:pre-wrap;"></div>
-
-        <p style="font-size:0.75em; opacity:0.6; margin:0;">
-            <i class="fa-solid fa-triangle-exclamation"></i> Modifications here will affect all Global Styles using this specific model.
-        </p>
-    </div>`;
-
-    let validationTimer = null;
-    let validatedData = null;
+    const html = getBlueprintShellHTML(modelId, baseTemplates);
 
     return new Promise((resolve) => {
         callPopup(html, 'confirm').then(ok => {
-            if (ok && validatedData) {
-                saveModelBlueprint(modelId, validatedData);
+            if (ok) {
+                const raw = scrapeBlueprintFromUI();
+                const clean = sanitizeBlueprintObject(raw);
+                saveModelBlueprint(modelId, clean);
                 resolve(true);
             } else {
                 resolve(false);
@@ -79,52 +106,94 @@ export async function openBlueprintEditor(modelId) {
             resolve(false);
         });
 
-        const $area = $('#plz-bp-json-area');
-        const $error = $('#plz-bp-error-msg');
-        const $status = $('#plz-bp-status-indicator');
-        const $okBtn = $('#dialogue_popup_ok');
+        // Initial Render
+        renderRowList(currentBlueprint);
 
-        /**
-         * Validates the current textarea content.
-         */
-        const validate = () => {
-            const raw = $area.val();
-            const result = isValidBlueprint(raw);
-
-            if (result.valid) {
-                validatedData = result.data;
-                $area.css('border-color', '');
-                $error.text('');
-                $status.text('✓ VALID').css({'background': 'rgba(40,167,69,0.2)', 'color': '#28a745'});
-                $okBtn.prop('disabled', false).css('opacity', '1');
-            } else {
-                validatedData = null;
-                $area.css('border-color', 'var(--SmartThemeErrorColor)');
-                $error.text(result.error);
-                $status.text('✗ INVALID').css({'background': 'rgba(224,85,85,0.2)', 'color': '#e05555'});
-                $okBtn.prop('disabled', true).css('opacity', '0.5');
-            }
-        };
-
-        // Initialize state
-        smartResize($area[0]);
-        validate();
-
-        // 1. Debounced Input Validation
-        $(document).on('input.plzBP', '#plz-bp-json-area', function() {
-            smartResize(this);
-            clearTimeout(validationTimer);
-            validationTimer = setTimeout(validate, 500);
+        // 1. Accordion Toggle
+        $(document).on('click.plzBP', '.plz-bp-card-header', function(e) {
+            if ($(e.target).hasClass('plz-bp-delete-row')) return;
+            const $card = $(this).closest('.plz-bp-card');
+            const $body = $card.find('.plz-bp-card-body');
+            const $icon = $card.find('.plz-bp-toggle');
+            
+            const isVisible = $body.is(':visible');
+            $body.slideToggle(150);
+            $icon.toggleClass('fa-chevron-right', isVisible).toggleClass('fa-chevron-down', !isVisible);
         });
 
-        // 2. Template Swapping
-        $(document).on('change.plzBP', '#plz-bp-template-select', function() {
+        // 2. Type Switching (Reactive)
+        $(document).on('change.plzBP', '.plz-bp-input-type', function() {
+            const $card = $(this).closest('.plz-bp-card');
+            const newType = $(this).val();
+            // Provide dummy defaults for the new type config
+            const dummyDescriptor = { type: newType };
+            $card.find('.plz-bp-type-config').html(getTypeConfigHTML(newType, dummyDescriptor));
+        });
+
+        // 3. Header Sync (Label & Key)
+        $(document).on('input.plzBP', '.plz-bp-input-label', function() {
+            $(this).closest('.plz-bp-card').find('.plz-bp-display-label').text($(this).val() || 'Unnamed Parameter');
+        });
+        $(document).on('input.plzBP', '.plz-bp-input-key', function() {
+            $(this).closest('.plz-bp-card').find('.plz-bp-tech-key').text(`[${$(this).val()}]`);
+        });
+
+        // 4. Add Row
+        $(document).on('click.plzBP', '#plz-bp-add-row', function() {
+            const $list = $('#plz-bp-row-list');
+            const newKey = `param_${Date.now().toString().slice(-4)}`;
+            const $newRow = $(getParameterRowHTML(newKey, { type: 'text', label: 'New Parameter' }, false));
+            $list.append($newRow);
+            $newRow[0].scrollIntoView({ behavior: 'smooth', block: 'end' });
+        });
+
+        // 5. Delete Row
+        $(document).on('click.plzBP', '.plz-bp-delete-row', function() {
+            $(this).closest('.plz-bp-card').remove();
+        });
+
+        // 6. Template Loading
+        $(document).on('change.plzBP', '#plz-bp-template-select', async function() {
             const templateKey = $(this).val();
             if (!templateKey || !baseTemplates[templateKey]) return;
 
-            $area.val(JSON.stringify(baseTemplates[templateKey], null, 2));
-            smartResize($area[0]);
-            validate();
+            const confirmed = await callPopup(`Replace all current parameters with the <b>${templateKey.toUpperCase()}</b> template?`, 'confirm');
+            if (confirmed) {
+                renderRowList(baseTemplates[templateKey]);
+                $(this).val('');
+            }
+        });
+
+        // 7. Bridge: Copy JSON
+        $(document).on('click.plzBP', '#plz-bp-copy-json', function() {
+            const raw = scrapeBlueprintFromUI();
+            const clean = sanitizeBlueprintObject(raw);
+            const json = JSON.stringify(clean, null, 2);
+            
+            navigator.clipboard.writeText(json).then(() => {
+                if (window.toastr) window.toastr.success('Blueprint JSON copied to clipboard.');
+            });
+        });
+
+        // 8. Bridge: Import JSON
+        $(document).on('click.plzBP', '#plz-bp-import-json', async function() {
+            const importHtml = `
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <h3 style="margin:0;">Import Blueprint JSON</h3>
+                    <p style="font-size:0.8em; opacity:0.6;">Paste a valid PersonaLyze blueprint JSON object below.</p>
+                    <textarea id="plz-bp-import-area" class="text_pole" rows="10" style="width:100%; font-family:monospace; font-size:0.8em;"></textarea>
+                </div>
+            `;
+            const ok = await callPopup(importHtml, 'confirm');
+            if (ok) {
+                const rawJson = $('#plz-bp-import-area').val();
+                const result = isValidBlueprint(rawJson);
+                if (result.valid) {
+                    renderRowList(result.data);
+                } else {
+                    if (window.toastr) window.toastr.error(`Import failed: ${result.error}`);
+                }
+            }
         });
     });
 }
