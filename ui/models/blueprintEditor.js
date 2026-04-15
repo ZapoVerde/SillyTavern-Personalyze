@@ -154,11 +154,11 @@ export async function openBlueprintEditor(modelId) {
         });
 
         // 6. Template Loading
-        $(document).on('change.plzBP', '#plz-bp-template-select', async function() {
+        $(document).on('change.plzBP', '#plz-bp-template-select', function() {
             const templateKey = $(this).val();
             if (!templateKey || !baseTemplates[templateKey]) return;
 
-            const confirmed = await callPopup(`Replace all current parameters with the <b>${templateKey.toUpperCase()}</b> template?`, 'confirm');
+            const confirmed = window.confirm(`Replace all current parameters with the "${templateKey.toUpperCase()}" template?`);
             if (confirmed) {
                 renderRowList(baseTemplates[templateKey]);
                 $(this).val('');
