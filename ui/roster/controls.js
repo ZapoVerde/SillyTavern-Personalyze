@@ -122,16 +122,15 @@ export function bindRosterControls() {
         try {
             // Trigger generation with cache-bust to force fresh image while keeping (or incrementing) seed
             const newFile = await generate(
-                id, 
-                'layered', 
-                emotionSlug, 
-                prompt, 
-                layers.emotion, 
-                layers.pose, 
-                char.identityAnchor, 
-                apiSeed, 
-                null,
-                true
+                id,
+                'layered',
+                emotionSlug,
+                prompt,
+                layers.emotion,
+                layers.pose,
+                char.identityAnchor,
+                apiSeed,
+                null
             );
 
             // Asset update
