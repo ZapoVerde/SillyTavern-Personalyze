@@ -19,10 +19,9 @@
  *     external_io: [callPopup, smartResize, settings.js, jQuery]
  */
 
-import { callPopup } from '../../../../../../script.js';
 import { getSettings, updateSetting } from '../../settings.js';
 import { smartResize } from '../../utils/dom.js';
-import { escapeHtml } from '../../utils/history.js';
+import { openTextModal } from '../../utils/textModal.js';
 
 /** Variables available in each prompt template, with descriptions. */
 const PROMPT_VARIABLES = {
@@ -81,25 +80,6 @@ const PROMPT_VARIABLES = {
     ],
 };
 
-// ─── Shared Helpers ───────────────────────────────────────────────────────────
-
-function initTextareaAutoResize() {
-    const selector = '#plz-prompt-editor';
-    $(document).on('input.plz-prompt keyup.plz-prompt change.plz-prompt', selector, function() {
-        smartResize(this);
-    });
-    const triggerResize = () => {
-        const els = document.querySelectorAll(selector);
-        els.forEach(el => smartResize(el));
-    };
-    requestAnimationFrame(triggerResize);
-    setTimeout(triggerResize, 200);
-}
-
-function cleanupPromptListeners() {
-    $(document).off('.plz-prompt');
-}
-
 // ─── Generic Prompt Editor ───────────────────────────────────────────────────
 
 /**
@@ -109,43 +89,21 @@ export async function openPromptModal(key, title, defaultValue) {
     const current = getSettings()[key] ?? defaultValue;
     const vars = PROMPT_VARIABLES[key] ?? [];
 
-    const popupPromise = callPopup(
-        `<h3 class="plz-modal-title">${title}</h3>
-         <div class="plz-var-list">
-             ${vars.map((e, i) => `
-                <div class="plz-var-row">
-                    <button class="menu_button plz-var-copy-btn" onclick="navigator.clipboard.writeText('${e.v}'); event.stopPropagation();"><i class="fa-regular fa-copy"></i></button>
-                    <code class="plz-var-code">${e.v}</code>
-                    <span class="plz-var-desc">— ${e.d}</span>
-                </div>`).join('')}
-         </div>
-         <textarea id="plz-prompt-editor" class="text_pole plz-auto-textarea" rows="4"
-                   style="width:100%; font-family:monospace; font-size:0.85em; overflow:hidden; min-height:120px;"
-                   spellcheck="false">${escapeHtml(current)}</textarea>
-         <div class="plz-modal-actions">
-             <button class="menu_button" id="plz-prompt-save" style="background-color:rgba(76,175,80,0.15);">Save Template</button>
-             <button class="menu_button" id="plz-prompt-reset">Reset to Default</button>
-         </div>`,
-        'confirm'
-    );
-
-    initTextareaAutoResize();
-
-    $(document).on('click.plz-prompt', '#plz-prompt-reset', () => {
-        const $editor = $('#plz-prompt-editor');
-        $editor.val(defaultValue);
-        smartResize($editor[0]);
+    const result = await openTextModal({
+        title,
+        initialValue: current,
+        variables: vars,
+        extraButtons: [
+            {
+                label: 'Reset to Default',
+                id: 'plz-prompt-reset',
+                onClick: ($ta) => { $ta.val(defaultValue); smartResize($ta[0]); }
+            }
+        ]
     });
 
-    $(document).on('click.plz-prompt', '#plz-prompt-save', () => {
-        $('#dialogue_popup_ok').trigger('click');
-    });
-
-    const result = await popupPromise;
-    cleanupPromptListeners();
-
-    if (result) {
-        updateSetting(key, $('#plz-prompt-editor').val());
+    if (result !== null) {
+        updateSetting(key, result);
         if (window.toastr) window.toastr.success('Template updated.', 'PersonaLyze');
     }
 }

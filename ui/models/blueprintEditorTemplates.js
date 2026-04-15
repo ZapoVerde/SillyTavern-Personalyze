@@ -87,7 +87,7 @@ export function getParameterRowHTML(key, descriptor, isCollapsed = true) {
 
         <!-- Accordion Body -->
         <div class="plz-bp-card-body" style="padding:12px; border-top:1px solid rgba(255,255,255,0.05); ${isCollapsed ? 'display:none;' : ''}">
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px; margin-bottom:12px;">
+            <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px;">
                 <div>
                     <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:4px;">Technical Key (Slug)</label>
                     <input type="text" class="text_pole plz-bp-input-key" value="${escapeHtml(key)}" placeholder="e.g. steps" style="width:100%; font-family:monospace;" />

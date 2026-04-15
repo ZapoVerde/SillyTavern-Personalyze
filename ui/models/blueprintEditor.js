@@ -20,12 +20,13 @@
 import { callPopup } from '../../../../../../script.js';
 import { getModelBlueprint, saveModelBlueprint, getBaseTemplates } from '../../modelRegistry.js';
 import { isValidBlueprint, sanitizeBlueprintObject } from '../../logic/blueprintProcessor.js';
-import { 
-    getBlueprintShellHTML, 
-    getParameterRowHTML, 
-    getTypeConfigHTML 
+import {
+    getBlueprintShellHTML,
+    getParameterRowHTML,
+    getTypeConfigHTML
 } from './blueprintEditorTemplates.js';
 import { escapeHtml } from '../../utils/history.js';
+import { openTextModal } from '../../utils/textModal.js';
 
 /**
  * Scrapes the Visual UI rows and assembles a raw Blueprint Object.
@@ -177,16 +178,11 @@ export async function openBlueprintEditor(modelId) {
 
         // 8. Bridge: Import JSON
         $(document).on('click.plzBP', '#plz-bp-import-json', async function() {
-            const importHtml = `
-                <div style="display:flex; flex-direction:column; gap:10px;">
-                    <h3 style="margin:0;">Import Blueprint JSON</h3>
-                    <p style="font-size:0.8em; opacity:0.6;">Paste a valid PersonaLyze blueprint JSON object below.</p>
-                    <textarea id="plz-bp-import-area" class="text_pole" rows="10" style="width:100%; font-family:monospace; font-size:0.8em;"></textarea>
-                </div>
-            `;
-            const ok = await callPopup(importHtml, 'confirm');
-            if (ok) {
-                const rawJson = $('#plz-bp-import-area').val();
+            const rawJson = await openTextModal({
+                title: 'Import Blueprint JSON',
+                initialValue: '',
+            });
+            if (rawJson !== null) {
                 const result = isValidBlueprint(rawJson);
                 if (result.valid) {
                     renderRowList(result.data);
