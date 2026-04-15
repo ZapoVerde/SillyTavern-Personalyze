@@ -87,7 +87,7 @@ export function getParameterRowHTML(key, descriptor, isCollapsed = true) {
 
         <!-- Accordion Body -->
         <div class="plz-bp-card-body" style="padding:12px; border-top:1px solid rgba(255,255,255,0.05); ${isCollapsed ? 'display:none;' : ''}">
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px;">
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px; margin-bottom:12px;">
                 <div>
                     <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:4px;">Technical Key (Slug)</label>
                     <input type="text" class="text_pole plz-bp-input-key" value="${escapeHtml(key)}" placeholder="e.g. steps" style="width:100%; font-family:monospace;" />
@@ -124,7 +124,7 @@ export function getTypeConfigHTML(type, descriptor) {
     switch (type) {
         case 'slider':
             return `
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:10px;">
                 <div>
                     <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:4px;">Minimum</label>
                     <input type="number" class="text_pole plz-bp-conf-min" value="${descriptor.min ?? 1}" style="width:100%;" />
