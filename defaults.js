@@ -1,13 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/defaults.js
- * @stamp {"utc":"2026-04-16T21:00:00.000Z"}
+ * @stamp {"utc":"2026-04-18T21:00:00.000Z"}
  * @architectural-role Default Configuration
  * @description
  * Default constants for the Layered State Pipeline.
  * 
- * Updated for Style-Specific Render Pipeline:
- * 1. Added RESOLUTION_OVERRIDES for style-level technical snapping.
- * 2. Added DEFAULT_STYLE_PACKAGE schema incorporating Engine/Model selection.
+ * Updated for Dynamic Blueprint Architecture:
+ * 1. Added DEFAULT_BLUEPRINTS with UI descriptors (type, min, max, label).
+ * 2. Maintained registry of verified models and LoRAs.
  * 
  * @api-declaration
  * POLLINATIONS_BASE_URL
@@ -23,7 +23,7 @@
  * RUNWARE_LORA_REGISTRY
  * RUNWARE_RMBG_MODELS
  * DEFAULT_RUNWARE_RMBG_MODEL
- * ...
+ * DEFAULT_BLUEPRINTS
  */
 
 /** Primary API gateway for Pollinations. */
@@ -228,4 +228,21 @@ export const DEFAULT_STYLE_PACKAGE = {
     template: DEFAULT_VN_STYLE_SUFFIX,
     negativePrompt: '',
     loras: []
+};
+
+/** Default Dynamic Blueprints for Model Parameters */
+export const DEFAULT_BLUEPRINTS = {
+    'flux': {
+        "steps": { "type": "slider", "min": 1, "max": 50, "default": 20, "label": "Steps" },
+        "guidance": { "type": "slider", "min": 1, "max": 20, "default": 3.5, "step": 0.1, "label": "Guidance" }
+    },
+    'sdxl': {
+        "steps": { "type": "slider", "min": 1, "max": 100, "default": 30, "label": "Steps" },
+        "cfgScale": { "type": "slider", "min": 1, "max": 30, "default": 7, "step": 0.5, "label": "CFG Scale" },
+        "scheduler": { "type": "select", "options": ["Euler A", "DPM++ 2M Karras", "UniPC"], "default": "Euler A", "label": "Scheduler" }
+    },
+    'sd15': {
+        "steps": { "type": "slider", "min": 1, "max": 100, "default": 20, "label": "Steps" },
+        "cfgScale": { "type": "slider", "min": 1, "max": 30, "default": 7, "step": 0.5, "label": "CFG Scale" }
+    }
 };

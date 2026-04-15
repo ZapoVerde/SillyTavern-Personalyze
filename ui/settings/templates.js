@@ -1,15 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/templates.js
- * @stamp {"utc":"2026-04-18T23:55:00.000Z"}
+ * @stamp {"utc":"2026-04-19T14:40:00.000Z"}
  * @architectural-role Pure UI Templates
  * @description
  * Pure functions for generating the Personalyze settings panel and forensic logs.
  * Implements the Forensic Observability Standard: full request/response mirroring,
  * JSON pretty-printing, and debug bundle exports.
  * 
- * Updated: 
- * 1. Implemented visual "Copied!" feedback for all clipboard actions.
- * 2. Optimized onclick handlers to handle label swapping and color pulsing.
+ * Updated for Dynamic Blueprint Architecture:
+ * 1. Removed legacy "Technical Schema" UI block from the settings panel.
  * 
  * @api-declaration
  * buildPanelHTML(settings, meta, profileNames) -> string
@@ -214,10 +213,6 @@ export function buildPanelHTML(settings, meta, profileNames) {
                 ${buildCallRow('smart', 'Smart Model (Phase 3+)', 'smartProfileId', 'describerHistory', "Extraction & Scanning.", [{ key: 'phase3LayeredPrompt', label: 'Layered' }, { key: 'anchorScanPrompt', label: 'Anchor' }, { key: 'redressPrompt', label: 'Redress' }, { key: 'forceCostumePrompt', label: 'Manual' }])}
                 <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444);"><button class="menu_button" id="plz-open-engines" style="width:100%;"><i class="fa-solid fa-gear"></i> Configure Engines</button></div>
                 ${buildImageSettingsHTML(settings)}
-                <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--SmartThemeBorderColor,#444); display:flex; flex-direction:column; gap:8px;">
-                    <div style="font-size:0.8em; opacity:0.6; text-transform:uppercase; letter-spacing:0.05em;">Technical Schema</div>
-                    <button class="menu_button" id="plz-open-schema-editor" style="width:100%;"><i class="fa-solid fa-code"></i> Edit Model Parameter Schema</button>
-                </div>
                 <div style="margin-bottom:14px;"><label class="checkbox_label"><input type="checkbox" id="plz-dev-mode" ${settings.devMode ? 'checked' : ''} /><span>Dev Mode</span></label></div>
                 <div style="margin-bottom:14px;"><label class="checkbox_label"><input type="checkbox" id="plz-verbose-logging" ${settings.verboseLogging ? 'checked' : ''} /><span>Verbose Logging</span></label></div>
                 <div style="display:flex; gap:8px;"><button class="menu_button" id="plz-open-workshop" style="flex:1;"><i class="fa-solid fa-dna"></i> Workshop</button><button class="menu_button" id="plz-view-logs" style="flex:1;"><i class="fa-solid fa-plane-arrival"></i> Logs</button></div>

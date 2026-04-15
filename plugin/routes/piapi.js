@@ -1,14 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/routes/piapi.js
- * @stamp {"utc":"2026-04-16T15:30:00.000Z"}
+ * @stamp {"utc":"2026-04-19T14:20:00.000Z"}
  * @architectural-role Server-Side Route Handler
  * @description
  * Implements the PiAPI proxy routes for image generation, task status, 
  * background removal, and binary fetching.
  * 
- * Updated:
- * 1. Restored X-API-Key and User-Agent to the piapi-fetch route to prevent 401s on CDNs.
- * 2. Standardized User-Agent across all outbound PiAPI requests.
+ * Updated for Dynamic Blueprint Architecture:
+ * 1. Spreads engineParams into the txt2img task input.
  * 
  * @api-declaration
  * registerPiapiRoutes(router) -> void
@@ -59,7 +58,7 @@ export function registerPiapiRoutes(router) {
 
     // ─── PiAPI: Submit Generation ─────────────────────────────────────────────
     router.post('/piapi-generate', async (req, res) => {
-        const { model, prompt, negative_prompt, width, height, seed, flow_shift, batch_size } = req.body;
+        const { model, prompt, negative_prompt, width, height, seed, flow_shift, batch_size, engineParams } = req.body;
         const apiKey = readSecret(req.user.directories, 'api_key_piapi');
         const modelId = model ?? 'Qubico/z-image';
 
@@ -77,7 +76,17 @@ export function registerPiapiRoutes(router) {
                     body: JSON.stringify({
                         model: modelId,
                         task_type: 'txt2img',
-                        input: { prompt, negative_prompt, width, height, seed: seed ?? -1, flow_shift: flow_shift ?? 3, batch_size: batch_size ?? 1 }
+                        input: { 
+                            prompt, 
+                            negative_prompt, 
+                            width, 
+                            height, 
+                            seed: seed ?? -1, 
+                            flow_shift: flow_shift ?? 3, 
+                            batch_size: batch_size ?? 1,
+                            // DYNAMIC BRIDGE: Spread parameters from the Blueprint
+                            ...(engineParams || {})
+                        }
                     }),
                 }),
                 'PiAPI'

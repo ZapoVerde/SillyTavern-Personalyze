@@ -1,14 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-18T20:00:00.000Z"}
+ * @stamp {"utc":"2026-04-19T12:30:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
  * Implements the "Working Table" (Sandbox vs. Checkpoint) architecture.
  * 
- * Added:
- * 1. styleWorkspaces: Persistent storage for uncommitted "Dirty" style experiments.
- * 2. Enhanced migration to synchronize Library and Workspace on boot.
+ * Updated for Dynamic Blueprint Architecture:
+ * 1. Removed legacy modelParameterSchema from SETTINGS_DEFAULTS.
+ * 2. Integrated initModelRegistry into the initialization sequence.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -26,6 +26,7 @@
 import { saveSettingsDebounced } from '../../../../script.js';
 import { extension_settings } from '../../../extensions.js';
 import { warn, log } from './utils/logger.js';
+import { initModelRegistry } from './modelRegistry.js';
 import {
     PHASE_1_SUBJECT_PROMPT,
     PHASE_2_CHANGE_PROMPT,
@@ -62,23 +63,6 @@ import {
 } from './defaults.js';
 
 const EXT_NAME = 'personalyze';
-
-/** Default Dynamic Schema for Model Parameters */
-const DEFAULT_PARAMETER_SCHEMA = {
-    "flux": {
-        "steps": { "type": "slider", "min": 1, "max": 50, "default": 20, "label": "Steps" },
-        "guidance": { "type": "slider", "min": 1, "max": 20, "default": 3.5, "step": 0.1, "label": "Guidance" }
-    },
-    "sdxl": {
-        "steps": { "type": "slider", "min": 1, "max": 100, "default": 30, "label": "Steps" },
-        "cfgScale": { "type": "slider", "min": 1, "max": 30, "default": 7, "step": 0.5, "label": "CFG Scale" },
-        "scheduler": { "type": "select", "options": ["Euler A", "DPM++ 2M Karras", "UniPC"], "default": "Euler A", "label": "Scheduler" }
-    },
-    "sd15": {
-        "steps": { "type": "slider", "min": 1, "max": 100, "default": 20, "label": "Steps" },
-        "cfgScale": { "type": "slider", "min": 1, "max": 30, "default": 7, "step": 0.5, "label": "CFG Scale" }
-    }
-};
 
 /** Global defaults for every new profile. */
 export const SETTINGS_DEFAULTS = Object.freeze({
@@ -137,9 +121,6 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     maxResolution:            DEFAULT_MAX_RESOLUTION,
     dynamicResolution:        DEFAULT_DYNAMIC_RESOLUTION,
     keepCache:                DEFAULT_KEEP_CACHE,
-
-    // Dynamic Parameter Schema
-    modelParameterSchema:     JSON.stringify(DEFAULT_PARAMETER_SCHEMA, null, 4),
 });
 
 /** Returns the active working copy. */
@@ -188,6 +169,9 @@ export function initSettings() {
             root.activeState.smartProfileId = root.activeState.classifierProfileId;
         }
     }
+
+    // --- Technical Registry Initialization ---
+    initModelRegistry();
 
     // --- Style Library & Package Migration ---
     if (!root.styleLibrary) {

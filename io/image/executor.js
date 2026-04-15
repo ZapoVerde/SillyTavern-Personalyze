@@ -1,12 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/executor.js
- * @stamp {"utc":"2026-04-18T18:40:00.000Z"}
+ * @stamp {"utc":"2026-04-19T14:00:00.000Z"}
  * @architectural-role IO Executor (Generation Logic)
  * @description
  * Primary execution engine for PersonaLyze image generation.
  * Implements the Forensic Total Mirror Protocol: every outbound request 
  * and inbound response document is mirrored to the Call Logs.
- * Supports dynamic engineParams for the Schema-Driven Architecture.
+ * 
+ * Updated for Dynamic Blueprint Architecture:
+ * 1. Integrates scrubEngineParams to strip UI metadata before dispatch.
+ * 2. Ensures engineParams are passed to Fal and PiAPI proxy routes.
  * 
  * @api-declaration
  * fetchPreviewBlob(engine, model, pos, neg, w, h, seed, loras, useLayerDiffuse, engineParams) -> Promise<string>
@@ -31,6 +34,8 @@ import { log, error } from '../../utils/logger.js';
 import { logCall, logPatchLast } from '../../utils/callLog.js';
 import { buildFilenamePrefix } from './registry.js';
 import { resolveDimensions, resolveStyle, finalizePrompt } from './compiler.js';
+import { getModelBlueprint } from '../../modelRegistry.js';
+import { scrubEngineParams } from '../../logic/blueprintProcessor.js';
 
 // ─── Forensic Helpers ─────────────────────────────────────────────────────────
 
@@ -105,19 +110,24 @@ async function _pollPiapiTask(taskId, timeoutMs, onStatus) {
  */
 export async function fetchPreviewBlob(engine, model, positivePrompt, negativePrompt, width, height, seed = 1, loras = [], useLayerDiffuse = false, engineParams = {}) {
     let res;
-    const reqBundle = { engine, model, positivePrompt, negativePrompt, width, height, seed, loras, useLayerDiffuse, engineParams };
+    
+    // Scouring Logic: Strip UI metadata from engineParams before dispatch
+    const blueprint = getModelBlueprint(model);
+    const scrubbedParams = scrubEngineParams(blueprint, engineParams);
+
+    const reqBundle = { engine, model, positivePrompt, negativePrompt, width, height, seed, loras, useLayerDiffuse, engineParams: scrubbedParams };
     logCall('StyleTest', `[${engine}:${model}]`, null, null, reqBundle);
 
     try {
         if (engine === 'fal') {
             res = await fetch('/api/plugins/personalyze/fal-generate', {
                 method: 'POST', headers: getRequestHeaders(),
-                body: JSON.stringify({ model, prompt: positivePrompt, width, height }),
+                body: JSON.stringify({ model, prompt: positivePrompt, width, height, engineParams: scrubbedParams }),
             });
         } else if (engine === 'piapi') {
             const submitRes = await fetch('/api/plugins/personalyze/piapi-generate', {
                 method: 'POST', headers: getRequestHeaders(),
-                body: JSON.stringify({ model, prompt: positivePrompt, negative_prompt: negativePrompt, width, height, seed }),
+                body: JSON.stringify({ model, prompt: positivePrompt, negative_prompt: negativePrompt, width, height, seed, engineParams: scrubbedParams }),
             });
             const { task_id } = await submitRes.json();
             const genResult = await _pollPiapiTask(task_id, 120000, () => { });
@@ -125,7 +135,7 @@ export async function fetchPreviewBlob(engine, model, positivePrompt, negativePr
         } else if (engine === 'runware') {
             res = await fetch('/api/plugins/personalyze/runware-generate', {
                 method: 'POST', headers: getRequestHeaders(),
-                body: JSON.stringify({ positivePrompt, negativePrompt, model, width, height, seed, loras, useLayerDiffuse, engineParams }),
+                body: JSON.stringify({ positivePrompt, negativePrompt, model, width, height, seed, loras, useLayerDiffuse, engineParams: scrubbedParams }),
             });
         } else {
             const key = await findSecret('api_key_pollinations');
@@ -152,7 +162,11 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
     const styleObj = resolveStyle(characterId);
     const engine   = styleObj.engine;
     const model    = styleObj.model;
-    const engineParams = styleObj.engineParams || {};
+    
+    // Scouring Logic: Strip UI metadata from engineParams before dispatch
+    const blueprint = getModelBlueprint(model);
+    const scrubbedParams = scrubEngineParams(blueprint, styleObj.engineParams || {});
+
     const fullPrompt = finalizePrompt(subjectPrompt, anchor, emotionLabel, poseLabel, styleObj.template);
     
     const { width: w, height: h } = resolveDimensions(characterId, styleObj);
@@ -163,7 +177,7 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
         negativePrompt: styleObj.negativePrompt,
         loras: styleObj.loras,
         useLayerDiffuse: styleObj.useLayerDiffuse,
-        engineParams
+        engineParams: scrubbedParams
     };
 
     logCall('PortraitGenerate', `[${engine}:${model}]\n${fullPrompt}`, null, null, reqBundle);
@@ -173,15 +187,14 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
 
     try {
         let sourceUrl = null, imgRes = null, meta = null, fallbackB64 = null;
-        // Only trust the native transparency flag if the engine is actually Runware
         let nativeTransparency = (engine === 'runware') ? !!styleObj.useLayerDiffuse : false;
         let finalDoc = null;
 
         if (engine === 'fal') {
-            imgRes = await fetch('/api/plugins/personalyze/fal-generate', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ model, prompt: fullPrompt, width: w, height: h }) });
+            imgRes = await fetch('/api/plugins/personalyze/fal-generate', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ model, prompt: fullPrompt, width: w, height: h, engineParams: scrubbedParams }) });
             finalDoc = await _extractForensicDocument(imgRes);
         } else if (engine === 'piapi') {
-            const subRes = await fetch('/api/plugins/personalyze/piapi-generate', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ model, prompt: fullPrompt, negative_prompt: styleObj.negativePrompt, width: w, height: h, seed }) });
+            const subRes = await fetch('/api/plugins/personalyze/piapi-generate', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ model, prompt: fullPrompt, negative_prompt: styleObj.negativePrompt, width: w, height: h, seed, engineParams: scrubbedParams }) });
             const { task_id } = await subRes.json();
             const resData = await _pollPiapiTask(task_id, 120000, st => _dispatchPortraitStatus(characterId, { status: st }));
             sourceUrl = resData.image_url; meta = resData.meta; finalDoc = resData;
@@ -197,7 +210,7 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
                     seed, 
                     loras: styleObj.loras, 
                     useLayerDiffuse: nativeTransparency,
-                    engineParams
+                    engineParams: scrubbedParams 
                 }) 
             });
             finalDoc = await _extractForensicDocument(imgRes);

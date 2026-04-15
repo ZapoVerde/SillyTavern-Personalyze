@@ -1,11 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/settings/panel.js
- * @stamp {"utc":"2026-04-18T17:30:00.000Z"}
+ * @stamp {"utc":"2026-04-19T14:30:00.000Z"}
  * @architectural-role UI Orchestrator (Settings)
  * @description
  * Main orchestrator for the Personalyze extension settings panel.
- * Coordinates profile management, technical schema editing, and forensic 
- * observability via the flight recorder.
+ * Coordinates profile management and forensic observability via the flight recorder.
+ * 
+ * Updated for Dynamic Blueprint Architecture:
+ * 1. Removed monolithic Schema Editor logic (now handled in Model Manager).
  *
  * @api-declaration
  * injectSettingsPanel() — Main entry point to build and bind the panel.
@@ -62,38 +64,6 @@ function refreshUI() {
     setVerbose(s.verboseLogging);
 }
 
-// ─── Modal: Schema Editor ─────────────────────────────────────────────────────
-
-/**
- * Opens a raw JSON editor for the model parameter schema.
- */
-async function openSchemaEditor() {
-    const s = getSettings();
-    const current = s.modelParameterSchema;
-
-    const html = `
-    <div style="display:flex; flex-direction:column; gap:12px;">
-        <h3 style="margin:0;">Model Parameter Schema</h3>
-        <p style="font-size:0.85em; opacity:0.7; margin:0;">Define UI parameters (sliders, selects) for model architectures. Invalid JSON will be rejected.</p>
-        <textarea id="plz-schema-editor" class="text_pole plz-auto-textarea" rows="10" 
-                  style="width:100%; font-family:monospace; font-size:0.82em; min-height:300px; white-space:pre;" 
-                  spellcheck="false">${current}</textarea>
-    </div>`;
-
-    const ok = await callPopup(html, 'confirm');
-    if (!ok) return;
-
-    const val = $('#plz-schema-editor').val();
-    try {
-        JSON.parse(val); // Validation check
-        updateSetting('modelParameterSchema', val);
-        if (window.toastr) window.toastr.success('Technical schema updated.');
-    } catch (err) {
-        if (window.toastr) window.toastr.error('JSON Error: Schema not saved. Check syntax.');
-        console.error('[PLZ:Schema] Invalid JSON input:', err);
-    }
-}
-
 // ─── Event Bindings ───────────────────────────────────────────────────────────
 
 function bindHandlers() {
@@ -145,7 +115,6 @@ function bindHandlers() {
 
     $panel.on('click', '#plz-open-engines', () => openEnginesModal());
     $panel.on('click', '#plz-open-workshop', () => openWorkshop('dna'));
-    $panel.on('click', '#plz-open-schema-editor', () => openSchemaEditor());
 
     $panel.on('click', '.plz-open-prompt', async function () {
         const key = $(this).data('prompt-key');
@@ -157,9 +126,6 @@ function bindHandlers() {
         const html = buildLogModalHTML(getLogs(), getWorkshopLogs(), getSystemLogs());
         await callPopup(html, 'text');
     });
-
-    // Auto-resize logic for the Schema Editor textarea
-    $(document).on('input', '#plz-schema-editor', function() { smartResize(this); });
 }
 
 // ─── Entry Point ──────────────────────────────────────────────────────────────

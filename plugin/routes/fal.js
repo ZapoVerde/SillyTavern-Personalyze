@@ -1,10 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/plugin/routes/fal.js
- * @stamp {"utc":"2026-04-16T12:25:00.000Z"}
+ * @stamp {"utc":"2026-04-19T14:10:00.000Z"}
  * @architectural-role Server-Side Route Handler
  * @description
  * Implements the Fal AI generation and validation proxy routes.
- * Bypasses CORS and injects secure vault keys.
+ * Updated to support Dynamic Blueprint parameters by spreading engineParams 
+ * into the upstream API request.
  * 
  * @api-declaration
  * registerFalRoutes(router) -> void
@@ -27,7 +28,7 @@ export function registerFalRoutes(router) {
     // ─── Fal AI: Image Generation ─────────────────────────────────────────────
     router.post('/fal-generate', async (req, res) => {
         try {
-            const { model, prompt, width, height } = req.body;
+            const { model, prompt, width, height, engineParams } = req.body;
             const apiKey = readSecret(req.user.directories, 'api_key_fal');
 
             if (!apiKey) {
@@ -47,6 +48,8 @@ export function registerFalRoutes(router) {
                         image_size: { width: width ?? 512, height: height ?? 768 },
                         sync_mode: true,
                         enable_safety_checker: false,
+                        // DYNAMIC BRIDGE: Spread parameters from the Blueprint
+                        ...(engineParams || {})
                     }),
                 }),
                 'Fal'

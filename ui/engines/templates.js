@@ -1,14 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/engines/templates.js
- * @stamp {"utc":"2026-04-16T23:05:00.000Z"}
+ * @stamp {"utc":"2026-04-19T10:10:00.000Z"}
  * @architectural-role Pure UI Templates (Engines Modal)
  * @description
  * Generates the HTML for the Image Engines configuration modal. 
  * 
- * Updated for Style-Specific Render Pipeline:
- * 1. Removed Default Engine selection buttons.
- * 2. Updated Model labels to "Test Model" to distinguish from Style-level models.
- * 3. Availability toggles updated to refer to Global Styles.
+ * Updated for Dynamic Blueprint Architecture:
+ * 1. Added a global button to open the Model & Blueprint Manager.
+ * 2. Maintained standard engine tabs.
  *
  * @api-declaration
  * getEnginesModalHTML(settings) → string
@@ -262,8 +261,15 @@ export function getEnginesModalHTML(settings) {
                 ${getRunwareTabHTML(settings)}
             </div>
 
-            <!-- Shared Test Prompt Area -->
+            <!-- Registry Entry Point -->
             <div style="margin-top:20px; padding-top:15px; border-top:1px solid var(--SmartThemeBorderColor,#444);">
+                <button id="plz-open-model-manager" class="menu_button" style="width:100%; border-color:var(--SmartThemeQuoteColor);">
+                    <i class="fa-solid fa-microchip"></i> Manage Models & Blueprints
+                </button>
+            </div>
+
+            <!-- Shared Test Prompt Area -->
+            <div style="margin-top:15px; padding-top:15px; border-top:1px solid var(--SmartThemeBorderColor,#444);">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
                     <label style="font-size:0.85em; opacity:0.75;">Engine Test Prompt:</label>
                     <button id="plz-eng-test-prompt-reset" class="menu_button" style="font-size:0.75em; padding:1px 8px;">Reset</button>

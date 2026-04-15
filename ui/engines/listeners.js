@@ -1,15 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/engines/listeners.js
- * @stamp {"utc":"2026-04-17T11:00:00.000Z"}
+ * @stamp {"utc":"2026-04-19T10:20:00.000Z"}
  * @architectural-role UI Logic (Engines Modal)
  * @description
  * Event bindings for the Engines configuration modal. 
  * 
- * Updated:
- * 1. Refactored updateEngineKeyStatuses to be async.
- * 2. Implemented server-side key verification for custom keys (Runware, Fal, PiAPI)
- *    to bypass SillyTavern's frontend filtering of custom secret keys.
- * 3. Updated refreshEnginesUI to accommodate the async status update.
+ * Updated for Dynamic Blueprint Architecture:
+ * 1. Added listener for #plz-open-model-manager.
+ * 2. Maintained standard key validation and ping/test logic.
  *
  * @api-declaration
  * bindEnginesHandlers($modal) → void
@@ -20,7 +18,7 @@
  *   assertions:
  *     purity: IO
  *     state_ownership: [settings]
- *     external_io:[DOM, writeSecret, fetchPreviewBlob, toastr, models.js, getRequestHeaders]
+ *     external_io:[DOM, writeSecret, fetchPreviewBlob, toastr, models.js, getRequestHeaders, modelManagerModal.js]
  */
 
 import { getSettings, updateSetting } from '../../settings.js';
@@ -32,6 +30,7 @@ import { writeSecret, secret_state } from '../../../../../secrets.js';
 import { getRequestHeaders, callPopup } from '../../../../../../script.js';
 import { getCachedModels } from '../panel/models.js';
 import { smartResize } from '../../utils/dom.js';
+import { openModelManager } from '../models/modelManagerModal.js';
 
 // ─── Key Status ───────────────────────────────────────────────────────────────
 
@@ -126,6 +125,11 @@ export async function refreshEnginesUI() {
  * @param {jQuery} $modal - The overlay element (#plz-engines-overlay).
  */
 export function bindEnginesHandlers($modal) {
+
+    // 0. Model Manager Trigger
+    $modal.on('click', '#plz-open-model-manager', async () => {
+        await openModelManager();
+    });
 
     // 1. Vault Save
     $modal.on('click', '.plz-eng-vault-save', async function () {

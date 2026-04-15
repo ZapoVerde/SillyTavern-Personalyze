@@ -1,15 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleModals.js
- * @stamp {"utc":"2026-04-18T20:30:00.000Z"}
+ * @stamp {"utc":"2026-04-19T11:00:00.000Z"}
  * @architectural-role UI Logic (Global Style Modals)
  * @description
  * Manages specialized popups for editing a Global Style's technical render pipeline.
- * Implements Schema-Driven UI: Parameters are dynamically generated based on 
- * model architecture and the editable schema in settings.
+ * Implements the Dynamic Blueprint UI: Parameters are fetched per-model from the
+ * Model Registry and generated using the styleParamGenerator.
  * 
- * Updated for Sandbox vs. Checkpoint Pattern:
- * 1. Fixed Data Drop Bug: Explicitly injects saved model AIR into dropdowns if missing from cache.
- * 2. Optimized Scraper: Guaranteed capture of dynamic engineParams on confirmation.
+ * Updated for Dynamic Blueprint Architecture:
+ * 1. Replaced engineSpecs logic with ModelRegistry blueprint lookups.
+ * 2. Added 'Edit Blueprint' code button shortcut next to the model selector.
+ * 3. Integrated real-time UI refresh for technical parameters.
  * 
  * @api-declaration
  * openPipelineModal(styleObj) -> Promise<Object>
@@ -19,16 +20,14 @@
  *   assertions:
  *     purity: IO / Stateful UI
  *     state_ownership: []
- *     external_io: [callPopup, jQuery, models.js, settings.js, engineSpecs.js]
+ *     external_io: [callPopup, jQuery, models.js, modelRegistry.js, blueprintEditor.js]
  */
 
 import { callPopup } from '../../../../../../script.js';
 import { getSettings } from '../../settings.js';
 import { escapeHtml } from '../../utils/history.js';
-import { 
-    getSpecForArchitecture, 
-    resolveModelArchitecture 
-} from '../../logic/engineSpecs.js';
+import { getModelBlueprint, getAllRegisteredModels } from '../../modelRegistry.js';
+import { openBlueprintEditor } from '../models/blueprintEditor.js';
 import { 
     buildParamsHTML, 
     scrapeParamValues 
@@ -36,14 +35,12 @@ import {
 import { 
     fetchRunwareLoras, 
     getCachedRunwareModels, 
-    saveManualModel, 
     saveManualLora 
 } from '../panel/models.js';
 import { 
     POLLINATIONS_MODELS, 
     FAL_MODELS, 
     PIAPI_MODELS, 
-    RUNWARE_MODELS, 
     RESOLUTION_OVERRIDES,
     RUNWARE_LORA_REGISTRY 
 } from '../../defaults.js';
@@ -52,7 +49,6 @@ import {
  * Opens a modal to configure the technical render pipeline.
  */
 export async function openPipelineModal(styleObj) {
-    const s = getSettings();
     const draft = {
         engine: styleObj.engine,
         model: styleObj.model,
@@ -62,44 +58,46 @@ export async function openPipelineModal(styleObj) {
     };
 
     /**
-     * Builds options list with DATA DROP PROTECTION.
-     * Injects the saved model if it's missing from the discovery cache.
+     * Builds options list with Data Drop protection.
+     * Combines hardcoded registry defaults with custom registered blueprints.
      */
     const buildModelOptions = (engine) => {
         let options = '';
+        const registered = getAllRegisteredModels();
+
         if (engine === 'runware') {
             const list = getCachedRunwareModels();
-            const hasSaved = list.some(m => (m.air || m.modelId) === draft.model);
+            const seen = new Set();
             
             options = list.map(m => {
                 const air = m.air || m.modelId;
+                seen.add(air);
                 return `<option value="${escapeHtml(air)}" ${draft.model === air ? 'selected' : ''}>${escapeHtml(m.label || air)}</option>`;
             }).join('');
 
-            if (!hasSaved && draft.model) {
-                options = `<option value="${escapeHtml(draft.model)}" selected>${escapeHtml(draft.model)} (Restoring...)</option>` + options;
+            // Add registered but uncached models
+            const extras = registered.filter(id => !seen.has(id) && String(id).includes('runware') || String(id).includes(':'));
+            if (extras.length > 0) {
+                options += `<optgroup label="Custom Registered">${extras.map(id => `<option value="${escapeHtml(id)}" ${draft.model === id ? 'selected' : ''}>${escapeHtml(id)}</option>`).join('')}</optgroup>`;
             }
         } else {
             const list = engine === 'fal' ? FAL_MODELS : engine === 'piapi' ? PIAPI_MODELS : POLLINATIONS_MODELS;
-            const hasSaved = list.includes(draft.model);
-            
             options = list.map(m => `<option value="${escapeHtml(m)}" ${draft.model === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('');
-
-            if (!hasSaved && draft.model) {
-                options = `<option value="${escapeHtml(draft.model)}" selected>${escapeHtml(draft.model)} (Custom)</option>` + options;
+            
+            const extras = registered.filter(id => !list.includes(id) && !id.includes(':'));
+            if (extras.length > 0) {
+                options += `<optgroup label="Custom Registered">${extras.map(id => `<option value="${escapeHtml(id)}" ${draft.model === id ? 'selected' : ''}>${escapeHtml(id)}</option>`).join('')}</optgroup>`;
             }
         }
         return options;
     };
 
+    /**
+     * Refreshes the dynamic parameters section based on the current model's blueprint.
+     */
     const updateParamsUI = () => {
-        if (draft.engine !== 'runware') {
-            $('#plz-pop-params-container').empty();
-            return;
-        }
-        const arch = resolveModelArchitecture(draft.model, getCachedRunwareModels());
-        const spec = getSpecForArchitecture(s.modelParameterSchema, arch);
-        $('#plz-pop-params-container').html(buildParamsHTML(spec, draft.engineParams));
+        const blueprint = getModelBlueprint(draft.model);
+        $('#plz-pop-params-container').html(buildParamsHTML(blueprint, draft.engineParams));
     };
 
     const html = `
@@ -118,23 +116,18 @@ export async function openPipelineModal(styleObj) {
 
         <div class="plz-pop-section">
             <label class="plz-studio-label">Model Selection</label>
-            <select id="plz-pop-model" class="text_pole" style="width:100%;">
-                ${buildModelOptions(draft.engine)}
-            </select>
+            <div style="display:flex; gap:6px;">
+                <select id="plz-pop-model" class="text_pole" style="flex:1;">
+                    ${buildModelOptions(draft.engine)}
+                </select>
+                <button id="plz-pop-edit-blueprint" class="menu_button" title="Edit Model API Blueprint">
+                    <i class="fa-solid fa-code"></i>
+                </button>
+            </div>
         </div>
 
         <!-- Dynamic Parameters Section -->
         <div id="plz-pop-params-container" style="background:rgba(255,255,255,0.03); border-radius:6px; padding:8px; border:1px solid rgba(255,255,255,0.05);">
-        </div>
-
-        <div id="plz-pop-manual-model-container" class="${draft.engine === 'runware' ? '' : 'plz-hidden'}" 
-             style="background:rgba(0,0,0,0.15); border-radius:6px; padding:10px; border:1px solid var(--SmartThemeBorderColor);">
-            <div style="font-size:0.72em; opacity:0.6; margin-bottom:8px; font-weight:bold; text-transform:uppercase;">Manual Import</div>
-            <input id="plz-pop-manual-model-label" type="text" class="text_pole" placeholder="Label" style="width:100%; margin-bottom:8px;" />
-            <div style="display:flex; gap:6px;">
-                <input id="plz-pop-manual-model-air" type="text" class="text_pole" placeholder="AIR (e.g. xyz@123)" style="flex:1;" />
-                <button id="plz-pop-manual-model-btn" class="menu_button">Register</button>
-            </div>
         </div>
 
         <div>
@@ -160,9 +153,10 @@ export async function openPipelineModal(styleObj) {
 
         $(document).on('change.plzPop', '#plz-pop-engine', function() {
             draft.engine = $(this).val();
-            draft.model = (draft.engine === 'runware') ? RUNWARE_MODELS[0].air : POLLINATIONS_MODELS[0];
+            // Reset to engine-appropriate default model
+            draft.model = (draft.engine === 'runware') ? 'runware:100@1' : (draft.engine === 'fal' ? FAL_MODELS[0] : POLLINATIONS_MODELS[0]);
             $('#plz-pop-model').html(buildModelOptions(draft.engine));
-            $('#plz-pop-transparency-container, #plz-pop-manual-model-container').toggleClass('plz-hidden', draft.engine !== 'runware');
+            $('#plz-pop-transparency-container').toggleClass('plz-hidden', draft.engine !== 'runware');
             updateParamsUI();
         });
 
@@ -171,18 +165,14 @@ export async function openPipelineModal(styleObj) {
             updateParamsUI();
         });
 
-        $(document).on('input.plzPop', '.plz-style-param[type="range"]', function() {
-            $(this).closest('.plz-style-param-row').find('.plz-param-value').text($(this).val());
+        // Blueprint Editor Shortcut
+        $(document).on('click.plzPop', '#plz-pop-edit-blueprint', async function() {
+            const saved = await openBlueprintEditor(draft.model);
+            if (saved) updateParamsUI();
         });
 
-        $(document).on('click.plzPop', '#plz-pop-manual-model-btn', function() {
-            const label = $('#plz-pop-manual-model-label').val().trim();
-            const air = $('#plz-pop-manual-model-air').val().trim();
-            if (!label || !air) return;
-            saveManualModel(label, air);
-            draft.model = air;
-            $('#plz-pop-model').html(buildModelOptions(draft.engine)).val(air);
-            updateParamsUI();
+        $(document).on('input.plzPop', '.plz-style-param[type="range"]', function() {
+            $(this).closest('.plz-style-param-row').find('.plz-param-value').text($(this).val());
         });
 
         $(document).on('change.plzPop', '#plz-pop-res', function() { draft.resolutionOverride = $(this).val() || null; });
@@ -195,10 +185,10 @@ export async function openPipelineModal(styleObj) {
  */
 export async function openLoraModal(currentLoras, engine, selectedModelAir) {
     const loras = structuredClone(currentLoras || []);
-    const arch = resolveModelArchitecture(selectedModelAir, getCachedRunwareModels());
+    const arch = String(selectedModelAir).toLowerCase();
     const searchKeyword = (arch.includes('pony') || arch.includes('sdxl')) ? "sdxl" : 
                           (arch.includes('flux')) ? "flux" : 
-                          (arch.includes('sd 1.5')) ? "sd 1.5" : "flux";
+                          (arch.includes('sd 1.5') || arch.includes('v1-5')) ? "sd 1.5" : "flux";
 
     const renderList = () => {
         const s = getSettings();
