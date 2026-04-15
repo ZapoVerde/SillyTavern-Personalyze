@@ -296,6 +296,37 @@ body.plz-modal-open #extensions_settings {
     min-height: 400px;
     display: flex;
     flex-direction: column;
+    overflow: hidden; /* Prevent internal blowouts from long code strings */
+}
+
+/* ─── Blueprint Editor Layout Fixes ───────────────────────────────────────── */
+
+/* Header container that holds the Title and long technical ID */
+.plz-bp-header-text {
+    flex: 1;
+    min-width: 0; /* Necessary for text-overflow to work in a flex child */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: 12px;
+}
+
+/* Ensure the ID specifically gets the theme color */
+.plz-bp-header-id {
+    color: var(--SmartThemeQuoteColor);
+    font-weight: bold;
+}
+
+/* Constrain the individual parameter cards */
+.plz-bp-card {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* Ensure the list within the modal doesn't push the width */
+#plz-bp-row-list {
+    width: 100%;
+    box-sizing: border-box;
 }
 
 /* ─── Workshop Header & Tabs ──────────────────────────────────────────────── */

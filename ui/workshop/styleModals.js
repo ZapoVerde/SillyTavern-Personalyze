@@ -28,6 +28,7 @@ import { getSettings } from '../../settings.js';
 import { escapeHtml } from '../../utils/history.js';
 import { getModelBlueprint, getAllRegisteredModels } from '../../modelRegistry.js';
 import { openBlueprintEditor } from '../models/blueprintEditor.js';
+import { openModelManager } from '../models/modelManagerModal.js';
 import { 
     buildParamsHTML, 
     scrapeParamValues 
@@ -76,7 +77,7 @@ export async function openPipelineModal(styleObj) {
             }).join('');
 
             // Add registered but uncached models
-            const extras = registered.filter(id => !seen.has(id) && String(id).includes('runware') || String(id).includes(':'));
+            const extras = registered.filter(id => !seen.has(id) && (String(id).includes('runware') || String(id).includes(':')));
             if (extras.length > 0) {
                 options += `<optgroup label="Custom Registered">${extras.map(id => `<option value="${escapeHtml(id)}" ${draft.model === id ? 'selected' : ''}>${escapeHtml(id)}</option>`).join('')}</optgroup>`;
             }
@@ -101,7 +102,7 @@ export async function openPipelineModal(styleObj) {
     };
 
     const html = `
-    <div id="plz-pipeline-modal" style="display:flex; flex-direction:column; gap:12px; min-width:320px;">
+    <div id="plz-pipeline-modal" style="display:flex; flex-direction:column; gap:12px; min-width:340px;">
         <h3 style="margin:0;">Render Pipeline Settings</h3>
         
         <div class="plz-pop-section">
@@ -120,6 +121,9 @@ export async function openPipelineModal(styleObj) {
                 <select id="plz-pop-model" class="text_pole" style="flex:1;">
                     ${buildModelOptions(draft.engine)}
                 </select>
+                <button id="plz-pop-register-model" class="menu_button" title="Register New Model/AIR ID">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
                 <button id="plz-pop-edit-blueprint" class="menu_button" title="Edit Model API Blueprint">
                     <i class="fa-solid fa-code"></i>
                 </button>
@@ -163,6 +167,12 @@ export async function openPipelineModal(styleObj) {
         $(document).on('change.plzPop', '#plz-pop-model', function() {
             draft.model = $(this).val();
             updateParamsUI();
+        });
+
+        // Registration Shortcut
+        $(document).on('click.plzPop', '#plz-pop-register-model', async function() {
+            await openModelManager();
+            $('#plz-pop-model').html(buildModelOptions(draft.engine));
         });
 
         // Blueprint Editor Shortcut

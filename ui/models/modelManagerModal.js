@@ -26,6 +26,7 @@ import {
 } from '../../modelRegistry.js';
 import { openBlueprintEditor } from './blueprintEditor.js';
 import { escapeHtml } from '../../utils/history.js';
+import { saveManualModel } from '../panel/models.js';
 
 /**
  * Renders the list of registered models into the modal container.
@@ -70,7 +71,8 @@ export async function openModelManager() {
         <div style="background:rgba(0,0,0,0.2); border-radius:8px; padding:12px; border:1px solid var(--SmartThemeBorderColor);">
             <div style="font-size:0.75em; opacity:0.6; margin-bottom:8px; font-weight:bold; text-transform:uppercase;">Register New Model</div>
             <div style="display:flex; flex-direction:column; gap:8px;">
-                <input id="plz-mgr-new-id" type="text" class="text_pole" placeholder="Model ID or AIR (e.g. runware:100@1)" style="width:100%;" />
+                <input id="plz-mgr-new-label" type="text" class="text_pole" placeholder="Friendly Name (e.g. Pony Diffusion)" style="width:100%;" />
+                <input id="plz-mgr-new-id" type="text" class="text_pole" placeholder="Model ID or AIR (e.g. runware:100@1)" style="width:100%; font-family:monospace;" />
                 <div style="display:flex; gap:6px;">
                     <select id="plz-mgr-new-template" class="text_pole" style="flex:1;">
                         ${templateOptions}
@@ -102,22 +104,24 @@ export async function openModelManager() {
         const $list = $('#plz-mgr-list');
 
         // 1. Add Model Logic
-        $(document).on('click.plzMgr', '#plz-mgr-add-btn', function() {
+        $(document).on('click.plzMgr', '#plz-mgr-add-btn', async function() {
+            const label = $('#plz-mgr-new-label').val().trim();
             const id = $('#plz-mgr-new-id').val().trim();
             const templateKey = $('#plz-mgr-new-template').val();
-            
-            if (!id) {
-                if (window.toastr) window.toastr.warning('Please enter a Model ID.');
+
+            if (!id || !label) {
+                if (window.toastr) window.toastr.warning('Please enter both a friendly Name and a technical Model ID.');
                 return;
             }
 
             const blueprint = structuredClone(baseTemplates[templateKey]);
             saveModelBlueprint(id, blueprint);
-            
-            $('#plz-mgr-new-id').val('');
+            saveManualModel(label, id);
+
+            $('#plz-mgr-new-label, #plz-mgr-new-id').val('');
             $list.html(_renderModelRows());
-            
-            if (window.toastr) window.toastr.success(`Model "${id}" registered.`);
+
+            if (window.toastr) window.toastr.success(`Model "${label}" registered.`);
         });
 
         // 2. Edit JSON Blueprint Logic

@@ -30,10 +30,13 @@ export function getBlueprintShellHTML(modelId, baseTemplates = {}) {
     ).join('');
 
     return `
-    <div id="plz-bp-editor-container" style="display:flex; flex-direction:column; gap:12px; min-width:min(640px, 92vw);">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h3 style="margin:0;">API Blueprint: <span style="color:var(--SmartThemeQuoteColor);">${escapeHtml(modelId)}</span></h3>
-            <div style="display:flex; gap:6px;">
+    <div id="plz-bp-editor-container" style="display:flex; flex-direction:column; gap:12px; width:100%;">
+        <div style="display:flex; justify-content:space-between; align-items:center; overflow:hidden;">
+            <div class="plz-bp-header-text">
+                <h3 style="margin:0; display:inline;">API Blueprint:</h3>
+                <span class="plz-bp-header-id" title="${escapeHtml(modelId)}">${escapeHtml(modelId)}</span>
+            </div>
+            <div style="display:flex; gap:6px; flex-shrink:0;">
                 <button id="plz-bp-copy-json" class="menu_button" title="Copy full blueprint as JSON to clipboard">
                     <i class="fa-solid fa-copy"></i> JSON
                 </button>
