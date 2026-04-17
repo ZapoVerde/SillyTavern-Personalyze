@@ -108,9 +108,8 @@ export function bindRosterControls() {
             apiSeed = (apiSeed % 999) + 1;
             
             // Permanent DNA Commitment: update seed in memory and chat history
-            // We MUST include the existing anchor to prevent it being overwritten with undefined
-            upsertChatCharacterDef(id, char.identityAnchor, apiSeed);
-            await lockedWriteCharacterDef(lastAiIdx, id, char.identityAnchor, apiSeed);
+            upsertChatCharacterDef(id, char.identity, apiSeed);
+            await lockedWriteCharacterDef(lastAiIdx, id, char.identity, apiSeed);
         }
 
         const prompt = compilePrompt(char.identityAnchor, layers);
@@ -128,7 +127,7 @@ export function bindRosterControls() {
                 prompt,
                 layers.emotion,
                 layers.pose,
-                char.identityAnchor,
+                char.identity,
                 apiSeed,
                 null
             );

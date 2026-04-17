@@ -18,6 +18,7 @@
  */
 
 import { escapeHtml } from '../../utils/history.js';
+import { compileIdentityString } from '../../logic/parsers.js';
 
 /**
  * Library Tab — list of character templates stored in Global Settings.
@@ -50,7 +51,7 @@ export function getLibraryListHTML(characters, dnaIds = []) {
             : `<i class="fa-solid fa-file-import plz-lib-import" title="Import to Chat DNA" style="color:var(--SmartThemeQuoteColor); cursor:pointer;"></i>`;
 
         // Support for both legacy 'identity_anchor' and new 'identityAnchor' keys
-        const anchor = char.identityAnchor || char.identity_anchor || '—';
+        const anchor = char.identityAnchor || char.identity_anchor || compileIdentityString(char.identity) || '';
         const ensembleCount = Object.keys(char.ensembles ?? {}).length;
 
         return `
@@ -60,9 +61,7 @@ export function getLibraryListHTML(characters, dnaIds = []) {
                     ${escapeHtml(label)}
                     ${inDna ? '<span style="font-size:0.7em; font-weight:normal; opacity:0.6;">(Active DNA)</span>' : ''}
                 </strong>
-                <small style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
-                    ${escapeHtml(anchor)}
-                </small>
+                ${anchor ? `<small style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${escapeHtml(anchor)}</small>` : ''}
                 <div style="font-size:0.72em; opacity:0.5; margin-top:2px;">
                     ${ensembleCount} Saved Ensemble(s)
                 </div>

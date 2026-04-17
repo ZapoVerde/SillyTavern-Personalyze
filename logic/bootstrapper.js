@@ -53,7 +53,7 @@ async function healCharacter(characterId, lastAiIdx) {
             prompt,
             chain.layers.emotion,
             chain.layers.pose || 'upright',
-            character.identityAnchor,
+            character.identity,
             character.seed
         );
 

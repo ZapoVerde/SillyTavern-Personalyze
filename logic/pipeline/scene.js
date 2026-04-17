@@ -129,7 +129,7 @@ export async function runScenePipeline(messageId, signal) {
             name: char?.label || id.replace(/_/g, ' '),
             clothes,
             layers,
-            anchor:  char?.identityAnchor || '',
+            identity: char?.identity || {},
             seed:    char?.seed || 1,
         };
     });
@@ -194,7 +194,7 @@ export async function runScenePipeline(messageId, signal) {
 async function processSceneGeneration(messageId, item, layers, s, recordId, signal) {
     try {
         if (signal?.aborted) return;
-        const prompt = compilePrompt(item.anchor, layers);
+        const prompt = compilePrompt(item.identity, layers);
         const emotionSlug = slugify(layers.emotion);
 
         const filename = await generate(
@@ -204,7 +204,7 @@ async function processSceneGeneration(messageId, item, layers, s, recordId, sign
             prompt,
             layers.emotion,
             layers.pose || 'upright',
-            item.anchor,
+            item.identity,
             item.seed,
             false,
             signal
