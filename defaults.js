@@ -154,6 +154,19 @@ export const META_SLOT_POSE    = 'pose';
 export const META_SLOTS        = [META_SLOT_EMOTION, META_SLOT_POSE];
 
 /**
+ * Base Physical Identity Slots.
+ * Non-deletable fields initialized for every character's granular identity map.
+ * Mirrors the fixed fields in ANCHOR_SCAN_PROMPT.
+ */
+export const BASE_IDENTITY_SLOTS = [
+    'hair',
+    'eyes',
+    'face',
+    'body',
+    'skin',
+];
+
+/**
  * Base Clothing Slots.
  * Used as the default schema template for all characters.
  */
