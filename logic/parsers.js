@@ -200,6 +200,24 @@ export function generateEnsembleLabel(layers) {
 }
 
 /**
+ * Formats a granular identity map as a human-readable "Key: Value" list
+ * for display in review modals (e.g. the Archivist resolution modal).
+ *
+ * @param {object} identityMap - e.g. { hair: 'long black hair', eyes: 'blue', ... }
+ * @returns {string} Newline-separated "Label: value" pairs.
+ */
+export function formatIdentityDisplay(identityMap) {
+    if (!identityMap || typeof identityMap !== 'object') return '';
+    return Object.entries(identityMap)
+        .filter(([, v]) => v && typeof v === 'string' && v.trim())
+        .map(([k, v]) => {
+            const label = k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ');
+            return `${label}: ${v.trim()}`;
+        })
+        .join('\n');
+}
+
+/**
  * Compiles a granular identity map into a flat string for prompt injection.
  * Joins all non-empty values with a comma, in key-insertion order.
  * Used as the {{identity_anchor}} variable and as a display fallback.
