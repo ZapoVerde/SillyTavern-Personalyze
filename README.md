@@ -1,65 +1,104 @@
-
 # PersonaLyze
+**The Visual Novel Continuity Engine for SillyTavern**
 
-PersonaLyze is a SillyTavern extension that automatically tracks character appearances, outfits, and emotional states during roleplay. As the story progresses, it generates visual novel-style character portraits that reflect the current narrative and displays them directly over your chat interface.
+PersonaLyze transforms your text-based roleplays into a dynamic, multi-character Visual Novel. It isn't just a simple "prompt-to-image" script—it is a **stateful narrative engine**. 
 
-## Features
+PersonaLyze silently reads the story, tracks multiple characters, understands exactly what they are wearing layer-by-layer (Outerwear, Top, Bottom, Accessories), and automatically generates updated portraits as the scene evolves.
 
-*   **Automatic Appearance Tracking:** Seamlessly updates character outfits, expressions, and poses based on the text of the chat.
-*   **Dynamic Portraits:** Displays character images in a floating window or a visual novel-style split-screen layout.
-*   **Multi-Character Support:** Tracks and displays a roster of multiple characters simultaneously within the same scene.
-*   **Character Workshop:** A dedicated UI to manually edit character details, add custom clothing layers, and manage saved outfits.
-*   **Global Library:** Save character templates and their generated wardrobes to a global library so they can be easily imported into new chats.
-*   **Custom Image Styles:** Support for custom portrait prompts, negative prompts, and LoRAs depending on the selected image provider.
+⚠️ **Note:** PersonaLyze uses a **Split-Screen Visual Novel (VN) interface** as its exclusive display mode. Characters are dynamically rendered in a row at the top of your chat window.
 
-## Installation
+---
 
-PersonaLyze consists of two parts: the front-end extension and a server-side plugin that handles secure API requests for image generation. 
+## 🛠️ Phase 1: Installation
 
-### Step 1: Install the Extension
-1. Open SillyTavern and navigate to the **Extensions** menu (the block icon at the top).
-2. Click **Install Extension**.
-3. Paste the GitHub URL for PersonaLyze into the input box (e.g., `https://github.com/author/personalyze`) and click **Install for all users** or **Install just for me**.
+PersonaLyze requires both a frontend extension and a backend server plugin to securely route API requests and handle background processing.
 
-### Step 2: Install the Server Plugin
-1. Open your file explorer and navigate to where SillyTavern installed the extension (usually `SillyTavern/data/default-user/extensions/personalyze/`).
-2. Locate the folder named `plugin` inside the PersonaLyze extension directory.
-3. Move or copy the contents of this `plugin` folder into SillyTavern's root `plugins` directory (`SillyTavern/plugins/personalyze/`).
+**Step 1: Install the Frontend**
+1. Open SillyTavern.
+2. Go to the **Extensions** menu (the block icon).
+3. Click **Install Extension** and paste the GitHub URL for PersonaLyze.
 
-### Step 3: Enable Plugins in Configuration
-1. Open your `config.yaml` file located in the SillyTavern base directory.
-2. Find and set `enableServerPlugins: true`.
-3. Find and set `allowKeysExposure: true` (this allows the extension to securely save your image generation API keys).
-4. Restart your SillyTavern server.
+**Step 2: Install the Backend Plugin**
+1. Navigate to your SillyTavern installation folder on your computer.
+2. Go to `SillyTavern/public/extensions/personalyze/plugin`.
+3. Copy the entire `personalyze` folder found inside.
+4. Paste that folder into your root `SillyTavern/plugins` directory. *(If the `plugins` folder doesn't exist, create it).*
 
-## Setting Up LLMs
+**Step 3: Authorize the Plugin in `config.yaml`**
+1. Open `SillyTavern/config.yaml` in a text editor.
+2. Find `enableServerPlugins` and set it to `true`.
+3. Find `allowUnsafeExternalRequests` and set it to `true` (or specifically whitelist the domains for your chosen image engines).
+4. **Restart your SillyTavern server.**
 
-PersonaLyze uses a dual-model system to keep generation costs low and response times fast. You can map these models in the PersonaLyze settings panel using your active SillyTavern API connections.
+---
 
-*   **Fast Model:** Used for simple yes/no checks (e.g., "Did the scene change?", "Did the character change clothes?"). A smaller, faster model like Mistral Small or Claude Haiku is highly recommended here.
-*   **Smart Model:** Used only when a change is detected. It reads the chat to extract complex details like the exact items of clothing a character put on. A more capable model like Gemini Flash, Claude Sonnet, or GPT-4o is recommended for this stage.
+## ⚙️ Phase 2: The "Day Zero" Configuration
 
-## Image Generation Providers
+Before you start chatting, you need to provide PersonaLyze with its "Fuel" (Image Generators), its "Brains" (LLMs), and its "Art Direction" (Global Styles).
 
-PersonaLyze supports multiple image generation services. You can configure these in the **Engines** menu within the extension settings. 
+### 1. The Fuel (Image Generators)
+You need an account and API key from a supported image provider. We highly recommend **Runware**, **Fal AI**, or **PiAPI**.
 
-Available providers include:
-*   **Pollinations** *(Note: An API key is strictly required to use Pollinations with this extension)*
-*   **Fal AI**
-*   **PiAPI**
-*   **Runware.ai**
+> 💡 **RECOMMENDATION: Use Natural Language Models!**
+> PersonaLyze works best with **Z-Image Turbo** or **Flux.1** models. The extension extracts complex, human-readable clothing descriptions from your story, which these models understand perfectly. 
+> *While traditional Diffusion models (SD 1.5, SDXL) are technically supported via custom Blueprints and LoRAs, they rely heavily on comma-separated tags and are notoriously difficult to tune for an automated pipeline.*
 
-Once you choose a provider, you can securely save your API key into SillyTavern's vault directly from the extension's UI.
+1. Open the PersonaLyze Settings Panel in SillyTavern.
+2. Click **Configure Engines**.
+3. Navigate to the tab of your chosen provider (e.g., Runware).
+4. Paste your API Key and click **Save to Vault**.
+5. Select your preferred model (e.g., Z-Image Turbo or Flux.1).
+6. Click **Ping** to verify your connection is working.
 
-## How It Works
+### 2. The Brains (LLM Connections)
+To save you money and tokens, PersonaLyze uses a "Cascade" system. It uses a cheap model to check *if* a visual change happened, and an expensive model to figure out *what* changed.
+1. In the PersonaLyze Settings Panel, look for the **Connection** dropdowns.
+2. **Fast Model (Phases 1-2):** Map this to a fast, cheap LLM profile (e.g., Claude Haiku, Llama-3 8B).
+3. **Smart Model (Phase 3+):** Map this to a highly capable LLM profile (e.g., Claude 3.5 Sonnet, GPT-4o).
 
-PersonaLyze operates entirely in the background as you chat. Every time the AI sends a message, PersonaLyze runs through a sequential logic chain to determine what the characters look like:
+### 3. The Art Direction (Global Styles)
+Characters define *what* they wear, but Styles define *how* it is drawn. 
+1. Click the **Workshop** button (the DNA icon) in your top extensions toolbar.
+2. Go to the **Global Styles** tab.
+3. Ensure you have a style named **Default**.
+4. Click **Engine & Model** under Generation Settings, and link this style to the Engine and Model you configured in Step 1.
+5. Setup your prompt templates (e.g., `"anime style, highly detailed, masterpiece"`).
+6. Click **💾 Save**.
 
-1.  **Scene Detection:** The system first checks if the characters have moved to a completely new location (e.g., moving from a bedroom to a snowy mountain). If they have, it evaluates if their current outfits still make sense, and updates them if the narrative demands it.
-2.  **Subject Identification:** It scans the latest message to see which characters are acting or speaking.
-3.  **Change Check:** It asks the Fast Model if the subject's clothing or expression has noticeably changed in this specific turn. If nothing changed, the process stops here to save time and API credits.
-4.  **Detail Extraction:** If a change did occur, the Smart Model reads the context and breaks the character's new appearance down into distinct layers (outerwear, top, bottom, accessories, emotion, and pose).
-5.  **Image Generation:** These layers are combined with the character's permanent physical description to generate a new portrait via your chosen image provider.
+---
 
-**Data Storage:** 
-All active character visual states and clothing changes are saved directly into the metadata of your SillyTavern chat log. This means your character's appearance history is permanently tied to the story. If you branch the chat, swipe a message, or share the chat file with another SillyTavern instance, the character's visual timeline remains perfectly intact.
+## 🎮 Phase 3: First Contact (How to Play)
+
+Now you are ready to chat. Here is what to expect on your first message.
+
+### 1. The Archivist Modal
+As soon as a character is mentioned in the chat, generation will pause and the **Archivist Modal** will pop up. 
+*   **Don't panic!** This is the system asking for permission to track a newly discovered character. 
+*   You **must** click **Create New Character** to register their DNA. If you ignore them, no portrait will generate.
+
+### 2. The Studio (Editing Identity)
+Once the character is created, open the **Workshop -> Studio** tab.
+*   **Identity Anchor:** This is the character's permanent physical description (e.g., *"Tall, green eyes, scar over left cheek, messy blonde hair"*). If it is blank, click **Scan Chat** to let your Smart LLM find their description in the story, or type it yourself.
+*   **Register & Apply:** Click this button at the bottom to commit their initial visual state.
+
+### 3. The Visual Novel Interface
+Your characters will now appear at the top of your screen!
+*   **Resizing:** Click the fraction button (e.g., `½`, `⅓`) on the right side of your screen to cycle how much space the portraits consume.
+*   **The Focus Slot:** Characters in the background will overlap dynamically. Click any background character to pull them to the front-right "Focus Slot."
+*   **Controls:** Hover over a portrait to reveal controls to Mirror (flip) the image, Remove them from the scene, or **Refresh** the generation.
+
+### 4. Seed Looping (Easy Rerolls)
+If you don't like an outfit generation:
+1. Open the character in the **Workshop -> Studio**.
+2. Check the **Auto-increment on refresh** box next to their Seed.
+3. Click the **Refresh** icon on their portrait card.
+4. The system will automatically bump their seed, generate a new variation, and permanently save the new seed to their DNA.
+
+---
+
+## 🔬 Advanced Features
+
+*   **Ensembles:** In the Studio, click **Save as Ensemble** to snapshot a character's current 5-slot wardrobe. You can star (⭐) an ensemble to make it their "Everyday Wear."
+*   **Proactive Scene Redressing:** PersonaLyze detects when characters change locations. It will evaluate the active roster and automatically redress them in the background if their clothes no longer fit the environment (e.g., going from a snowy mountain to a beach).
+*   **Localyze Integration:** If you use the spatial mapping extension [Localyze](https://github.com/SillyTavern/Extension-Localyze), PersonaLyze hooks into it automatically, bypassing redundant LLM scene-checks.
+*   **Forensic Flight Recorder:** Having issues? Click the **Logs** button in the Settings Panel. The Flight Recorder tracks the exact JSON payloads, API errors, and prompts sent to the engines over the last few turns. You can copy full "Debug Bundles" with one click.

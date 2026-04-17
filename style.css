@@ -732,12 +732,11 @@ body.plz-vn-active #plz-vn-panel {
     font-size: 2.2em;
 }
 
-/* ── Size cycle button ── */
+/* ─── VN Panel Side Buttons ─── */
 
-#plz-vn-cycle-btn {
+.plz-vn-side-btn {
     display: none;
     position: absolute;
-    right: 0;
     top: 50%;
     transform: translateY(-50%);
     z-index: 5000;
@@ -745,8 +744,6 @@ body.plz-vn-active #plz-vn-panel {
     height: 52px; /* generous touch target */
     background: rgba(0, 0, 0, 0.55);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    border-right: none;
-    border-radius: 6px 0 0 6px;
     color: rgba(255, 255, 255, 0.85);
     font-size: 1.1em;
     cursor: pointer;
@@ -757,14 +754,28 @@ body.plz-vn-active #plz-vn-panel {
     line-height: 1;
 }
 
-body.plz-vn-active #plz-vn-cycle-btn {
+body.plz-vn-active .plz-vn-side-btn {
     display: flex;
 }
 
-#plz-vn-cycle-btn:hover,
-#plz-vn-cycle-btn:active {
+.plz-vn-side-btn:hover,
+.plz-vn-side-btn:active {
     background: rgba(0, 0, 0, 0.8);
     color: #fff;
+}
+
+/* Right side: Size Cycle */
+#plz-vn-cycle-btn {
+    right: 0;
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+}
+
+/* Left side: Disable Toggle */
+#plz-vn-toggle-btn {
+    left: 0;
+    border-left: none;
+    border-radius: 0 6px 6px 0;
 }
 
 /* Ensure tabs in the header look clean and not like heavy blocks */

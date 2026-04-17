@@ -32,7 +32,6 @@ import { getSettings } from './settings.js';
 import { runBoot } from './logic/bootstrapper.js';
 import { runPipeline } from './logic/pipeline/master.js';
 import { injectSettingsPanel } from './ui/settings/panel.js';
-import { injectMessageBadge, reinjectAllBadges } from './ui/badge.js';
 import { injectPortraitContainer } from './portrait.js';
 import { injectVnPanel } from './ui/vnPanel.js';
 import { bindRosterControls } from './ui/roster/controls.js';
@@ -54,7 +53,6 @@ function handleMessageReceived(messageId) {
     const { signal } = _pipelineController;
 
     runPipeline(messageId, signal)
-        .then(() => { if (!signal.aborted) injectMessageBadge(messageId); })
         .catch(err => {
             if (err.name !== 'AbortError') error('Core', 'Pipeline execution failed:', err);
         });
@@ -68,7 +66,6 @@ function handleChatChanged() {
     log('Core', 'Chat changed event detected.');
     resetState();
     runBoot()
-        .then(() => reinjectAllBadges())
         .catch(err => {
             error('Core', 'Bootstrapper failed during chat change:', err);
         });
@@ -129,7 +126,6 @@ async function init() {
         eventSource.on(event_types.MESSAGE_RECEIVED, handleMessageReceived);
         //eventSource.on(event_types.MESSAGE_SWIPED, handleMessageReceived);
         eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
-        eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, injectMessageBadge);
         
         // Localyze Integration
         document.addEventListener('localyze:location-changed', async (e) => {
@@ -150,7 +146,6 @@ async function init() {
         if (context && context.chatId) {
             log('Core', 'Active chat detected on init. Running DNA boot sequence...');
             await runBoot();
-            reinjectAllBadges();
         }
 
     } catch (err) {

@@ -107,7 +107,7 @@ export async function runBoot() {
     const healingTasks = [];
     for (const id of state.activeRoster) {
         const chain = state.characterChain[id];
-        const isImageMissing = chain?.image && !state.fileIndex.has(chain.image);
+        const isImageMissing = chain && (!chain.image || !state.fileIndex.has(chain.image));
 
         if (isImageMissing) {
             healingTasks.push(healCharacter(id, lastAiIdx));

@@ -24,6 +24,7 @@
 
 import { renderRoster } from './ui/roster/renderer.js';
 import { log } from './utils/logger.js';
+import { getSettings } from './settings.js';
 
 const CONTAINER_ID = 'plz-portrait-container';
 
@@ -35,7 +36,7 @@ function _syncVisibility() {
     const $container = $(`#${CONTAINER_ID}`);
     if (!$container.length) return;
 
-    if (document.body.classList.contains('plz-vn-active')) {
+    if (!getSettings().enabled || document.body.classList.contains('plz-vn-active')) {
         $container.hide();
     } else {
         $container.show();

@@ -31,10 +31,14 @@ import { PLZ_IMAGE_FOLDER } from '../../defaults.js';
  * @param {boolean} isFlipped
  * @returns {string}
  */
-export function getPortraitCardHTML(characterId, label, filename, isFlipped = false) {
-    const src = filename 
+export function getPortraitImageSrc(filename) {
+    return filename
         ? `user/images/${PLZ_IMAGE_FOLDER}/${encodeURIComponent(filename)}?v=${Date.now()}`
         : '';
+}
+
+export function getPortraitCardHTML(characterId, label, filename, isFlipped = false) {
+    const src = getPortraitImageSrc(filename);
 
     const flipStyle = isFlipped ? 'transform: scaleX(-1);' : '';
     const imgStyle  = src ? `opacity: 1; ${flipStyle}` : `opacity: 0; ${flipStyle}`;

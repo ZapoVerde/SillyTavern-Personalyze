@@ -21,7 +21,7 @@
 
 import { getSettings, getMetaSettings, updateSetting } from '../../settings.js';
 import { state, removeFromFileIndex } from '../../state.js';
-import { setVnPanelEnabled } from '../vnPanel.js';
+import { setVnPanelEnabled, syncVnState } from '../vnPanel.js';
 import { openWorkshop } from '../workshop/core.js';
 import { log, setVerbose } from '../../utils/logger.js';
 import { getLogs, getWorkshopLogs, getSystemLogs } from '../../utils/callLog.js';
@@ -71,7 +71,13 @@ function bindHandlers() {
 
     bindProfileHandlers($panel, refreshUI);
 
-    $panel.on('change', '#plz-enabled', () => updateSetting('enabled', $('#plz-enabled').prop('checked')));
+    $panel.on('change', '#plz-enabled', function () {
+        const isEnabled = $(this).prop('checked');
+        updateSetting('enabled', isEnabled);
+
+        syncVnState();
+        document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+    });
     
     $panel.on('change', '#plz-vn-mode', function () {
         const val = $(this).prop('checked');

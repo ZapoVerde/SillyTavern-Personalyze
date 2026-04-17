@@ -17,10 +17,6 @@
  *     external_io: [DOM (.mes_buttons), state.js, getContext()]
  */
 
-import { getContext } from '../../../../extensions.js';
-import { state } from '../state.js';
-import { escapeHtml } from '../utils/history.js';
-
 const BADGE_CLASS = 'plz-msg-badge';
 
 /**
@@ -79,35 +75,23 @@ function renderBadge($mes, visualState) {
 }
 
 /**
+ * Removes all badges from the current chat view.
+ */
+export function clearAllBadges() {
+    $(`.${BADGE_CLASS}`).remove();
+}
+
+/**
  * Injects or refreshes the Personalyze badge for a single AI chat message.
  * @param {number} messageId
  */
-export function injectMessageBadge(messageId) {
-    const context = getContext();
-    const message = context?.chat[messageId];
-    if (!message || message.is_user) return;
-
-    const plzData = message.extra?.personalyze;
-    if (!plzData || !Array.isArray(plzData)) return;
-
-    // Resolve the latest visual state record from the DNA array
-    const latestState = plzData.findLast(rec => rec.type === 'visual_state');
-    if (!latestState) return;
-
-    const $mes = $(`.mes[mesid="${messageId}"]`);
-    if (!$mes.length) return;
-
-    renderBadge($mes, latestState);
+export function injectMessageBadge(_messageId) {
+    return;
 }
 
 /**
  * Re-renders all badges for the current chat.
  */
 export function reinjectAllBadges() {
-    const context = getContext();
-    if (!context?.chat) return;
-
-    context.chat.forEach((_msg, idx) => {
-        injectMessageBadge(idx);
-    });
+    return;
 }

@@ -293,8 +293,7 @@ export async function openCharPicker(initialOverride = null) {
             layers.pose, 
             character.identityAnchor, 
             apiSeed,
-            null, // provider
-            forceRegen
+            forceRegen // This is now correctly in the 9th position (forceCacheBust)
         );
         addToFileIndex(filename);
         updateActiveImage(filename);

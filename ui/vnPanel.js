@@ -29,7 +29,7 @@
 
 import { state } from '../state.js';
 import { getSettings, updateSetting } from '../settings.js';
-import { getPortraitCardHTML, getAddCardHTML } from './roster/templates.js';
+import { getPortraitCardHTML, getAddCardHTML, getPortraitImageSrc } from './roster/templates.js';
 import { log } from '../utils/logger.js';
 
 const PANEL_ID   = 'plz-vn-panel';
@@ -61,17 +61,77 @@ function _syncVisibility() {
 }
 
 /**
+ * Patches a zone element in-place: updates existing cards, inserts new ones,
+ * and removes stale ones — without wiping the container.
+ *
+ * @param {jQuery} $zone
+ * @param {string[]} expectedIds
+ */
+function _patchZone($zone, expectedIds) {
+    if (!$zone?.length) return;
+    const processedIds = new Set();
+
+    expectedIds.forEach(id => {
+        const char = state.chatCharacters[id];
+        if (!char) return;
+        processedIds.add(id);
+
+        const chain = state.characterChain[id];
+        const ui = state.uiState[id] || { flipped: false };
+        const imageToRender = (chain?.image && state.fileIndex.has(chain.image)) ? chain.image : null;
+        const label = char.label || id.replace(/_/g, ' ');
+        const $existingCard = $zone.find(`> .plz-portrait-card[data-id="${CSS.escape(id)}"]`);
+
+        if ($existingCard.length) {
+            // UPDATE IN PLACE
+            const src = getPortraitImageSrc(imageToRender);
+            const $img = $existingCard.find('.plz-card-img');
+
+            if (($img.attr('src') || '').split('?')[0] !== src.split('?')[0]) {
+                $img.attr('src', src);
+                if (src) {
+                    $img.css('opacity', '1');
+                    $existingCard.find('.plz-card-loading-hint').remove();
+                } else {
+                    $img.css('opacity', '0');
+                    if (!$existingCard.find('.plz-card-loading-hint').length) {
+                        $existingCard.find('.plz-card-frame').append(`<div class="plz-card-loading-hint"><i class="fa-solid fa-spinner fa-spin"></i></div>`);
+                    }
+                }
+            }
+
+            $img.css('transform', ui.flipped ? 'scaleX(-1)' : 'none');
+            $existingCard.find('.plz-card-label').text(label);
+        } else {
+            // INSERT NEW
+            $zone.append(getPortraitCardHTML(id, label, imageToRender, ui.flipped));
+        }
+    });
+
+    // Remove stale cards
+    $zone.find('> .plz-portrait-card').each(function () {
+        if (!processedIds.has($(this).data('id'))) $(this).remove();
+    });
+}
+
+/**
  * Renders the VN panel with two zones:
  *  - .plz-vn-left-group  — non-focus cards, width set by JS to position the focus card
  *  - .plz-vn-focus-slot  — the focus card, controls always visible, never overlapped
  *
- * The left group is always rendered (even when empty) so it acts as a spacer
- * that keeps the focus card centred when there is room.
+ * Patches the DOM in place rather than wiping and rebuilding, so only changed
+ * cards are touched and unaffected cards never blink.
  */
 function _renderVnRoster() {
     const $panel = $(`#${PANEL_ID}`);
-    $panel.empty();
 
+    // Ensure structural containers exist without wiping the panel
+    if (!$panel.find('.plz-vn-left-group').length) $panel.append('<div class="plz-vn-left-group"></div>');
+    if (!$panel.find('.plz-vn-focus-slot').length) $panel.append('<div class="plz-vn-focus-slot"></div>');
+    if (!$panel.find('.plz-card-add-trigger').length) $panel.append(getAddCardHTML());
+
+    const $leftGroup = $panel.find('.plz-vn-left-group');
+    const $focusSlot = $panel.find('.plz-vn-focus-slot');
     const roster = state.activeRoster;
 
     // Keep focus card valid; default to the last roster entry
@@ -79,82 +139,53 @@ function _renderVnRoster() {
         _focusCardId = roster.length ? roster[roster.length - 1] : null;
     }
 
-    const nonFocusIds = _focusCardId ? roster.filter(id => id !== _focusCardId) :[];
+    const nonFocusIds = _focusCardId ? roster.filter(id => id !== _focusCardId) : [];
 
-    // ── Left Group (only rendered when there are non-focus cards) ────────────
-    let $leftGroup = null;
-
+    // ── Left Group ────────────────────────────────────────────────────────────
     if (nonFocusIds.length > 0) {
-        $leftGroup = $('<div class="plz-vn-left-group"></div>');
+        $leftGroup.show();
+        _patchZone($leftGroup, nonFocusIds);
 
-        nonFocusIds.forEach(id => {
-            const char = state.chatCharacters[id];
-            if (!char) return;
-            const chain = state.characterChain[id];
-            const ui    = state.uiState[id] || {};
-            
-            const imageToRender = (chain?.image && state.fileIndex.has(chain.image)) 
-                ? chain.image 
-                : null;
-
-            $leftGroup.append(
-                getPortraitCardHTML(id, char.label || id, imageToRender, ui.flipped)
-            );
-        });
-
-        // Clicking a left-group card promotes it to the focus slot
-        $leftGroup.on('click', '.plz-portrait-card', function (e) {
-            if ($(e.target).closest('.plz-card-btn').length) return;
-            const id = $(this).data('id');
-            if (id) {
-                _focusCardId = id;
-                _renderVnRoster();
-            }
-        });
-
-        $panel.append($leftGroup);
+        if (!$leftGroup.data('bound')) {
+            $leftGroup.on('click', '.plz-portrait-card', function (e) {
+                if ($(e.target).closest('.plz-card-btn').length) return;
+                const id = $(this).data('id');
+                if (id) {
+                    _focusCardId = id;
+                    _renderVnRoster();
+                }
+            });
+            $leftGroup.data('bound', true);
+        }
+    } else {
+        $leftGroup.hide();
+        $leftGroup.empty();
     }
 
     // ── Focus Slot ────────────────────────────────────────────────────────────
-    const $focusSlot = $('<div class="plz-vn-focus-slot"></div>');
     if (_focusCardId) {
-        const focusChar = state.chatCharacters[_focusCardId];
-        if (focusChar) {
-            const chain = state.characterChain[_focusCardId];
-            const ui    = state.uiState[_focusCardId] || {};
-            
-            const imageToRender = (chain?.image && state.fileIndex.has(chain.image)) 
-                ? chain.image 
-                : null;
+        $focusSlot.show();
+        _patchZone($focusSlot, [_focusCardId]);
 
-            $focusSlot.append(
-                getPortraitCardHTML(
-                    _focusCardId,
-                    focusChar.label || _focusCardId,
-                    imageToRender,
-                    ui.flipped
-                )
-            );
+        if (!$focusSlot.data('bound')) {
+            $focusSlot.on('click', '.plz-portrait-card', function (e) {
+                if ($(e.target).closest('.plz-card-btn').length) return;
+                $(this).toggleClass('plz-controls-pinned');
+            });
+            $focusSlot.on('mouseenter', '.plz-portrait-card', function () {
+                $(this).removeClass('plz-controls-pinned');
+            });
+            $focusSlot.data('bound', true);
         }
+    } else {
+        $focusSlot.hide();
+        $focusSlot.empty();
     }
-    // Tap the focus card body (not a button) to toggle controls pin
-    $focusSlot.on('click', '.plz-portrait-card', function (e) {
-        if ($(e.target).closest('.plz-card-btn').length) return;
-        $(this).toggleClass('plz-controls-pinned');
-    });
 
-    // Hovering in always unpins (hover handles visibility itself)
-    $focusSlot.on('mouseenter', '.plz-portrait-card', function () {
-        $(this).removeClass('plz-controls-pinned');
-    });
+    // ── Add FAB — always last ─────────────────────────────────────────────────
+    $panel.append($panel.find('.plz-card-add-trigger'));
 
-    $panel.append($focusSlot);
-
-    // ── Add FAB ───────────────────────────────────────────────────────────────
-    $panel.append(getAddCardHTML());
-
-    // Position the focus card and compute any overlap
-    if ($leftGroup) _applyLayout($leftGroup, nonFocusIds.length);
+    if (nonFocusIds.length > 0) _applyLayout($leftGroup, nonFocusIds.length);
 }
 
 /**
@@ -212,8 +243,12 @@ export function injectVnPanel() {
     if (document.getElementById(PANEL_ID)) return;
 
     $('body').append(`
-        <div id="${PANEL_ID}" class="plz-roster-grid"></div>
-        <button id="${CYCLE_ID}" title="Cycle portrait size" type="button">½</button>
+        <div id="${PANEL_ID}" class="plz-roster-grid">
+            <button id="plz-vn-toggle-btn" class="plz-vn-side-btn" title="Disable PersonaLyze" type="button">
+                <i class="fa-solid fa-eye-slash"></i>
+            </button>
+            <button id="${CYCLE_ID}" class="plz-vn-side-btn" title="Cycle portrait size" type="button">½</button>
+        </div>
     `);
 
     // Global roster events
@@ -224,6 +259,20 @@ export function injectVnPanel() {
     $(`#${CYCLE_ID}`).on('click', () => {
         _splitIndex = (_splitIndex + 1) % SPLIT_PRESETS.length;
         _applySplit();
+    });
+
+    // Disable toggle button
+    $(`#plz-vn-toggle-btn`).on('click', () => {
+        updateSetting('enabled', false);
+
+        syncVnState();
+        document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+
+        import('./badge.js').then(module => {
+            if (module.clearAllBadges) module.clearAllBadges();
+        });
+
+        if (window.toastr) window.toastr.warning('PersonaLyze disabled.', 'PersonaLyze');
     });
 
     // Recalculate overlap on resize (debounced)
@@ -247,24 +296,32 @@ export function injectVnPanel() {
     }
     _applySplit(false);
 
-    if (settings.plzVnMode) {
-        _activate();
-    }
+    syncVnState();
 
     log('VnPanel', 'Split-screen shell injected.');
 }
 
 /**
- * Activates or deactivates the split-screen character view.
- * @param {boolean} enabled
+ * Syncs VN panel activation state with both the master toggle and VN mode preference.
+ * Call this whenever either `enabled` or `plzVnMode` changes.
  */
-export function setVnPanelEnabled(enabled) {
-    if (enabled) {
+export function syncVnState() {
+    const s = getSettings();
+    if (s.enabled && s.plzVnMode) {
         _activate();
     } else {
         _deactivate();
     }
+}
+
+/**
+ * Activates or deactivates the split-screen character view.
+ * Persists the preference but only activates if the extension is also enabled.
+ * @param {boolean} enabled
+ */
+export function setVnPanelEnabled(enabled) {
     updateSetting('plzVnMode', enabled);
+    syncVnState();
 }
 
 // ─── Activation ──────────────────────────────────────────────────────────────
@@ -272,14 +329,12 @@ export function setVnPanelEnabled(enabled) {
 function _activate() {
     document.body.classList.add(BODY_CLASS);
     _applySheldOverride(SPLIT_PRESETS[_splitIndex].pct);
-    $(`#${CYCLE_ID}`).show();
     _syncVisibility();
 }
 
 function _deactivate() {
     document.body.classList.remove(BODY_CLASS);
     _removeSheldOverride();
-    $(`#${CYCLE_ID}`).hide();
 
     // Let the floating portrait overlay take back control
     document.dispatchEvent(new CustomEvent('plz:roster-changed'));

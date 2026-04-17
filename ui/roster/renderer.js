@@ -24,7 +24,7 @@
  */
 
 import { state } from '../../state.js';
-import { getPortraitCardHTML, getAddCardHTML } from './templates.js';
+import { getPortraitCardHTML, getAddCardHTML, getPortraitImageSrc } from './templates.js';
 
 const STATUS_PCT = { pending: 15, starting: 35, processing: 65, retry: 65, removing_bg: 85, success: 100, failed: 100 };
 const STATUS_LABEL = { generating: 'generating…', pending: 'pending…', starting: 'starting…', processing: 'rendering…', retry: 'retrying…', removing_bg: 'removing bg…', success: 'done', failed: 'failed' };
@@ -92,32 +92,59 @@ export function renderRoster(containerSelector) {
     const $container = $(containerSelector);
     if (!$container.length) return;
 
-    $container.empty();
+    const processedIds = new Set();
 
-    // 1. Render Character Cards
+    // 1. Update or Insert Character Cards
     state.activeRoster.forEach(id => {
         const char = state.chatCharacters[id];
         if (!char) return;
+        processedIds.add(id);
 
         const chain = state.characterChain[id];
         const ui = state.uiState[id] || { flipped: false };
+        const imageToRender = (chain?.image && state.fileIndex.has(chain.image)) ? chain.image : null;
+        const label = char.label || id.replace(/_/g, ' ');
+        const $existingCard = $container.find(`> .plz-portrait-card[data-id="${CSS.escape(id)}"]`);
 
-        // RESILIENCE CHECK: Only pass the filename if it is confirmed to exist on disk.
-        // If the user just purged the cache, this returns null, triggering a spinner
-        // in the template instead of a broken <img> tag.
-        const imageToRender = (chain?.image && state.fileIndex.has(chain.image)) 
-            ? chain.image 
-            : null;
+        if ($existingCard.length) {
+            // UPDATE IN PLACE
+            const src = getPortraitImageSrc(imageToRender);
+            const $img = $existingCard.find('.plz-card-img');
 
-        const html = getPortraitCardHTML(
-            id, 
-            char.label || id.replace(/_/g, ' '), 
-            imageToRender, 
-            ui.flipped
-        );
-        $container.append(html);
+            if (($img.attr('src') || '').split('?')[0] !== src.split('?')[0]) {
+                $img.attr('src', src);
+                if (src) {
+                    $img.css('opacity', '1');
+                    $existingCard.find('.plz-card-loading-hint').remove();
+                } else {
+                    $img.css('opacity', '0');
+                    if (!$existingCard.find('.plz-card-loading-hint').length) {
+                        $existingCard.find('.plz-card-frame').append(`<div class="plz-card-loading-hint"><i class="fa-solid fa-spinner fa-spin"></i></div>`);
+                    }
+                }
+            }
+
+            $img.css('transform', ui.flipped ? 'scaleX(-1)' : 'none');
+            $existingCard.find('.plz-card-label').text(label);
+        } else {
+            // INSERT NEW
+            const $addBtn = $container.find('> .plz-card-add-trigger');
+            const html = getPortraitCardHTML(id, label, imageToRender, ui.flipped);
+            if ($addBtn.length) {
+                $addBtn.before(html);
+            } else {
+                $container.append(html);
+            }
+        }
     });
 
-    // 2. Append "Add" Trigger Card
-    $container.append(getAddCardHTML());
+    // 2. Remove stale cards
+    $container.find('> .plz-portrait-card').each(function () {
+        if (!processedIds.has($(this).data('id'))) $(this).remove();
+    });
+
+    // 3. Ensure Add Trigger exists
+    if (!$container.find('> .plz-card-add-trigger').length) {
+        $container.append(getAddCardHTML());
+    }
 }

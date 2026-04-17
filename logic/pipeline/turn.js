@@ -175,6 +175,9 @@ export async function processKnownSubject(messageId, characterId, text, history,
     const currentLayers = chainEntry?.layers || state.activeLayers;
     const charName = character.label || characterId.replace(/_/g, ' ');
 
+    // Check if character is stuck with a spinner (null or missing image)
+    const needsHealing = chainEntry && (!chainEntry.image || !state.fileIndex.has(chainEntry.image));
+
     let hasChanged;
     try {
         hasChanged = await detectChange(
@@ -189,36 +192,40 @@ export async function processKnownSubject(messageId, characterId, text, history,
         return;
     }
 
-    if (!hasChanged) {
+    if (!hasChanged && !needsHealing) {
         log('Turn', `${characterId}: No visual change detected.`);
         return;
     }
 
-    // ─── Phase 3: Extraction ───
-    let rawUpdate;
-    try {
-        rawUpdate = await detectLayers(
-            text,
-            history,
-            charName,
-            character.identityAnchor,
-            currentLayers,
-            character.slots,
-            s.smartProfileId
-        );
-    } catch (err) {
-        error('Turn', `Phase 3 failed for ${characterId}:`, err.message);
-        return;
+    let nextLayers = currentLayers;
+
+    // ─── Phase 3: Extraction (only if text changed) ───
+    if (hasChanged) {
+        let rawUpdate;
+        try {
+            rawUpdate = await detectLayers(
+                text,
+                history,
+                charName,
+                character.identityAnchor,
+                currentLayers,
+                character.slots,
+                s.smartProfileId
+            );
+        } catch (err) {
+            error('Turn', `Phase 3 failed for ${characterId}:`, err.message);
+            return;
+        }
+
+        nextLayers = mergeLayeredUpdate(currentLayers, parsePhase3(rawUpdate));
+
+        // ─── Phase 3.5: Ensemble Autosave ───
+        const ensembleLabel = generateEnsembleLabel(nextLayers);
+        const ensembleKey   = generateEnsembleKey(nextLayers);
+
+        await lockedWriteEnsemble(messageId, characterId, ensembleKey, ensembleLabel, nextLayers);
+        upsertChatEnsemble(characterId, ensembleKey, ensembleLabel, nextLayers);
     }
-
-    const nextLayers = mergeLayeredUpdate(currentLayers, parsePhase3(rawUpdate));
-
-    // ─── Phase 3.5: Ensemble Autosave ───
-    const ensembleLabel = generateEnsembleLabel(nextLayers);
-    const ensembleKey   = generateEnsembleKey(nextLayers);
-    
-    await lockedWriteEnsemble(messageId, characterId, ensembleKey, ensembleLabel, nextLayers);
-    upsertChatEnsemble(characterId, ensembleKey, ensembleLabel, nextLayers);
 
     // ─── Phase 4: Compile & Commit ───
     updateActiveLayers(nextLayers);
