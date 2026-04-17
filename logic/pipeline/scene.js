@@ -1,13 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/scene.js
- * @stamp {"utc":"2026-04-16T22:20:00.000Z"}
+ * @stamp {"utc":"2026-04-17T16:40:00.000Z"}
  * @architectural-role Orchestrator (Scene Logic)
  * @description
  * Manages the wardrobe "Redress" flow triggered by location changes.
  * 
- * Updated for Style-Specific Render Pipeline:
- * 1. processSceneGeneration calls generate() without the legacy engine argument.
- * 2. Removed engine field from the rosterItems mapping.
+ * Updated for Dynamic Variable Architecture:
+ * 1. Removed compilePrompt usage; generate() now handles iterative prompt synthesis.
  *
  * @api-declaration
  * runScenePipeline(messageId) -> Promise<void>
@@ -41,7 +40,6 @@ import {
     generateEnsembleKey,
     parseSceneRoster
 } from '../parsers.js';
-import { compilePrompt } from '../promptCompiler.js';
 import { generate, deleteFiles } from '../../imageCache.js';
 import { 
     lockedWriteVisualState, 
@@ -129,7 +127,7 @@ export async function runScenePipeline(messageId, signal) {
             name: char?.label || id.replace(/_/g, ' '),
             clothes,
             layers,
-            identity: char?.identity || {},
+            anchor:  char?.identityAnchor || '',
             seed:    char?.seed || 1,
         };
     });
@@ -194,17 +192,16 @@ export async function runScenePipeline(messageId, signal) {
 async function processSceneGeneration(messageId, item, layers, s, recordId, signal) {
     try {
         if (signal?.aborted) return;
-        const prompt = compilePrompt(item.identity, layers);
         const emotionSlug = slugify(layers.emotion);
 
         const filename = await generate(
             item.id,
             'redress',
             emotionSlug,
-            prompt,
+            layers,
             layers.emotion,
             layers.pose || 'upright',
-            item.identity,
+            item.anchor,
             item.seed,
             false,
             signal

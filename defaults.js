@@ -1,30 +1,19 @@
 /**
  * @file data/default-user/extensions/personalyze/defaults.js
- * @stamp {"utc":"2026-04-17T21:00:00.000Z"}
+ * @stamp {"utc":"2026-04-17T08:02:00.000Z"}
  * @architectural-role Default Configuration
  * @description
  * Default constants for the Layered State Pipeline.
  * 
- * Updated for Granular Identity Architecture:
- * 1. Added BASE_IDENTITY_SLOTS for permanent physical trait decomposition.
- * 2. Maintained Explicit Seed Architecture for generation continuity.
+ * Updated for Dynamic Variable Architecture:
+ * 1. Added RESERVED_SLOT_KEYS to protect the system namespace from custom category collisions.
  * 
  * @api-declaration
  * POLLINATIONS_BASE_URL
  * PLZ_IMAGE_FOLDER
- * POLLINATIONS_MODELS
- * DEFAULT_IMAGE_MODEL
- * DEFAULT_IMAGE_WIDTH
- * DEFAULT_IMAGE_HEIGHT
  * RESOLUTION_TIERS
  * RESOLUTION_OVERRIDES
- * DEFAULT_PLZ_VN_SPLIT
- * DEFAULT_DEV_MODE
- * DEV_IMAGE_WIDTH
- * DEV_IMAGE_HEIGHT
- * DEFAULT_VERBOSE_LOGGING
- * DEFAULT_DETECTION_HISTORY
- * DEFAULT_DESCRIBER_HISTORY
+ * DEFAULT_STYLE_PACKAGE
  * DEFAULT_MAX_RESOLUTION
  * DEFAULT_DYNAMIC_RESOLUTION
  * DEFAULT_KEEP_CACHE
@@ -33,35 +22,9 @@
  * RUNWARE_MODELS
  * RUNWARE_LORA_REGISTRY
  * RUNWARE_RMBG_MODELS
- * DEFAULT_RUNWARE_MODEL
- * DEFAULT_RUNWARE_USE_LAYER_DIFFUSE
- * DEFAULT_RUNWARE_REMOVE_BG
  * DEFAULT_RUNWARE_RMBG_MODEL
- * META_SLOT_EMOTION
- * META_SLOT_POSE
- * META_SLOTS
- * BASE_SLOTS
- * BASE_IDENTITY_SLOTS
- * DEFAULT_SLOTS
- * DEFAULT_FAST_PROFILE_ID
- * DEFAULT_SMART_PROFILE_ID
- * DEFAULT_TEST_PROMPT
- * FAL_MODELS
- * DEFAULT_FAL_MODEL
- * PIAPI_MODELS
- * DEFAULT_PIAPI_MODEL
- * DEFAULT_PIAPI_REMOVE_BG
- * DEFAULT_PIAPI_RMBG_MODEL
- * PIAPI_RMBG_MODELS
- * DEFAULT_VN_STYLE_SUFFIX
- * DEFAULT_STYLE_PACKAGE
  * DEFAULT_BLUEPRINTS
- * 
- * @contract
- *   assertions:
- *     purity: Pure Data
- *     state_ownership: []
- *     external_io: []
+ * RESERVED_SLOT_KEYS
  */
 
 /** Primary API gateway for Pollinations. */
@@ -202,19 +165,15 @@ export const BASE_SLOTS =[
 ];
 
 /**
- * Base Identity Slots.
- * Used as the default schema for a character's permanent physical traits.
+ * Reserved keys to prevent namespace collision when generating variables.
  */
-export const BASE_IDENTITY_SLOTS =[
-    'hair',
-    'eyes',
-    'face',
-    'body',
-    'skin',
-    'age',
-    'gender',
-    'species',
-    'features',
+export const RESERVED_SLOT_KEYS =[
+    'identity_anchor', 
+    'layers_description', 
+    'emotion', 
+    'pose', 
+    'item', 
+    'modifier'
 ];
 
 /**
@@ -265,7 +224,7 @@ export const PIAPI_RMBG_MODELS =['BEN2', 'RMBG-2.0', 'RMBG-1.4'];
 /**
  * Visual Style Suffix.
  * Supports slot-based variables: {{identity_anchor}}, {{layers_description}},
- * {{emotion}}, {{pose}}, and any granular identity key e.g. {{hair}}, {{eyes}}, {{gender}}.
+ * {{emotion}}, {{pose}}.
  */
 export const DEFAULT_VN_STYLE_SUFFIX =
     'A highly detailed anime-style character illustration of {{identity_anchor}}. ' +

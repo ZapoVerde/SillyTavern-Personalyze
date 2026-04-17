@@ -1,19 +1,18 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/executor.js
- * @stamp {"utc":"2026-04-17T14:15:00.000Z"}
+ * @stamp {"utc":"2026-04-17T16:20:00.000Z"}
  * @architectural-role IO Executor (Generation Logic)
  * @description
  * Primary execution engine for PersonaLyze image generation.
  * Implements the Forensic Total Mirror Protocol: every outbound request 
  * and inbound response document is mirrored to the Call Logs.
  * 
- * Updated for Granular Identity Architecture:
- * 1. Updated generate() to pass the identity map to finalizePrompt().
- * 2. Supports both granular tokens and legacy identity_anchor fallback.
+ * Updated for Dynamic Variable Architecture:
+ * 1. generate() now accepts raw layers object to support iterative prompt compilation.
  * 
  * @api-declaration
  * fetchPreviewBlob(engine, model, pos, neg, w, h, seed, loras, useLayerDiffuse, engineParams) -> Promise<string>
- * generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, identity, seed, forceCacheBust, signal) -> Promise<string>
+ * generate(characterId, tag, emotion, layers, emotionLabel, poseLabel, anchor, seed, forceCacheBust) -> Promise<string>
  * 
  * @contract
  *   assertions:
@@ -171,18 +170,18 @@ export async function fetchPreviewBlob(engine, model, positivePrompt, negativePr
 /**
  * Standard character generation with total mirroring and dynamic parameters.
  * 
- * @param {string} characterId
- * @param {string} tag
- * @param {string} emotion
- * @param {string} subjectPrompt
- * @param {string} emotionLabel
- * @param {string} poseLabel
- * @param {Object|string} identity - Granular map or flat anchor string.
- * @param {number} seed
- * @param {boolean} forceCacheBust
- * @param {AbortSignal} [signal]
+ * @param {string} characterId 
+ * @param {string} tag 
+ * @param {string} emotion 
+ * @param {object} layers - Raw visual state object for iterative compilation.
+ * @param {string} emotionLabel 
+ * @param {string} poseLabel 
+ * @param {string} anchor 
+ * @param {number} seed 
+ * @param {boolean} forceCacheBust 
+ * @param {AbortSignal} [signal] 
  */
-export async function generate(characterId, tag, emotion, subjectPrompt, emotionLabel, poseLabel, identity, seed = 1, forceCacheBust = false, signal = undefined) {
+export async function generate(characterId, tag, emotion, layers, emotionLabel, poseLabel, anchor, seed = 1, forceCacheBust = false, signal = undefined) {
     const styleObj = resolveStyle(characterId);
     const engine   = styleObj.engine;
     const model    = styleObj.model;
@@ -191,7 +190,8 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
     const blueprint = getModelBlueprint(model);
     const scrubbedParams = scrubEngineParams(blueprint, styleObj.engineParams || {});
 
-    const fullPrompt = finalizePrompt(subjectPrompt, identity, emotionLabel, poseLabel, styleObj.template);
+    // SINGLE PASS COMPILATION: Perform explicit injection and overflow bundling
+    const fullPrompt = finalizePrompt(layers, anchor, emotionLabel, poseLabel, styleObj.template);
     
     const { width: w, height: h } = resolveDimensions(characterId, styleObj);
     const reqBundle = { 
@@ -199,7 +199,6 @@ export async function generate(characterId, tag, emotion, subjectPrompt, emotion
         width: w, height: h, seed, forceCacheBust, 
         positivePrompt: fullPrompt, 
         negativePrompt: styleObj.negativePrompt,
-        identity,
         loras: styleObj.loras,
         useLayerDiffuse: styleObj.useLayerDiffuse,
         engineParams: scrubbedParams

@@ -1,13 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaSlots.js
- * @stamp {"utc":"2026-04-14T23:40:00.000Z"}
+ * @stamp {"utc":"2026-04-17T17:50:00.000Z"}
  * @architectural-role UI Sub-module (Wardrobe Schema)
  * @description
  * Handles wardrobe category (slot) management in the Studio.
  * Allows for adding custom slots and deleting non-base slots.
  * 
- * Updated to ensure all category keys are strictly slugified for 
- * deterministic DOM linkage.
+ * Updated for Dynamic Variable Architecture:
+ * 1. Enforces RESERVED_SLOT_KEYS blacklist to prevent template variable collisions.
  * 
  * @api-declaration
  * bindSlotHandlers($overlay)
@@ -23,7 +23,7 @@ import { getContext } from '../../../../../extensions.js';
 import { callPopup } from '../../../../../../script.js';
 import { state, upsertChatSlots } from '../../state.js';
 import { lockedWriteSlots } from '../../io/dnaWriter.js';
-import { META_SLOTS, BASE_SLOTS } from '../../defaults.js';
+import { BASE_SLOTS, RESERVED_SLOT_KEYS } from '../../defaults.js';
 import { slugify, escapeHtml } from '../../utils/history.js';
 import { renderStudioView } from './dnaListeners.js';
 
@@ -45,8 +45,11 @@ export function bindSlotHandlers($overlay) {
         // INDUSTRIAL FIX: Strict slugification of the technical key
         const key = slugify(label);
         
-        if (META_SLOTS.includes(key) || BASE_SLOTS.includes(key)) {
-            if (window.toastr) window.toastr.error(`"${label}" is a reserved system keyword.`, 'PersonaLyze');
+        // NAMESPACE PROTECTION: Check against system-reserved keys
+        if (RESERVED_SLOT_KEYS.includes(key)) {
+            if (window.toastr) {
+                window.toastr.error(`"${label}" is a reserved system keyword and cannot be used as a category name.`, 'PersonaLyze');
+            }
             return;
         }
 

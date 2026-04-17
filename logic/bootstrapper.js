@@ -1,12 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/bootstrapper.js
- * @stamp {"utc":"2026-04-16T22:10:00.000Z"}
+ * @stamp {"utc":"2026-04-17T16:30:00.000Z"}
  * @architectural-role Orchestrator / Boot Sequence
  * @description
  * Manages the initialization of the PersonaLyze environment for the active chat.
  *
- * Updated for Style-Specific Render Pipeline:
- * 1. Updated healCharacter to call generate() without the legacy provider argument.
+ * Updated for Dynamic Variable Architecture:
+ * 1. Removed compilePrompt usage; generate() now handles iterative prompt synthesis.
  *
  * @api-declaration
  * runBoot() → Promise<void>
@@ -24,7 +24,6 @@ import { state, bulkInitState, setFileIndex, addToFileIndex, updateChainLayers }
 import { reconstruct } from '../reconstruction.js';
 import { fetchFileIndex, generate } from '../imageCache.js';
 import { lockedPatchVisualStateImage } from '../io/dnaWriter.js';
-import { compilePrompt } from './promptCompiler.js';
 import { slugify } from '../utils/history.js';
 
 /**
@@ -38,22 +37,20 @@ async function healCharacter(characterId, lastAiIdx) {
     const chain = state.characterChain[characterId];
     if (!character || !chain || !chain.layers) return;
 
-    // Skip if state is explicitly 'KEEP' (ambiguous/legacy)
-    if (chain.layers.emotion === 'KEEP') return;
+    // Skip if state is missing or explicitly 'KEEP' (ambiguous/legacy)
+    if (!chain.layers.emotion || chain.layers.emotion === 'KEEP') return;
 
     log('Boot', `Healing missing portrait for: ${characterId}`);
     
-    const prompt = compilePrompt(character.identityAnchor, chain.layers);
-
     try {
         const filename = await generate(
             characterId,
             'layered',
             slugify(chain.layers.emotion),
-            prompt,
+            chain.layers,
             chain.layers.emotion,
             chain.layers.pose || 'upright',
-            character.identity,
+            character.identityAnchor,
             character.seed
         );
 

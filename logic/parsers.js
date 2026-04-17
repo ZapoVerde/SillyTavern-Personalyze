@@ -1,22 +1,22 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/parsers.js
- * @stamp {"utc":"2026-04-17T13:00:00.000Z"}
+ * @stamp {"utc":"2026-04-17T17:40:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Pure functions to parse structured text responses from the Layered State Pipeline.
- * Implements logic for handling "KEEP" (persistence) and "None" (removal) instructions.
+ * Implements the logic for handling "KEEP" (persistence) and "None" (removal) instructions.
  * 
- * Updated for Granular Identity Architecture:
- * 1. Added compileIdentityString to join granular traits into a fallback string.
- * 2. Updated mergeLayeredUpdate to handle identity slots as simple strings.
- * 
+ * Updated for Dynamic Variable Architecture:
+ * 1. generateEnsembleLabel is now slot-agnostic (iterates all non-meta slots).
+ * 2. generateEnsembleKey is now slot-agnostic (iterates all slots except pose).
+ * 3. Both use alphabetical key sorting to ensure deterministic output.
+ *
  * @api-declaration
  * parsePhase1(raw) -> string|null
  * parsePhase2(raw) -> boolean
  * parsePhase3(raw) -> object
  * parseSceneRoster(raw) -> string[]
- * mergeLayeredUpdate(current, update, identitySlots) -> object
- * compileIdentityString(identityMap) -> string
+ * mergeLayeredUpdate(current, update) -> object
  * generateEnsembleLabel(layers) -> string
  * generateEnsembleKey(layers) -> string
  * 
@@ -57,7 +57,7 @@ export function parsePhase2(raw) {
 
 /**
  * Parses Phase 3: Layered State Extraction.
- * Key-agnostic: accepts any "Key: Item | Modifier" or "Key: Value" line.
+ * Key-agnostic: accepts any "Key: Item | Modifier" line the LLM returns.
  * The key is lowercased and slugified so it matches state slot names.
  *
  * @param {string} raw - Raw Key-Value list from LLM.
@@ -111,21 +111,30 @@ export function parseSceneRoster(raw) {
 }
 
 /**
- * Merges a Phase 3 update into the current state (Visual or Identity).
+ * Merges a Phase 3 update into the current visual state.
  * Implements the 3-state transition logic:
  * 1. KEEP | KEEP -> Use existing value from previous turn.
  * 2. None | None -> Set slot to null (explicit removal).
- * 3. Item | Mod  -> Update slot with new data.
+ * 3. Item | Mod  -> Update slot with new visual data.
  * 
- * @param {object} current - The current map from state.
+ * Ensures all standard slots (including pose) exist in the output even if missing in current.
+ * 
+ * @param {object} current - The current layers object from state.
  * @param {object} update - The parsed update from the LLM.
- * @param {string[]} stringSlots - Optional list of keys that should be stored as simple strings.
  * @returns {object} The new consolidated state.
  */
-export function mergeLayeredUpdate(current, update, stringSlots = []) {
-    const next = structuredClone(current ?? {});
-    const stringKeys = [...META_SLOTS, ...stringSlots];
+export function mergeLayeredUpdate(current, update) {
+    // 1. Initialize next state with full standard slot template
+    const next = Object.assign({
+        outerwear:   null,
+        top:         null,
+        bottom:      null,
+        accessories: null,
+        emotion:     'neutral',
+        pose:        'upright',
+    }, structuredClone(current ?? {}));
 
+    // 2. Iterate through the LLM-derived updates
     for (const [slot, val] of Object.entries(update)) {
         if (!val || val.item === 'KEEP') {
             continue;
@@ -134,7 +143,7 @@ export function mergeLayeredUpdate(current, update, stringSlots = []) {
         if (val.item === 'None') {
             next[slot] = null;
         } else {
-            if (stringKeys.includes(slot)) {
+            if (META_SLOTS.includes(slot)) {
                 next[slot] = val.item;
             } else {
                 next[slot] = {
@@ -146,41 +155,6 @@ export function mergeLayeredUpdate(current, update, stringSlots = []) {
     }
 
     return next;
-}
-
-/**
- * Formats a granular identity map as a Key: Value display string.
- * Used in the Archivist modal so users can review individual traits.
- *
- * @param {Object} identityMap - { hair: "...", face: "...", ... }
- * @returns {string}
- */
-export function formatIdentityDisplay(identityMap) {
-    if (!identityMap || typeof identityMap !== 'object') return '';
-
-    return Object.entries(identityMap)
-        .filter(([, val]) => typeof val === 'string' && val.trim().length > 0)
-        .map(([key, val]) => {
-            const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
-            return `${label}: ${val}`;
-        })
-        .join('\n');
-}
-
-/**
- * Compiles a granular identity map into a single comma-separated string.
- * Used for the {{identity_anchor}} fallback variable.
- *
- * @param {Object} identityMap - { hair: "...", face: "...", ... }
- * @returns {string}
- */
-export function compileIdentityString(identityMap) {
-    if (!identityMap || typeof identityMap !== 'object') return '';
-    
-    return Object.values(identityMap)
-        .filter(val => typeof val === 'string' && val.trim().length > 0)
-        .join(', ')
-        .trim();
 }
 
 /**
@@ -198,41 +172,49 @@ function limitToThreeWords(val) {
 
 /**
  * Generates a descriptive, chunky label for an ensemble based on current layers.
+ * Format: [Clothing + Slots] | [Emotion] | [Pose]
+ * Each category is limited to its first 3 words.
  * 
  * @param {object} layers 
  * @returns {string}
  */
 export function generateEnsembleLabel(layers) {
-    const outerwear   = limitToThreeWords(layers.outerwear);
-    const top         = limitToThreeWords(layers.top);
-    const bottom      = limitToThreeWords(layers.bottom);
-    const accessories = limitToThreeWords(layers.accessories);
-    const emotion     = limitToThreeWords(layers.emotion);
-    const pose        = limitToThreeWords(layers.pose);
-
-    const clothes = [outerwear, top, bottom, accessories].filter(Boolean).join(' + ');
+    const clothingParts = [];
+    const keys = Object.keys(layers || {}).sort();
     
+    for (const key of keys) {
+        if (META_SLOTS.includes(key)) continue;
+        const text = limitToThreeWords(layers[key]);
+        if (text) clothingParts.push(text);
+    }
+    
+    const clothes = clothingParts.join(' + ');
+    const emotion = limitToThreeWords(layers.emotion) || 'neutral';
+    const pose    = limitToThreeWords(layers.pose)    || 'upright';
+
     return [
         clothes || 'Base Identity',
-        emotion || 'neutral',
-        pose    || 'upright'
+        emotion,
+        pose
     ].join(' | ');
 }
 
 /**
  * Generates a stable unique key for an ensemble.
+ * Iterates through all slots except pose.
  * 
  * @param {object} layers 
  * @returns {string}
  */
 export function generateEnsembleKey(layers) {
-    const components = [
-        limitToThreeWords(layers.outerwear),
-        limitToThreeWords(layers.top),
-        limitToThreeWords(layers.bottom),
-        limitToThreeWords(layers.accessories),
-        limitToThreeWords(layers.emotion)
-    ].filter(Boolean).join('_');
+    const components = [];
+    const keys = Object.keys(layers || {}).sort();
+    
+    for (const key of keys) {
+        if (key === 'pose') continue;
+        const text = limitToThreeWords(layers[key]);
+        if (text) components.push(text);
+    }
 
-    return slugify(components || 'base_identity');
+    return slugify(components.join('_') || 'base_identity');
 }

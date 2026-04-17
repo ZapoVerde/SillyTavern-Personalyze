@@ -1,15 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-19T22:30:00.000Z"}
+ * @stamp {"utc":"2026-04-17T17:00:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
  * visual state for the current turn using the 5-slot architecture.
  *
- * Updated for Explicit Seed Architecture (Bug Fixes):
- * 1. Seed changes now persist to DNA even without Force Regen.
- * 2. Implemented strict clamping (-1 to 999) for manual seed inputs.
- * 3. Standardized on parseInt(..., 10) for all numeric conversions.
+ * Updated for Dynamic Variable Architecture:
+ * 1. Removed compilePrompt usage; generate() now handles iterative prompt synthesis.
  *
  * @api-declaration
  * openCharPicker(initialOverride) → Promise<void>
@@ -28,7 +26,6 @@ import {
     addToFileIndex, updateChainLayers, upsertChatSlots, upsertChatEnsemble,
     setActiveRoster, removeFromFileIndex, upsertChatCharacterDef
 } from '../state.js';
-import { compilePrompt } from '../logic/promptCompiler.js';
 import { buildFilenamePrefix, findCachedImage, generate, deleteFiles } from '../imageCache.js';
 import { 
     lockedWriteVisualState, 
@@ -264,8 +261,8 @@ export async function openCharPicker(initialOverride = null) {
 
     // UNIVERSAL PERSISTENCE: If the resolved seed (new or incremented) differs from DNA, commit it.
     if (apiSeed !== character.seed) {
-        upsertChatCharacterDef(charId, character.identity, apiSeed);
-        await lockedWriteCharacterDef(lastAiIdx, charId, character.identity, apiSeed);
+        upsertChatCharacterDef(charId, character.identityAnchor, apiSeed);
+        await lockedWriteCharacterDef(lastAiIdx, charId, character.identityAnchor, apiSeed);
     }
 
     const emotionSlug = slugify(layers.emotion);
@@ -285,15 +282,15 @@ export async function openCharPicker(initialOverride = null) {
 
     try {
         filename = await generate(
-            charId,
-            'layered',
-            emotionSlug,
-            compilePrompt(character.identityAnchor, layers),
-            layers.emotion,
-            layers.pose,
-            character.identity,
+            charId, 
+            'layered', 
+            emotionSlug, 
+            layers, 
+            layers.emotion, 
+            layers.pose, 
+            character.identityAnchor, 
             apiSeed,
-            forceRegen // This is now correctly in the 9th position (forceCacheBust)
+            forceRegen
         );
         addToFileIndex(filename);
         updateActiveImage(filename);

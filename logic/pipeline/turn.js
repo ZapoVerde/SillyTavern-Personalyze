@@ -1,17 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/turn.js
- * @stamp {"utc":"2026-04-17T15:40:00.000Z"}
+ * @stamp {"utc":"2026-04-17T16:50:00.000Z"}
  * @architectural-role Orchestrator (Turn Logic)
  * @description
  * Implements the Hybrid Multi-Character Turn pipeline.
  * 
- * Updated for Granular Identity Architecture:
- * 1. Fixed Bug 3: Passes character.identity map to generate() to ensure granular variable injection.
- * 2. Fixed Bug 4: Corrected stringSlots argument in mergeLayeredUpdate for physical traits.
+ * Updated for Dynamic Variable Architecture:
+ * 1. Removed compilePrompt usage; generate() now handles iterative prompt synthesis.
  *
  * @api-declaration
- * runTurnPipeline(messageId, signal) -> Promise<void>
- * processKnownSubject(messageId, characterId, text, history, s, signal) -> Promise<void>
+ * runTurnPipeline(messageId) -> Promise<void>
+ * processKnownSubject(messageId, characterId, text, history, s) -> Promise<void>
  *
  * @contract
  *   assertions:
@@ -33,8 +32,7 @@ import {
     resolveAliasToId,
     upsertChatEnsemble,
     setActiveRoster,
-    removeFromFileIndex,
-    upsertChatCharacterDef
+    removeFromFileIndex
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
 import { slugify, buildHistoryText } from '../../utils/history.js';
@@ -43,24 +41,20 @@ import {
     parsePhase3, 
     mergeLayeredUpdate,
     generateEnsembleLabel,
-    generateEnsembleKey,
-    compileIdentityString
+    generateEnsembleKey
 } from '../parsers.js';
-import { compilePrompt } from '../promptCompiler.js';
 import { generate, deleteFiles } from '../../imageCache.js';
 import { 
     lockedWriteVisualState, 
     lockedPatchVisualStateImage, 
     lockedWriteEnsemble,
-    lockedWriteRoster,
-    lockedWriteIdentityUpdate
+    lockedWriteRoster
 } from '../../io/dnaWriter.js';
 import { isIgnored, isPending } from '../blacklist.js';
 import { runArchivistPipeline } from './archivist.js';
 import { detectNamesInText } from '../heuristics.js';
 import { showHeuristicApprovalModal } from '../../ui/heuristicModal.js';
 import { TaskQueue } from '../../utils/queue.js';
-import { META_SLOTS, BASE_SLOTS } from '../../defaults.js';
 
 /** Singleton queue for pipeline concurrency control. */
 const pipelineQueue = new TaskQueue(2);
@@ -203,7 +197,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
 
     let nextLayers = currentLayers;
 
-    // ─── Phase 3: Extraction ───
+    // ─── Phase 3: Extraction (only if text changed) ───
     if (hasChanged) {
         let rawUpdate;
         try {
@@ -211,7 +205,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
                 text,
                 history,
                 charName,
-                character.identity,
+                character.identityAnchor,
                 currentLayers,
                 character.slots,
                 s.smartProfileId
@@ -221,38 +215,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
             return;
         }
 
-        const parsedUpdate = parsePhase3(rawUpdate);
-
-        // ─── Split Identity vs. Wardrobe Updates ───
-        const identityKeys = Object.keys(character.identity);
-        const wardrobeKeys = character.slots || [...BASE_SLOTS];
-        
-        const identityParsed = {};
-        const wardrobeParsed = {};
-
-        for (const [key, val] of Object.entries(parsedUpdate)) {
-            if (identityKeys.includes(key) || (!wardrobeKeys.includes(key) && !META_SLOTS.includes(key))) {
-                identityParsed[key] = val;
-            } else {
-                wardrobeParsed[key] = val;
-            }
-        }
-
-        // 1. Commit Permanent Identity Changes
-        if (Object.keys(identityParsed).length > 0) {
-            // Fix Bug 4: Use identityKeys for the string-slot list
-            const nextIdentity = mergeLayeredUpdate(character.identity, identityParsed, identityKeys);
-            
-            // Check if identity map actually changed to avoid DNA bloat
-            if (JSON.stringify(nextIdentity) !== JSON.stringify(character.identity)) {
-                log('Turn', `Permanent physical change detected for ${characterId}. Updating DNA.`);
-                upsertChatCharacterDef(characterId, nextIdentity, character.seed);
-                await lockedWriteIdentityUpdate(messageId, characterId, nextIdentity);
-            }
-        }
-
-        // 2. Merge Temporary Wardrobe Changes
-        nextLayers = mergeLayeredUpdate(currentLayers, wardrobeParsed);
+        nextLayers = mergeLayeredUpdate(currentLayers, parsePhase3(rawUpdate));
 
         // ─── Phase 3.5: Ensemble Autosave ───
         const ensembleLabel = generateEnsembleLabel(nextLayers);
@@ -266,8 +229,6 @@ export async function processKnownSubject(messageId, characterId, text, history,
     updateActiveLayers(nextLayers);
     updateChainLayers(characterId, nextLayers, null);
 
-    const identityAnchor = compileIdentityString(character.identity);
-    const prompt = compilePrompt(identityAnchor, nextLayers);
     const recordId = await lockedWriteVisualState(messageId, characterId, nextLayers, null);
 
     try {
@@ -277,10 +238,10 @@ export async function processKnownSubject(messageId, characterId, text, history,
             characterId,
             'layered',
             emotionSlug,
-            prompt,
+            nextLayers,
             nextLayers.emotion,
             nextLayers.pose,
-            character.identity, // Fix Bug 3: Pass map instead of identityAnchor string
+            character.identityAnchor,
             character.seed,
             false,
             signal
@@ -291,7 +252,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
         updateChainLayers(characterId, nextLayers, file);
         await lockedPatchVisualStateImage(messageId, characterId, file, recordId);
         
-        // Ephemeral Cleanup
+        // Ephemeral Cleanup: delete previous active images for this character (regardless of tag/emotion)
         if (!s.keepCache) {
             const charPrefix = `plz_${characterId}_`;
             const staleFiles = Array.from(state.fileIndex).filter(f => 

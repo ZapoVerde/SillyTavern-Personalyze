@@ -1,14 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/roster/controls.js
- * @stamp {"utc":"2026-04-19T21:50:00.000Z"}
+ * @stamp {"utc":"2026-04-17T17:20:00.000Z"}
  * @architectural-role UI Orchestrator
  * @description
  * Manages global event delegation for the character roster UI.
  * Handles card-level interactions including flipping, removal, and addition.
  * 
- * Updated for Explicit Seed Architecture:
- * 1. Implemented silent 3-digit seed increment loop (1-999) on refresh.
- * 2. Ensures seed updates are committed to DNA via lockedWriteCharacterDef.
+ * Updated for Dynamic Variable Architecture:
+ * 1. Removed compilePrompt usage; generate() now handles iterative prompt synthesis.
  *
  * @api-declaration
  * bindRosterControls() -> void
@@ -35,7 +34,6 @@ import {
     lockedWriteCharacterDef
 } from '../../io/dnaWriter.js';
 import { generate, deleteFiles } from '../../imageCache.js';
-import { compilePrompt } from '../../logic/promptCompiler.js';
 import { slugify } from '../../utils/history.js';
 import { getSettings } from '../../settings.js';
 import { getContext } from '../../../../../extensions.js';
@@ -108,11 +106,11 @@ export function bindRosterControls() {
             apiSeed = (apiSeed % 999) + 1;
             
             // Permanent DNA Commitment: update seed in memory and chat history
-            upsertChatCharacterDef(id, char.identity, apiSeed);
-            await lockedWriteCharacterDef(lastAiIdx, id, char.identity, apiSeed);
+            // We MUST include the existing anchor to prevent it being overwritten with undefined
+            upsertChatCharacterDef(id, char.identityAnchor, apiSeed);
+            await lockedWriteCharacterDef(lastAiIdx, id, char.identityAnchor, apiSeed);
         }
 
-        const prompt = compilePrompt(char.identityAnchor, layers);
         const emotionSlug = slugify(layers.emotion);
 
         // Forensic Logging: Open a Workshop turn so the generation is filed correctly
@@ -124,10 +122,10 @@ export function bindRosterControls() {
                 id,
                 'layered',
                 emotionSlug,
-                prompt,
+                layers,
                 layers.emotion,
                 layers.pose,
-                char.identity,
+                char.identityAnchor,
                 apiSeed,
                 null
             );
