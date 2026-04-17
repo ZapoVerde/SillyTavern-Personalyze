@@ -23,7 +23,7 @@
  */
 
 import { escapeHtml } from '../../utils/history.js';
-import { RUNWARE_LORA_REGISTRY } from '../../defaults.js';
+import { RUNWARE_LORA_REGISTRY, BASE_SLOTS } from '../../defaults.js';
 import { state } from '../../state.js';
 
 /**
@@ -96,41 +96,85 @@ export function getStylesTabHTML(styleLibrary, defaultName, activeName, styleObj
 }
 
 /**
- * Variable usage helper.
- * Dynamically lists variables based on the Workshop character's physical traits.
+ * Variable reference panel for the styles editor.
+ * Groups variables into three sections with overflow/aggregate interaction explained.
  */
 export function getVariableLegendHTML() {
     const activeId = state._workshopCharacterId || state.activeCharacterId;
     const char = state.chatCharacters[activeId];
-    
-    const standardVars = [
-        { v: '{{identity_anchor}}', d: 'Joined physical description' },
-        { v: '{{layers_description}}', d: 'Current wardrobe' },
-        { v: '{{emotion}}', d: 'Expression adjective' },
-        { v: '{{pose}}', d: 'Current posture' }
-    ];
 
-    const granularVars = [];
-    if (char?.identity) {
-        Object.keys(char.identity).forEach(key => {
-            granularVars.push({
-                v: `{{${key}}}`,
-                d: `Physical: ${key.replace(/_/g, ' ')}`
-            });
-        });
+    const identityKeys = char?.identity ? Object.keys(char.identity) : [];
+    const wardrobeKeys = char?.slots || [...BASE_SLOTS];
+
+    function chip(token) {
+        return `<code style="background:rgba(0,0,0,0.35); padding:1px 5px; border-radius:3px; color:var(--SmartThemeQuoteColor); cursor:pointer; white-space:nowrap;" title="Click to copy" onclick="navigator.clipboard.writeText('${token}')">${token}</code>`;
     }
 
-    const allVars = [...standardVars, ...granularVars];
+    function row(token, desc) {
+        return `<div style="display:flex; align-items:baseline; gap:8px; padding:2px 0;">
+            ${chip(token)}
+            <span style="opacity:0.7; font-size:0.9em;">${desc}</span>
+        </div>`;
+    }
+
+    function section(title, color, body) {
+        return `<div style="margin-bottom:10px;">
+            <div style="font-size:0.7em; font-weight:bold; text-transform:uppercase; letter-spacing:0.08em; color:${color}; margin-bottom:4px;">${title}</div>
+            ${body}
+        </div>`;
+    }
+
+    // ── Section 1: Core ──────────────────────────────────────────────────────
+    const coreHTML = [
+        row('{{emotion}}', 'The current expression adjective (e.g. <i>contemplative</i>). Always set by the pipeline.'),
+        row('{{pose}}',    'The current pose description (e.g. <i>leaning forward</i>). Always set by the pipeline.'),
+    ].join('');
+
+    // ── Section 2: Physical Identity ─────────────────────────────────────────
+    const identityIndividualRows = identityKeys.length
+        ? identityKeys.map(k => row(`{{${k}}}`, `Physical trait — outputs the raw value for <b>${k.replace(/_/g, ' ')}</b> only.`)).join('')
+        : `<div style="opacity:0.4; font-size:0.85em;">Scan or fill the Physical Identity grid to unlock individual trait tokens.</div>`;
+
+    const identityHTML = [
+        row('{{identity_anchor}}',
+            'Aggregate of <b>all unconsumed</b> physical traits. Format: <i>Hair: …, Eyes: …, Face: …</i> — any trait you place individually above is excluded from this bucket.'),
+        `<div style="margin:4px 0 4px 12px; border-left:2px solid rgba(255,255,255,0.1); padding-left:8px;">`,
+        identityIndividualRows,
+        `</div>`,
+    ].join('');
+
+    // ── Section 4: LoRA Registry ──────────────────────────────────────────────
+    const loraHTML = RUNWARE_LORA_REGISTRY
+        .filter(l => l.air)
+        .map(l => `<div style="display:flex; align-items:baseline; gap:8px; padding:2px 0;">
+            <span style="opacity:0.9; min-width:0;">${escapeHtml(l.label)}</span>
+            <code style="opacity:0.45; font-size:0.85em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(l.air)}</code>
+            <span style="opacity:0.5; white-space:nowrap;">default&nbsp;${l.defaultWeight ?? '—'}</span>
+        </div>`)
+        .join('');
+
+    // ── Section 3: Wardrobe ───────────────────────────────────────────────────
+    const wardrobeIndividualRows = wardrobeKeys
+        .map(k => row(`{{${k}}}`, `Wardrobe slot — outputs <i>item (modifier)</i> for <b>${k.replace(/_/g, ' ')}</b> only.`))
+        .join('');
+
+    const wardrobeHTML = [
+        row('{{layers_description}}',
+            'Aggregate of <b>all unconsumed</b> wardrobe slots. Format: <i>Top: grey tunic (close-fitting), Bottom: …</i> — any slot you place individually above is excluded from this bucket.'),
+        `<div style="margin:4px 0 4px 12px; border-left:2px solid rgba(255,255,255,0.1); padding-left:8px;">`,
+        wardrobeIndividualRows,
+        `</div>`,
+    ].join('');
 
     return `
-    <div style="display:grid; grid-template-columns: 1fr; gap:4px; opacity:0.6; font-size:0.75em; max-height:120px; overflow-y:auto; padding-right:5px;">
-        ${allVars.map(v => `
-            <div style="display:flex; align-items:center; gap:8px;">
-                <code style="background:rgba(0,0,0,0.3); padding:1px 4px; border-radius:3px; color:var(--SmartThemeQuoteColor); cursor:pointer;" 
-                      title="Click to copy"
-                      onclick="navigator.clipboard.writeText('${v.v}')">${v.v}</code>
-                <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">— ${v.d}</span>
-            </div>`).join('')}
+    <div style="font-size:0.78em; max-height:260px; overflow-y:auto; padding-right:6px;">
+        <div style="opacity:0.5; font-size:0.9em; margin-bottom:8px; line-height:1.4;">
+            Place a token in your template to inject that value. Anything you don't place individually flows into the matching aggregate (<code style="font-size:0.9em;">{{identity_anchor}}</code> or <code style="font-size:0.9em;">{{layers_description}}</code>). Omit an aggregate entirely to drop those values from the prompt.
+        </div>
+        ${section('Core', 'var(--SmartThemeEmColor)',        coreHTML)}
+        ${section('Physical Identity', 'var(--SmartThemeQuoteColor)', identityHTML)}
+        ${section('Wardrobe', '#7eb8c9', wardrobeHTML)}
+        ${section('Available LoRAs', '#a78bda', loraHTML)}
     </div>`;
 }
 

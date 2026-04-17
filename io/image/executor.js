@@ -181,7 +181,7 @@ export async function fetchPreviewBlob(engine, model, positivePrompt, negativePr
  * @param {boolean} forceCacheBust 
  * @param {AbortSignal} [signal] 
  */
-export async function generate(characterId, tag, emotion, layers, emotionLabel, poseLabel, anchor, seed = 1, forceCacheBust = false, signal = undefined) {
+export async function generate(characterId, tag, emotion, layers, emotionLabel, poseLabel, identityMap, seed = 1, forceCacheBust = false, signal = undefined) {
     const styleObj = resolveStyle(characterId);
     const engine   = styleObj.engine;
     const model    = styleObj.model;
@@ -191,7 +191,7 @@ export async function generate(characterId, tag, emotion, layers, emotionLabel, 
     const scrubbedParams = scrubEngineParams(blueprint, styleObj.engineParams || {});
 
     // SINGLE PASS COMPILATION: Perform explicit injection and overflow bundling
-    const fullPrompt = finalizePrompt(layers, anchor, emotionLabel, poseLabel, styleObj.template);
+    const fullPrompt = finalizePrompt(layers, identityMap, emotionLabel, poseLabel, styleObj.template);
     
     const { width: w, height: h } = resolveDimensions(characterId, styleObj);
     const reqBundle = { 

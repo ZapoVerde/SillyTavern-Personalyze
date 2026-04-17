@@ -109,7 +109,7 @@ export function bindCommitHandlers($overlay) {
             const charData = state.chatCharacters['__new__'];
             charData.label = labelInput;
 
-            await lockedWriteCharacterDef(lastAiIdx, targetId, charData.identityAnchor, charData.seed);
+            await lockedWriteCharacterDef(lastAiIdx, targetId, charData.identity, charData.seed);
             await lockedWriteLabel(lastAiIdx, targetId, labelInput);
             
             const newRoster = [...new Set([...state.activeRoster, targetId])];
@@ -167,7 +167,7 @@ export function bindCommitHandlers($overlay) {
                 layers, 
                 layers.emotion, 
                 layers.pose, 
-                char.identityAnchor, 
+                char.identity,
                 char.seed
             );
 

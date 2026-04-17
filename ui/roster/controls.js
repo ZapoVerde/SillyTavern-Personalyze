@@ -107,8 +107,8 @@ export function bindRosterControls() {
             
             // Permanent DNA Commitment: update seed in memory and chat history
             // We MUST include the existing anchor to prevent it being overwritten with undefined
-            upsertChatCharacterDef(id, char.identityAnchor, apiSeed);
-            await lockedWriteCharacterDef(lastAiIdx, id, char.identityAnchor, apiSeed);
+            upsertChatCharacterDef(id, char.identity, apiSeed);
+            await lockedWriteCharacterDef(lastAiIdx, id, char.identity, apiSeed);
         }
 
         const emotionSlug = slugify(layers.emotion);
@@ -125,7 +125,7 @@ export function bindRosterControls() {
                 layers,
                 layers.emotion,
                 layers.pose,
-                char.identityAnchor,
+                char.identity,
                 apiSeed,
                 null
             );

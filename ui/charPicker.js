@@ -261,8 +261,8 @@ export async function openCharPicker(initialOverride = null) {
 
     // UNIVERSAL PERSISTENCE: If the resolved seed (new or incremented) differs from DNA, commit it.
     if (apiSeed !== character.seed) {
-        upsertChatCharacterDef(charId, character.identityAnchor, apiSeed);
-        await lockedWriteCharacterDef(lastAiIdx, charId, character.identityAnchor, apiSeed);
+        upsertChatCharacterDef(charId, character.identity, apiSeed);
+        await lockedWriteCharacterDef(lastAiIdx, charId, character.identity, apiSeed);
     }
 
     const emotionSlug = slugify(layers.emotion);
@@ -288,7 +288,7 @@ export async function openCharPicker(initialOverride = null) {
             layers, 
             layers.emotion, 
             layers.pose, 
-            character.identityAnchor, 
+            character.identity,
             apiSeed,
             forceRegen
         );

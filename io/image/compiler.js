@@ -122,8 +122,8 @@ export function resolveStyle(characterId) {
 }
 
 /**
- * Pure helper to serialize a slot value (object or string) into a prompt fragment.
- * Concatenates modifier and item with a space.
+ * Serializes a wardrobe slot value into a prompt fragment.
+ * Format: "item (modifier)" or just "item" if no modifier.
  */
 function _serialize(val) {
     if (!val) return '';
@@ -131,68 +131,82 @@ function _serialize(val) {
     const item = val.item;
     const mod  = val.modifier;
     if (!item || item === 'None' || item === 'KEEP') return '';
-    return (mod && mod !== 'None' && mod !== 'KEEP') ? `${mod} ${item}` : item;
+    return (mod && mod !== 'None' && mod !== 'KEEP') ? `${item} (${mod})` : item;
 }
 
 /**
- * Compiles visual variables into a final prompt string using the Dynamic Iterator Pattern.
- * Supports template variables: {{identity_anchor}}, {{layers_description}},
- * {{emotion}}, {{pose}}, and any character-specific {{slot_key}}.
- * 
- * @param {object} layers - The character's current visual state (slots).
- * @param {string} anchor - Physical identity features.
- * @param {string} emotion - Current emotion label.
- * @param {string} pose - Current pose description.
- * @param {string} template - The style template string to use.
+ * Compiles visual variables into a final prompt string.
+ *
+ * Supports:
+ *   {{emotion}}, {{pose}}                     — core meta
+ *   {{hair}}, {{eyes}}, {{face}}, etc.        — individual identity fields (just the value)
+ *   {{top}}, {{bottom}}, {{outerwear}}, etc.  — individual wardrobe slots ("item (modifier)")
+ *   {{identity_anchor}}                        — overflow of unconsumed identity fields ("Label: value, ...")
+ *   {{layers_description}}                     — overflow of unconsumed wardrobe slots ("Label: item (modifier), ...")
+ *
+ * @param {object} layers     - The character's current visual state (wardrobe slots + emotion/pose).
+ * @param {object} identityMap - Granular physical identity map { hair, eyes, face, body, skin, ... }.
+ * @param {string} emotion    - Current emotion label.
+ * @param {string} pose       - Current pose description.
+ * @param {string} template   - The style template string to use.
  * @returns {string}
  */
-export function finalizePrompt(layers, anchor = '', emotion = '', pose = '', template = '') {
+export function finalizePrompt(layers, identityMap, emotion = '', pose = '', template = '') {
     let result = template || getSettings().vnStyleSuffix || '';
-    const usedKeys = new Set();
+    const usedIdentityKeys = new Set();
+    const usedLayerKeys    = new Set();
 
-    // 1. Replace Core Meta-Variables
-    const core = {
-        identity_anchor: anchor,
-        emotion: emotion,
-        pose: pose
-    };
+    // Phase 1: Core meta-variables
+    result = result.replace(/\{\{emotion\}\}/gi, emotion || '');
+    result = result.replace(/\{\{pose\}\}/gi,    pose    || '');
 
-    for (const [key, val] of Object.entries(core)) {
+    // Phase 2: Individual identity field replacement  (e.g. {{hair}}, {{eyes}})
+    for (const [key, val] of Object.entries(identityMap || {})) {
         const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'gi');
         if (regex.test(result)) {
-            result = result.replace(regex, val || '');
-            usedKeys.add(key);
+            result = result.replace(regex, (typeof val === 'string' ? val.trim() : '') || '');
+            usedIdentityKeys.add(key);
         }
     }
 
-    // 2. Dynamic Slot Replacement (Explicit Consumption)
-    // We iterate over every slot defined in the visual state.
+    // Phase 3: Individual wardrobe slot replacement  (e.g. {{top}}, {{bottom}})
     for (const [key, val] of Object.entries(layers || {})) {
-        // Skip keys already handled or technically reserved
-        if (core.hasOwnProperty(key) || key === 'layers_description') continue;
-
+        if (key === 'emotion' || key === 'pose' || key === 'identity_anchor' || key === 'layers_description') continue;
         const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'gi');
         if (regex.test(result)) {
             result = result.replace(regex, _serialize(val));
-            usedKeys.add(key);
+            usedLayerKeys.add(key);
         }
     }
 
-    // 3. Overflow Bucket (The Remaining Wardrobe)
-    // Gather all populated slots that were NOT explicitly requested in the template.
-    const overflow = [];
-    for (const [key, val] of Object.entries(layers || {})) {
-        if (core.hasOwnProperty(key) || usedKeys.has(key) || key === 'layers_description') continue;
-        
-        const fragment = _serialize(val);
-        if (fragment) overflow.push(fragment);
+    // Phase 4: {{identity_anchor}} — aggregate of unconsumed identity fields
+    // Format: "Label: value, Label: value, ..."
+    const identityParts = [];
+    for (const [key, val] of Object.entries(identityMap || {})) {
+        if (usedIdentityKeys.has(key)) continue;
+        if (!val || typeof val !== 'string' || !val.trim()) continue;
+        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+        identityParts.push(`${label}: ${val.trim()}`);
     }
+    result = result.replace(/\{\{identity_anchor\}\}/gi, identityParts.join(', '));
 
-    const overflowStr = overflow.join(', ');
-    result = result.replace(/\{\{layers_description\}\}/gi, overflowStr);
+    // Phase 5: {{layers_description}} — aggregate of unconsumed wardrobe slots
+    // Format: "Label: item (modifier), ..."
+    const layerParts = [];
+    for (const [key, val] of Object.entries(layers || {})) {
+        if (key === 'emotion' || key === 'pose' || key === 'identity_anchor' || key === 'layers_description') continue;
+        if (usedLayerKeys.has(key) || !val) continue;
+        const item = val.item;
+        const mod  = val.modifier;
+        if (!item || item === 'None' || item === 'KEEP') continue;
+        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+        layerParts.push((mod && mod !== 'None' && mod !== 'KEEP')
+            ? `${label}: ${item} (${mod})`
+            : `${label}: ${item}`);
+    }
+    result = result.replace(/\{\{layers_description\}\}/gi, layerParts.join(', '));
 
-    // 4. Stale Placeholder Cleanup & Formatting
-    // Strip any remaining {{variable}} tags and clean up whitespace/commas.
+    // Phase 6: Stale placeholder cleanup
     return result
         .replace(/\{\{[a-zA-Z0-9_]+\}\}/g, '')
         .replace(/(,\s*)+/g, ', ')

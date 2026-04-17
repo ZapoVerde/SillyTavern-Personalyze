@@ -38,11 +38,10 @@ import { getSettings } from '../../settings.js';
 import { slugify, buildHistoryText } from '../../utils/history.js';
 import { detectSubject, detectChange, detectLayers } from '../../io/llm/subject.js';
 import { 
-    parsePhase3, 
+    parsePhase3,
     mergeLayeredUpdate,
     generateEnsembleLabel,
-    generateEnsembleKey,
-    compileIdentityString
+    generateEnsembleKey
 } from '../parsers.js';
 import { generate, deleteFiles } from '../../imageCache.js';
 import { 
@@ -242,7 +241,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
             nextLayers,
             nextLayers.emotion,
             nextLayers.pose,
-            compileIdentityString(character.identity),
+            character.identity,
             character.seed,
             false,
             signal
