@@ -207,9 +207,13 @@ export const BASE_SLOTS =[
  */
 export const BASE_IDENTITY_SLOTS =[
     'hair',
+    'eyes',
     'face',
     'body',
     'skin',
+    'age',
+    'species',
+    'features',
 ];
 
 /**

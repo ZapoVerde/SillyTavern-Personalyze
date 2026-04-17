@@ -32,7 +32,7 @@ import { addPending, removePending, ignore } from '../blacklist.js';
 import { detectAnchorScan } from '../../io/llm/workshop.js';
 import { showArchivistModal } from '../../ui/archivistModal.js';
 import { processKnownSubject } from './turn.js';
-import { compileIdentityString } from '../../logic/parsers.js';
+import { formatIdentityDisplay } from '../../logic/parsers.js';
 import {
     lockedWriteCharacterDef,
     lockedWriteLabel,
@@ -80,8 +80,8 @@ export async function runArchivistPipeline(messageId, detectedName) {
         }
 
         // 3. User Resolution Modal
-        // We compile the map to a string so the existing Modal Textarea can display it for editing
-        const identityStr = compileIdentityString(scanResult.identity);
+        // Format as Key: Value pairs so the user can review individual traits
+        const identityStr = formatIdentityDisplay(scanResult.identity);
         const resolution = await showArchivistModal(detectedName, identityStr, state.activeRoster);
 
         if (!resolution) {

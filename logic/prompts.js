@@ -230,10 +230,14 @@ INSTRUCTIONS:
 FORMAT:
 Name: [Exact name]
 Hair: [Style and color]
-Face: [Features, eye color, age]
+Eyes: [Color, shape, notable expression]
+Face: [Bone structure, facial shape]
 Body: [Build, height, silhouette]
 Skin: [Tone and texture]
-[Special Feature Name]: [Descriptive string]
+Age: [Apparent age or age range]
+Species: [Human ethnicity or non-human species/race]
+Features: [Distinguishing marks, scars, tattoos, birthmarks]
+[Special Feature Name]: [Descriptive string — repeat for each unique anatomical feature e.g. wings, horns, cybernetics]
 
 RESULT:`;
 

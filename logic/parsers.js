@@ -149,9 +149,28 @@ export function mergeLayeredUpdate(current, update, stringSlots = []) {
 }
 
 /**
+ * Formats a granular identity map as a Key: Value display string.
+ * Used in the Archivist modal so users can review individual traits.
+ *
+ * @param {Object} identityMap - { hair: "...", face: "...", ... }
+ * @returns {string}
+ */
+export function formatIdentityDisplay(identityMap) {
+    if (!identityMap || typeof identityMap !== 'object') return '';
+
+    return Object.entries(identityMap)
+        .filter(([, val]) => typeof val === 'string' && val.trim().length > 0)
+        .map(([key, val]) => {
+            const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+            return `${label}: ${val}`;
+        })
+        .join('\n');
+}
+
+/**
  * Compiles a granular identity map into a single comma-separated string.
  * Used for the {{identity_anchor}} fallback variable.
- * 
+ *
  * @param {Object} identityMap - { hair: "...", face: "...", ... }
  * @returns {string}
  */
