@@ -264,6 +264,7 @@ export function injectVnPanel() {
     // Disable toggle button
     $(`#plz-vn-toggle-btn`).on('click', () => {
         updateSetting('enabled', false);
+        $('#plz-enabled').prop('checked', false);
 
         syncVnState();
         document.dispatchEvent(new CustomEvent('plz:roster-changed'));
