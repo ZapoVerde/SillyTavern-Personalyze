@@ -38,7 +38,8 @@ import {
     mergeLayeredUpdate,
     generateEnsembleLabel,
     generateEnsembleKey,
-    parseSceneRoster
+    parseSceneRoster,
+    compileIdentityString
 } from '../parsers.js';
 import { generate, deleteFiles } from '../../imageCache.js';
 import { 
@@ -127,7 +128,7 @@ export async function runScenePipeline(messageId, signal) {
             name: char?.label || id.replace(/_/g, ' '),
             clothes,
             layers,
-            anchor:  char?.identityAnchor || '',
+            anchor:  compileIdentityString(char?.identity),
             seed:    char?.seed || 1,
         };
     });

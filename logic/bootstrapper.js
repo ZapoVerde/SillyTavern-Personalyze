@@ -25,6 +25,7 @@ import { reconstruct } from '../reconstruction.js';
 import { fetchFileIndex, generate } from '../imageCache.js';
 import { lockedPatchVisualStateImage } from '../io/dnaWriter.js';
 import { slugify } from '../utils/history.js';
+import { compileIdentityString } from '../parsers.js';
 
 /**
  * Heals a specific character's missing portrait if requirements are met.
@@ -50,7 +51,7 @@ async function healCharacter(characterId, lastAiIdx) {
             chain.layers,
             chain.layers.emotion,
             chain.layers.pose || 'upright',
-            character.identityAnchor,
+            compileIdentityString(character.identity),
             character.seed
         );
 

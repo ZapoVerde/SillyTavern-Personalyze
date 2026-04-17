@@ -41,7 +41,8 @@ import {
     parsePhase3, 
     mergeLayeredUpdate,
     generateEnsembleLabel,
-    generateEnsembleKey
+    generateEnsembleKey,
+    compileIdentityString
 } from '../parsers.js';
 import { generate, deleteFiles } from '../../imageCache.js';
 import { 
@@ -205,7 +206,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
                 text,
                 history,
                 charName,
-                character.identityAnchor,
+                character.identity,
                 currentLayers,
                 character.slots,
                 s.smartProfileId
@@ -241,7 +242,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
             nextLayers,
             nextLayers.emotion,
             nextLayers.pose,
-            character.identityAnchor,
+            compileIdentityString(character.identity),
             character.seed,
             false,
             signal
