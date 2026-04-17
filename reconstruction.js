@@ -1,18 +1,19 @@
 /**
  * @file data/default-user/extensions/personalyze/reconstruction.js
- * @stamp {"utc":"2026-04-16T21:30:00.000Z"}
+ * @stamp {"utc":"2026-04-17T13:20:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Derives PersonaLyze runtime state from a single forward pass over the chat DNA.
- * Reconstructs character definitions, saved ensembles, and the layered visual state.
+ * Reconstructs character definitions, saved ensembles, and the granular physical identity.
  *
- * Updated for Style-Specific Render Pipeline:
- * 1. Removed character-level engine and LoRA hydration.
- * 2. Legacy 'lora_update' and 'engine' fields in 'character_def' are now ignored.
+ * Updated for Granular Identity Architecture:
+ * 1. Replaced monolithic identityAnchor with a structured identity map.
+ * 2. Implemented migration logic for legacy 'anchor' strings (maps to identity.base).
+ * 3. Added support for 'identity_update' DNA records.
  *
  * @api-declaration
  * reconstruct(chat) → {
- *   chatCharacters:      { [characterId]: { label, identityAnchor, seed, ensembles, aka, defaultEnsemble, slots, styleName } },
+ *   chatCharacters:      { [characterId]: { label, identity, seed, ensembles, aka, defaultEnsemble, slots, styleName } },
  *   characterChain:      { [characterId]: { layers, image } },
  *   activeRoster:        string[],
  *   activeCharacterId:   string|null,
@@ -27,7 +28,7 @@
  *     external_io: []
  */
 
-import { BASE_SLOTS } from './defaults.js';
+import { BASE_SLOTS, BASE_IDENTITY_SLOTS } from './defaults.js';
 
 /**
  * Reads all PLZ DNA records from the chat array and builds the runtime state.
@@ -53,14 +54,16 @@ export function reconstruct(chat) {
         if (!chatCharacters[id]) {
             chatCharacters[id] = {
                 label:           id.replace(/_/g, ' '),
-                identityAnchor:  '',
+                identity:        {}, // Granular Physical Map
                 seed:            1,
                 ensembles:       {},
                 aka:             [],
                 defaultEnsemble: null,
                 styleName:       null,
-                slots:           [...BASE_SLOTS], // Default minimalist template
+                slots:           [...BASE_SLOTS],
             };
+            // Initialize empty base slots for consistency
+            BASE_IDENTITY_SLOTS.forEach(s => chatCharacters[id].identity[s] = '');
         }
         return chatCharacters[id];
     };
@@ -83,9 +86,30 @@ export function reconstruct(chat) {
                 case 'character_def': {
                     if (!rec.characterId) break;
                     const char = ensureChar(rec.characterId);
-                    if (rec.anchor !== undefined) char.identityAnchor = rec.anchor;
-                    if (rec.seed !== undefined)   char.seed = rec.seed;
-                    // Engine field is ignored (moved to Global Styles)
+                    
+                    // Support new identity map format
+                    if (rec.identity && typeof rec.identity === 'object') {
+                        Object.assign(char.identity, rec.identity);
+                    } 
+                    // Migration Path: handle legacy string anchor
+                    else if (rec.anchor !== undefined) {
+                        if (typeof rec.anchor === 'string') {
+                            char.identity.base = rec.anchor;
+                        } else if (typeof rec.anchor === 'object' && rec.anchor !== null) {
+                            Object.assign(char.identity, rec.anchor);
+                        }
+                    }
+
+                    if (rec.seed !== undefined) char.seed = rec.seed;
+                    break;
+                }
+
+                case 'identity_update': {
+                    if (!rec.characterId || !rec.identity) break;
+                    const char = ensureChar(rec.characterId);
+                    if (typeof rec.identity === 'object') {
+                        Object.assign(char.identity, rec.identity);
+                    }
                     break;
                 }
 

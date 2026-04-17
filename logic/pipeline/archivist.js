@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/archivist.js
- * @stamp {"utc":"2026-04-12T10:10:00.000Z"}
+ * @stamp {"utc":"2026-04-17T15:30:00.000Z"}
  * @architectural-role Orchestrator (Phase 1.5)
  * @description
  * Manages the resolution of unrecognized characters detected in the narrative.
@@ -9,8 +9,10 @@
  * 2. User resolution via a 3-way modal (Create, Alias, or Ignore).
  * 3. DNA commitment based on the choice.
  *
- * Updated for the "Clean Slate Fix": ensures newly created characters start
- * with a blank wardrobe.
+ * Updated for Granular Identity Architecture:
+ * 1. Consumes structured identity map from detectAnchorScan.
+ * 2. Passes compiled identity string to modal for user review.
+ * 3. Commits granular identity map to character DNA.
  *
  * @api-declaration
  * runArchivistPipeline(messageId, detectedName) -> Promise<void>
@@ -30,6 +32,7 @@ import { addPending, removePending, ignore } from '../blacklist.js';
 import { detectAnchorScan } from '../../io/llm/workshop.js';
 import { showArchivistModal } from '../../ui/archivistModal.js';
 import { processKnownSubject } from './turn.js';
+import { compileIdentityString } from '../../logic/parsers.js';
 import {
     lockedWriteCharacterDef,
     lockedWriteLabel,
@@ -70,15 +73,16 @@ export async function runArchivistPipeline(messageId, detectedName) {
             s.describerProfileId || s.smartProfileId
         );
 
-        if (!scanResult) {
+        if (!scanResult || !scanResult.identity) {
             log('Archivist', 'Failed to extract physical identity. Subject may be too minor.');
             removePending(detectedName);
             return;
         }
 
         // 3. User Resolution Modal
-        // Returns { action: 'create'|'alias'|'ignore', targetId?: string, anchor?: string }
-        const resolution = await showArchivistModal(detectedName, scanResult.anchor, state.activeRoster);
+        // We compile the map to a string so the existing Modal Textarea can display it for editing
+        const identityStr = compileIdentityString(scanResult.identity);
+        const resolution = await showArchivistModal(detectedName, identityStr, state.activeRoster);
 
         if (!resolution) {
             log('Archivist', 'Resolution cancelled by user.');
@@ -90,14 +94,19 @@ export async function runArchivistPipeline(messageId, detectedName) {
         switch (resolution.action) {
             case 'create': {
                 const newId = slugify(detectedName);
-                const finalAnchor = resolution.anchor || scanResult.anchor;
+                
+                // If user edited the text in the modal, we treat it as the 'base' physical slot.
+                // If they didn't touch it, we keep the granular map from the LLM.
+                const finalIdentity = (resolution.anchor && resolution.anchor !== identityStr)
+                    ? { base: resolution.anchor }
+                    : scanResult.identity;
 
-                await lockedWriteCharacterDef(messageId, newId, finalAnchor, 1);
+                await lockedWriteCharacterDef(messageId, newId, finalIdentity, 1);
                 await lockedWriteLabel(messageId, newId, detectedName);
-                upsertChatCharacterDef(newId, finalAnchor, 1);
+                upsertChatCharacterDef(newId, finalIdentity, 1);
                 upsertChatCharacterLabel(newId, detectedName);
 
-                // CLEAN SLATE FIX: Ensure they don't inherit previous character's clothes
+                // Ensure they start with a clean wardrobe
                 updateChainLayers(newId, getCleanLayers(), null);
                 
                 const newRoster = [...new Set([...state.activeRoster, newId])];

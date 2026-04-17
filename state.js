@@ -1,12 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/state.js
- * @stamp {"utc":"2026-04-19T21:15:00.000Z"}
+ * @stamp {"utc":"2026-04-17T13:10:00.000Z"}
  * @architectural-role Stateful Owner (Runtime State)
  * @description
  * Single source of truth for all PersonaLyze in-memory runtime state.
  * 
- * Updated for Explicit Seed Architecture:
- * 1. ensureChatChar now defaults the seed to a random integer between 1 and 999.
+ * Updated for Granular Identity Architecture:
+ * 1. Replaced identityAnchor (string) with identity (map of strings).
+ * 2. Updated ensurers and setters to handle structured physical traits.
  * 
  * @api-declaration
  * state                                    — Read-only access to runtime data.
@@ -23,7 +24,7 @@
  * addToFileIndex(file)                     — Appends a filename to the set.
  * removeFromFileIndex(filenames)           — Removes filenames from the set.
  * setActiveRoster(roster)                  — Replaces the active roster for this chat.
- * upsertChatCharacterDef(id, anchor, seed) — Updates local DNA identity.
+ * upsertChatCharacterDef(id, identity, seed) — Updates local DNA identity map.
  * upsertChatCharacterLabel(id, label)      — Updates a character's display label.
  * upsertChatEnsemble(id, key, label, layers) — Updates local DNA ensemble.
  * deleteChatEnsemble(id, key)              — Removes an ensemble from local DNA.
@@ -40,7 +41,7 @@
  *     external_io: [DOM (CustomEvents)]
  */
 
-import { BASE_SLOTS } from './defaults.js';
+import { BASE_SLOTS, BASE_IDENTITY_SLOTS } from './defaults.js';
 
 export const state = {
     // Active character for the current chat turn
@@ -60,7 +61,7 @@ export const state = {
 
     // Local DNA definitions
     // Keyed by characterId.
-    chatCharacters: {}, // { [id]: { label, identityAnchor, seed, ensembles, aka, defaultEnsemble, slots: string[], styleName } }
+    chatCharacters: {}, // { [id]: { label, identity: {}, seed, ensembles, aka, defaultEnsemble, slots: string[], styleName } }
 
     // Per-chat roster
     activeRoster: [],
@@ -174,8 +175,6 @@ export function removeFromFileIndex(filenames) {
 
 /**
  * Generates a blank visual state for a character.
- * Prevents newly created characters from inheriting the active layers of
- * the previous character.
  * 
  * @param {string[]} slots - The category list for this character.
  * @returns {object}
@@ -197,28 +196,33 @@ export function getCleanLayers(slots) {
  */
 export function ensureChatChar(id) {
     if (!state.chatCharacters[id]) {
-        // Deterministic Continuity: Default new characters to a fixed random seed
-        // within the 3-digit range (1-999) instead of -1.
         const defaultSeed = Math.floor(Math.random() * 999) + 1;
 
         state.chatCharacters[id] = { 
             label: id.replace(/_/g, ' '), 
-            identityAnchor: '', 
+            identity: {}, 
             seed: defaultSeed, 
             ensembles: {}, 
             aka: [], 
             defaultEnsemble: null, 
             styleName: null,
-            slots: [...BASE_SLOTS], // Default template
+            slots: [...BASE_SLOTS], 
         };
+        
+        // Init with empty base identity slots
+        BASE_IDENTITY_SLOTS.forEach(slot => {
+            state.chatCharacters[id].identity[slot] = '';
+        });
     }
     return state.chatCharacters[id];
 }
 
-/** Updates identity anchor and seed for a character in local DNA. */
-export function upsertChatCharacterDef(id, anchor, seed) {
+/** Updates granular identity map and seed for a character in local DNA. */
+export function upsertChatCharacterDef(id, identity, seed) {
     const char = ensureChatChar(id);
-    char.identityAnchor = anchor;
+    if (typeof identity === 'object' && identity !== null) {
+        char.identity = structuredClone(identity);
+    }
     char.seed = seed;
 }
 

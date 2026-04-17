@@ -1,18 +1,30 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleTemplates.js
- * @stamp {"utc":"2026-04-17T01:20:00.000Z"}
+ * @stamp {"utc":"2026-04-17T14:15:00.000Z"}
  * @architectural-role Pure UI Template (Global Styles)
  * @description
  * Generates the HTML for the Global Styles management tab.
  * Implements the "Working Table" pattern with Save/Revert actions and dirty indicators.
  * 
+ * Updated for Granular Identity Architecture:
+ * 1. Implemented dynamic variable legend that reflects character physical traits.
+ * 2. Added support for granular tokens ({{hair}}, {{face}}, etc.) in the UI guide.
+ * 
  * @api-declaration
- * getStylesTabHTML(styleLibrary, defaultName, activeName, styleObj, isDirty)
- * ...
+ * getStylesTabHTML(styleLibrary, defaultName, activeName, styleObj, isDirty) -> string
+ * getVariableLegendHTML() -> string
+ * getLoraTagsHTML(loras) -> string
+ * 
+ * @contract
+ *   assertions:
+ *     purity: Partial Pure (Reads State for Dynamic Legend)
+ *     state_ownership: []
+ *     external_io: []
  */
 
 import { escapeHtml } from '../../utils/history.js';
 import { RUNWARE_LORA_REGISTRY } from '../../defaults.js';
+import { state } from '../../state.js';
 
 /**
  * Main Styles Tab Layout.
@@ -85,22 +97,39 @@ export function getStylesTabHTML(styleLibrary, defaultName, activeName, styleObj
 
 /**
  * Variable usage helper.
+ * Dynamically lists variables based on the Workshop character's physical traits.
  */
 export function getVariableLegendHTML() {
-    const vars = [
-        { v: '{{identity_anchor}}', d: 'Physical description' },
+    const activeId = state._workshopCharacterId || state.activeCharacterId;
+    const char = state.chatCharacters[activeId];
+    
+    const standardVars = [
+        { v: '{{identity_anchor}}', d: 'Joined physical description' },
         { v: '{{layers_description}}', d: 'Current wardrobe' },
         { v: '{{emotion}}', d: 'Expression adjective' },
         { v: '{{pose}}', d: 'Current posture' }
     ];
 
+    const granularVars = [];
+    if (char?.identity) {
+        Object.keys(char.identity).forEach(key => {
+            granularVars.push({
+                v: `{{${key}}}`,
+                d: `Physical: ${key.replace(/_/g, ' ')}`
+            });
+        });
+    }
+
+    const allVars = [...standardVars, ...granularVars];
+
     return `
-    <div style="display:grid; grid-template-columns: 1fr; gap:4px; opacity:0.6; font-size:0.75em;">
-        ${vars.map(v => `
+    <div style="display:grid; grid-template-columns: 1fr; gap:4px; opacity:0.6; font-size:0.75em; max-height:120px; overflow-y:auto; padding-right:5px;">
+        ${allVars.map(v => `
             <div style="display:flex; align-items:center; gap:8px;">
                 <code style="background:rgba(0,0,0,0.3); padding:1px 4px; border-radius:3px; color:var(--SmartThemeQuoteColor); cursor:pointer;" 
+                      title="Click to copy"
                       onclick="navigator.clipboard.writeText('${v.v}')">${v.v}</code>
-                <span>— ${v.d}</span>
+                <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">— ${v.d}</span>
             </div>`).join('')}
     </div>`;
 }

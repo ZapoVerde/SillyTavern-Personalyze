@@ -1,13 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/prompts.js
- * @stamp {"utc":"2026-04-14T09:50:00.000Z"}
+ * @stamp {"utc":"2026-04-17T13:40:00.000Z"}
  * @architectural-role Pipeline Templates
  * @description
  * Defines the strict Key-Value templates for the Layered State Pipeline.
  * Optimized for Dual-Model routing (Fast/Smart).
  * 
- * Updated for the Multi-Character Architecture:
- * 1. Added SCENE_ROSTER_PROMPT for stable character discovery during transitions.
+ * Updated for Granular Identity Architecture:
+ * 1. Overhauled ANCHOR_SCAN_PROMPT for structured physical trait extraction.
+ * 2. Updated PHASE_3_LAYERED_PROMPT to handle permanent physical changes.
  * 
  * @api-declaration
  * PHASE_1_SUBJECT_PROMPT
@@ -19,6 +20,12 @@
  * REDRESS_PROMPT
  * ANCHOR_SCAN_PROMPT
  * FORCE_COSTUME_PROMPT
+ * 
+ * @contract
+ *   assertions:
+ *     purity: Pure Data
+ *     state_ownership: []
+ *     external_io: []
  */
 
 // ─── Phase 1-3: Standard Pipeline ─────────────────────────────────────────────
@@ -63,7 +70,7 @@ LATEST MESSAGE:
 {{message}}
 
 QUESTION:
-In the LATEST MESSAGE, does the character explicitly change clothes, put something on, take something off, or does an item get dirty/damaged? Has their emotion, pose, or body language significantly shifted?
+In the LATEST MESSAGE, does the character explicitly change clothes, put something on, take something off, or does an item get dirty/damaged? Has their emotion, pose, or body language significantly shifted? Or has their physical appearance changed (e.g. hair cut, new scar)?
 
 Reply ONLY with 'YES' or 'NO'.
 
@@ -85,11 +92,12 @@ CONTEXT (Previous Turns):
 
 RULES:
 1. Only update a slot if the LATEST MESSAGE explicitly describes a change or removal.
-2. If an item is put on or modified: [Item] | [Modifier]
+2. For Wardrobe items: [Item] | [Modifier]
 3. If an item is explicitly REMOVED (e.g. "took off", "discarded"): None | None
 4. If a slot is UNMENTIONED or UNCHANGED: KEEP | KEEP
-5. Full-body items: If a character wears a single item covering multiple slots (e.g. a "Dress" or "Robe"), put the primary item in the "Top" or "Body" slot and set the "Bottom" slot to "None".
-6. DO NOT OUTPUT JSON.
+5. Full-body items: If a character wears a single item covering multiple slots (e.g. a "Dress"), put it in "Top" and set "Bottom" to "None".
+6. Physical Features: If the character's permanent physical body changes (e.g. "cuts hair", "gets a scar"), update that slot with a simple descriptive string.
+7. DO NOT OUTPUT JSON.
 
 FORMAT:
 {{slot_format_instructions}}
@@ -214,13 +222,20 @@ TRANSCRIPT:
 {{context}}
 
 INSTRUCTIONS:
-1. Extract only permanent physical features: face, hair, eye colour, build, marks.
-2. Do NOT include clothing or current mood.
-3. Output ONLY the Name and Identity Anchor.
+1. Extract only permanent physical features.
+2. Do NOT include current clothing or temporary items.
+3. Identify unique features (wings, horns, cybernetics, scars) as separate entries if present.
+4. Output as a structured Key-Value list.
 
 FORMAT:
 Name: [Exact name]
-Identity Anchor: [2-3 sentences for an image generator]`;
+Hair: [Style and color]
+Face: [Features, eye color, age]
+Body: [Build, height, silhouette]
+Skin: [Tone and texture]
+[Special Feature Name]: [Descriptive string]
+
+RESULT:`;
 
 /** Forces extraction from a specific turn snippet. */
 export const FORCE_COSTUME_PROMPT =

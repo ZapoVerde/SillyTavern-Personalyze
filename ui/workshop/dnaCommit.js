@@ -1,15 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaCommit.js
- * @stamp {"utc":"2026-04-16T22:50:00.000Z"}
+ * @stamp {"utc":"2026-04-17T22:50:00.000Z"}
  * @architectural-role UI Sub-module (Promotion & Generation)
  * @description
  * The final commitment gateway for the Studio dashboard. 
  * Handles 'Apply to Turn' and the promotion of ghost characters ('__new__') 
  * into permanent DNA entries.
  * 
- * Updated for Style-Specific Render Pipeline:
- * 1. Removed engine argument from generate() and lockedWriteCharacterDef().
- * 2. Removed engine derivation logic (now handled by executor/compiler).
+ * Updated for Granular Identity Architecture:
+ * 1. Fixed Issue A: Removed reference to deleted #plz-studio-anchor (Fixes TypeError).
+ * 2. Fixed Issue B: Ghost promotion now correctly writes the identity map.
+ * 3. Updated Bracket Guard to check physical trait fields via map serialization.
  * 
  * @api-declaration
  * bindCommitHandlers($overlay)
@@ -39,11 +40,24 @@ import {
     lockedWriteEnsemble
 } from '../../io/dnaWriter.js';
 import { compilePrompt as compile } from '../../logic/promptCompiler.js';
-import { generateEnsembleLabel, generateEnsembleKey } from '../../logic/parsers.js';
+import { generateEnsembleLabel, generateEnsembleKey, compileIdentityString } from '../../logic/parsers.js';
 import { generate, deleteFiles } from '../../imageCache.js';
 import { getGridLayers, renderStudioView, renderDNAView } from './dnaListeners.js';
 
 let layerSaveTimeout = null;
+
+/**
+ * Scrapes the Physical Identity grid and returns a clean map of strings.
+ * @returns {Object}
+ */
+function getIdentityGridMap() {
+    const map = {};
+    $('.plz-studio-identity-item').each(function() {
+        const key = $(this).data('key');
+        map[key] = $(this).val().trim();
+    });
+    return map;
+}
 
 /**
  * Binds event listeners for character promotion and turn commitment.
@@ -81,11 +95,11 @@ export function bindCommitHandlers($overlay) {
 
         // ─── Phase 0: Buffer & Guard ───
         const layers = getGridLayers();
+        const identityMap = getIdentityGridMap(); // Scrape the new grid
         const labelInput = $('#plz-studio-label').val().trim();
-        const anchorInput = $('#plz-studio-anchor').val().trim();
 
-        // Bracket Guard: Check for LLM placeholders
-        const fullSerializedState = JSON.stringify(layers) + labelInput + anchorInput;
+        // Bracket Guard: Check for LLM placeholders in both wardrobe and physical traits
+        const fullSerializedState = JSON.stringify(layers) + JSON.stringify(identityMap) + labelInput;
         if (fullSerializedState.includes('[') || fullSerializedState.includes(']')) {
             const confirmed = await callPopup(
                 '<h3>Potential Placeholder Detected</h3>' +
@@ -110,8 +124,12 @@ export function bindCommitHandlers($overlay) {
 
             const charData = state.chatCharacters['__new__'];
             charData.label = labelInput;
+            
+            // Sync the scraped grid into charData before commitment
+            charData.identity = identityMap;
 
-            await lockedWriteCharacterDef(lastAiIdx, targetId, charData.identityAnchor, charData.seed);
+            // Commit structured identity instead of legacy identityAnchor string
+            await lockedWriteCharacterDef(lastAiIdx, targetId, charData.identity, charData.seed);
             await lockedWriteLabel(lastAiIdx, targetId, labelInput);
             
             const newRoster = [...new Set([...state.activeRoster, targetId])];
@@ -138,11 +156,15 @@ export function bindCommitHandlers($overlay) {
             setWorkshopCharacter(id);
             
             document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+        } else {
+            // Ensure memory is synced for existing characters before generation
+            state.chatCharacters[id].identity = identityMap;
         }
 
         // ─── Phase 2: Visual State Commitment ───
         const char = state.chatCharacters[id];
-        const prompt = compile(char.identityAnchor, layers);
+        const identityAnchor = compileIdentityString(char.identity);
+        const prompt = compile(identityAnchor, layers);
 
         const ensembleLabel = generateEnsembleLabel(layers);
         const ensembleKey   = generateEnsembleKey(layers);
@@ -170,7 +192,7 @@ export function bindCommitHandlers($overlay) {
                 prompt, 
                 layers.emotion, 
                 layers.pose, 
-                char.identityAnchor, 
+                char.identity, // Pass structured map
                 char.seed
             );
 
@@ -179,7 +201,6 @@ export function bindCommitHandlers($overlay) {
             updateChainLayers(id, layers, file);
             await lockedPatchVisualStateImage(lastAiIdx, id, file, recordId);
             
-            // Ephemeral Cleanup: delete previous active images for this character (regardless of tag/emotion)
             if (!s.keepCache) {
                 const charPrefix = `plz_${id}_`;
                 const staleFiles = Array.from(state.fileIndex).filter(f => 

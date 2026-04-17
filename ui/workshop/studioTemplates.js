@@ -1,13 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/studioTemplates.js
- * @stamp {"utc":"2026-04-19T22:00:00.000Z"}
+ * @stamp {"utc":"2026-04-17T14:10:00.000Z"}
  * @architectural-role Pure UI Template (Studio)
  * @description
  * Generates the HTML strings for the Workshop Studio (Character Dashboard).
  * 
- * Updated for Explicit Seed Architecture:
- * 1. Added Seed number input (constrained to 3 digits: -1 to 999).
- * 2. Added Auto-increment toggle linked to the global workflow preference.
+ * Updated for Granular Identity Architecture:
+ * 1. Replaced monolithic anchor textarea with a granular Identity Grid.
+ * 2. Added support for dynamic Physical Feature slots (Special_x).
  * 
  * @api-declaration
  * getStudioHTML(characterId, character, layers, styleLibrary, defaultStyleName, autoIncrementSeed)
@@ -21,26 +21,36 @@
  */
 
 import { escapeHtml } from '../../utils/history.js';
-import { BASE_SLOTS } from '../../defaults.js';
+import { BASE_SLOTS, BASE_IDENTITY_SLOTS } from '../../defaults.js';
 import { getDatalistId } from '../../utils/domRegistry.js';
 
 /** 
- * Renders the Studio dashboard with the Dynamic Layered Grid. 
+ * Renders the Studio dashboard with the Granular Identity and Wardrobe Grids. 
  */
 export function getStudioHTML(characterId, character, layers, styleLibrary = {}, defaultStyleName = '', autoIncrementSeed = false) {
     const isGhost = characterId === '__new__';
     const displayName = character.label || characterId.replace(/_/g, ' ');
-    const akaTagsHTML = (character.aka || []).map(alias => `
-        <span class="plz-aka-tag" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;background:rgba(255,255,255,0.08);font-size:0.8em;">
-            ${escapeHtml(alias)}<i class="fa-solid fa-xmark plz-aka-remove" data-alias="${escapeHtml(alias)}" style="cursor:pointer;opacity:0.6;"></i>
-        </span>`).join('');
+    
+    // 1. Identity Grid Construction
+    const identityMap = character.identity || {};
+    const identityHTML = Object.entries(identityMap).map(([key, val]) => {
+        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+        const isDeletable = !BASE_IDENTITY_SLOTS.includes(key) && key !== 'base';
+        return getIdentityInputHTML(characterId, label, key, val, isDeletable);
+    }).join('');
 
+    // 2. Wardrobe Grid Construction
     const slots = character.slots || [...BASE_SLOTS];
     const slotsHTML = slots.map(key => {
         const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
         const isDeletable = !BASE_SLOTS.includes(key);
         return getLayerInputHTML(characterId, label, key, layers[key], isDeletable);
     }).join('');
+
+    const akaTagsHTML = (character.aka || []).map(alias => `
+        <span class="plz-aka-tag" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;background:rgba(255,255,255,0.08);font-size:0.8em;">
+            ${escapeHtml(alias)}<i class="fa-solid fa-xmark plz-aka-remove" data-alias="${escapeHtml(alias)}" style="cursor:pointer;opacity:0.6;"></i>
+        </span>`).join('');
 
     const idLabel = isGhost 
         ? `<small style="opacity:0.35;"><i>Unsaved Character</i></small>`
@@ -62,17 +72,25 @@ export function getStudioHTML(characterId, character, layers, styleLibrary = {},
         </div>
     </div>
 
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;">
-        <label class="plz-studio-label">Identity Anchor</label>
-        <button class="menu_button plz-anchor-scan" data-mode="studio" style="font-size:0.75em;padding:2px 8px;">Scan Chat</button>
-    </div>
-    <div class="plz-input-wrapper" style="margin-bottom:12px;">
-        <textarea id="plz-studio-anchor" class="text_pole plz-auto-textarea" rows="2"
-                  placeholder="Permanent physical features (face, hair, build)..."
-                  style="width:100%;font-size:0.88em;">${escapeHtml(character.identityAnchor)}</textarea>
-        <div class="plz-input-clear plz-studio-clear plz-clear-textarea" title="Clear Identity">✕</div>
+    <!-- Section: Physical Identity -->
+    <div style="margin-bottom:20px;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;">
+            <div style="font-size:0.8em;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;font-weight:bold;">Physical Identity</div>
+            <button class="menu_button plz-anchor-scan" data-mode="studio" style="font-size:0.75em;padding:2px 8px;">Scan Transcript</button>
+        </div>
+        
+        <div id="plz-identity-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px;">
+            ${identityHTML}
+        </div>
+
+        <div style="display:flex; justify-content:flex-end;">
+            <button id="plz-studio-add-feature" class="menu_button" style="font-size:0.75em; opacity:0.7;">
+                <i class="fa-solid fa-plus"></i> Add Physical Feature
+            </button>
+        </div>
     </div>
 
+    <!-- Section: Metadata -->
     <div style="margin-bottom:12px;">
         <label class="plz-studio-label" style="display:block;margin-bottom:5px;">Aliases (AKAs)</label>
         <div id="plz-studio-aka-tags" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;min-height:20px;">
@@ -84,6 +102,8 @@ export function getStudioHTML(characterId, character, layers, styleLibrary = {},
         </div>
     </div>
 
+    <!-- Section: Wardrobe -->
+    <div style="font-size:0.8em;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;font-weight:bold;margin-bottom:8px;">Current Wardrobe</div>
     <div class="plz-layered-grid" style="margin-bottom:12px;">
         ${slotsHTML}
         ${getEmotionInputHTML(characterId, layers.emotion)}
@@ -91,15 +111,15 @@ export function getStudioHTML(characterId, character, layers, styleLibrary = {},
     </div>
 
     <div style="display:flex; gap:6px; margin-bottom:20px;">
-        <button id="plz-studio-add-slot" class="menu_button" style="font-size:0.85em;"><i class="fa-solid fa-plus"></i> Add Category</button>
+        <button id="plz-studio-add-slot" class="menu_button" style="font-size:0.85em;"><i class="fa-solid fa-plus"></i> Add Wardrobe Category</button>
         <div style="flex:1;"></div>
-        <input id="plz-studio-hint" type="text" class="text_pole" placeholder="Hint (e.g. 'Formal')" style="width:120px; font-size:0.85em;" />
+        <input id="plz-studio-hint" type="text" class="text_pole" placeholder="Wardrobe Hint" style="width:120px; font-size:0.85em;" />
         <button id="plz-studio-force-costume" class="menu_button" style="font-size:0.85em;">Scan</button>
         ${isGhost ? '<button id="plz-studio-layers-save" class="menu_button" style="padding:0 15px;">Register &amp; Apply</button>' : ''}
     </div>
 
+    <!-- Section: Technical Rendering -->
     <div style="margin-top:20px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.07);">
-        <!-- Generation DNA Row -->
         <div style="display:flex; align-items:center; gap:15px; margin-bottom:12px;">
             <div style="flex:1; display:flex; align-items:center; gap:8px;">
                 <label class="plz-studio-label" style="margin:0;">Identity Seed</label>
@@ -138,6 +158,29 @@ export function getStudioHTML(characterId, character, layers, styleLibrary = {},
     </div>
 
     <div id="plz-studio-datalists-container"></div>`;
+}
+
+/** 
+ * Helper for granular physical trait rows (Simple Strings).
+ */
+function getIdentityInputHTML(charId, label, key, val, deletable = false) {
+    const deleteBtn = deletable 
+        ? `<i class="fa-solid fa-trash-can plz-studio-delete-identity" data-key="${key}" 
+              style="font-size:0.8em; opacity:0.3; cursor:pointer; margin-left:5px;" title="Delete Feature"></i>` 
+        : '';
+
+    return `
+    <div class="plz-identity-input">
+        <div style="display:flex; align-items:center; margin-bottom:2px;">
+            <label style="font-size:0.75em;opacity:0.6;flex:1;">${label}</label>
+            ${deleteBtn}
+        </div>
+        <div class="plz-input-wrapper">
+            <input class="plz-studio-identity-item text_pole" data-key="${key}" type="text" 
+                   value="${escapeHtml(val || '')}" style="width:100%;" placeholder="Feature description..." />
+            <div class="plz-input-clear" title="Clear">✕</div>
+        </div>
+    </div>`;
 }
 
 function getLayerInputHTML(charId, label, key, val, deletable = false) {

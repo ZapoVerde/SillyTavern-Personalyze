@@ -1,20 +1,21 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/compiler.js
- * @stamp {"utc":"2026-04-18T20:10:00.000Z"}
+ * @stamp {"utc":"2026-04-17T13:55:00.000Z"}
  * @architectural-role State Derivation (Visual Requirements)
  * @description
  * Handles resolution measurement and prompt synthesis.
  * Determines the target dimensions based on UI footprint or style overrides,
  * and compiles template variables into a final prompt string.
  * 
- * Updated for Sandbox vs. Checkpoint Pattern:
- * 1. resolveStyle() prioritizes styleWorkspaces (Live Sandbox) over styleLibrary (Checkpoint).
- * 2. Included engineParams in the resolved style package for dynamic model support.
+ * Updated for Granular Identity Architecture:
+ * 1. Updated finalizePrompt to accept the identity map.
+ * 2. Implemented dynamic variable injection for every key in the identity map.
+ * 3. Maintained {{identity_anchor}} as a joined fallback for backward compatibility.
  * 
  * @api-declaration
  * resolveDimensions(characterId, styleObj) -> { width: number, height: number }
  * resolveStyle(characterId) -> Object (The expanded Style Package)
- * finalizePrompt(subjectPrompt, anchor, emotion, pose, template) -> string
+ * finalizePrompt(subjectPrompt, identity, emotion, pose, template) -> string
  * 
  * @contract
  *   assertions:
@@ -32,6 +33,7 @@ import {
 } from '../../defaults.js';
 import { getSettings, getMetaSettings } from '../../settings.js';
 import { state } from '../../state.js';
+import { compileIdentityString } from '../../logic/parsers.js';
 
 /**
  * Resolves the target generation dimensions.
@@ -100,7 +102,6 @@ export function resolveStyle(characterId) {
     if (!styleName) return fallback;
 
     // ─── Workspace Priority (The Sandbox) ───
-    // We check the workspace first so that "dirty" content is functional immediately.
     const style = ws[styleName] || lib[styleName];
 
     if (style) {
@@ -121,31 +122,44 @@ export function resolveStyle(characterId) {
 
 /**
  * Compiles visual variables into a final prompt string.
- * Supports template variables: {{identity_anchor}}, {{layers_description}},
- * {{emotion}}, {{pose}}.
+ * Supports template variables: {{hair}}, {{face}}, {{identity_anchor}}, 
+ * {{layers_description}}, {{emotion}}, {{pose}}.
  * 
- * Uses 'gi' regex flags to ensure case-insensitive replacement.
+ * Uses 'gi' regex flags for case-insensitive replacement.
  * 
  * @param {string} subjectPrompt - The layered description (outfit).
- * @param {string} anchor - Physical identity features.
+ * @param {Object|string} identity - Granular physical traits map or legacy anchor string.
  * @param {string} emotion - Current emotion label.
  * @param {string} pose - Current pose description.
  * @param {string} template - The style template string to use.
  * @returns {string}
  */
-export function finalizePrompt(subjectPrompt, anchor = '', emotion = '', pose = '', template = '') {
+export function finalizePrompt(subjectPrompt, identity, emotion = '', pose = '', template = '') {
     const effectiveStyle = template || getSettings().vnStyleSuffix || '';
+    
+    let result = effectiveStyle;
 
-    if (effectiveStyle.includes('{{')) {
-        return effectiveStyle
-            .replace(/\{\{identity_anchor\}\}/gi, anchor)
-            .replace(/\{\{layers_description\}\}/gi, subjectPrompt)
-            .replace(/\{\{emotion\}\}/gi, emotion)
-            .replace(/\{\{pose\}\}/gi, pose)
-            .replace(/(,\s*)+/g, ', ')
-            .trim();
+    // 1. Physical Identity Logic
+    if (identity && typeof identity === 'object') {
+        // Granular Injection: Replace {{hair}}, {{face}}, etc.
+        for (const [key, val] of Object.entries(identity)) {
+            const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'gi');
+            result = result.replace(regex, val || '');
+        }
+        
+        // Joined Fallback: Replace {{identity_anchor}} with compiled string
+        const joinedAnchor = compileIdentityString(identity);
+        result = result.replace(/\{\{identity_anchor\}\}/gi, joinedAnchor);
+    } else {
+        // Legacy Fallback if passed a string
+        result = result.replace(/\{\{identity_anchor\}\}/gi, identity || '');
     }
 
-    // Fallback for legacy static styles
-    return `${subjectPrompt}, ${effectiveStyle}`.replace(/(,\s*)+/g, ', ').trim();
+    // 2. Narrative Variable Injection
+    return result
+        .replace(/\{\{layers_description\}\}/gi, subjectPrompt)
+        .replace(/\{\{emotion\}\}/gi, emotion)
+        .replace(/\{\{pose\}\}/gi, pose)
+        .replace(/(,\s*)+/g, ', ')
+        .trim();
 }

@@ -1,18 +1,19 @@
 /**
  * @file data/default-user/extensions/personalyze/io/llm/subject.js
- * @stamp {"utc":"2026-04-11T16:00:00.000Z"}
+ * @stamp {"utc":"2026-04-17T13:45:00.000Z"}
  * @architectural-role IO Executor (LLM)
  * @description
  * Primary LLM interface for the 3-Phase standard pipeline.
  *
- * Updated for Flexible Wardrobe:
- * 1. State summaries now omit empty/null slots.
- * 2. detectLayers builds dynamic format instructions based on character slots.
+ * Updated for Granular Identity Architecture:
+ * 1. Added support for identity map in detectLayers.
+ * 2. Compiles granular identity into a fallback string for prompt context.
+ * 3. Dynamically generates format instructions for both clothing and identity slots.
  *
  * @api-declaration
  * detectSubject(message, history, rosterIds, chatCharacters, profileId) -> Promise<string|null>
  * detectChange(message, history, charName, layers, profileId) -> Promise<boolean>
- * detectLayers(message, history, charName, anchor, layers, slots, profileId) -> Promise<string>
+ * detectLayers(message, history, charName, identityMap, layers, slots, profileId) -> Promise<string>
  * 
  * @contract
  *   assertions:
@@ -30,7 +31,7 @@ import {
     PHASE_2_CHANGE_PROMPT, 
     PHASE_3_LAYERED_PROMPT 
 } from '../../logic/prompts.js';
-import { parsePhase1, parsePhase2 } from '../../logic/parsers.js';
+import { parsePhase1, parsePhase2, compileIdentityString } from '../../logic/parsers.js';
 
 // ─── Internal Dispatcher ──────────────────────────────────────────────────────
 
@@ -128,22 +129,35 @@ export async function detectChange(message, history, charName, layers, profileId
  * @param {string} message - The latest AI message text.
  * @param {string} history - Preceding turns.
  * @param {string} charName
- * @param {string} anchor
- * @param {object} layers - Current visual state.
+ * @param {Object} identityMap - Granular physical traits.
+ * @param {Object} layers - Current visual state.
  * @param {string[]} slots - The list of clothing slot keys for this character.
  * @param {string} profileId
  */
-export async function detectLayers(message, history, charName, anchor, layers, slots, profileId) {
+export async function detectLayers(message, history, charName, identityMap, layers, slots, profileId) {
+    // 1. Build Wardrobe instructions
     const formatInstructions = (slots || BASE_SLOTS).map(s => {
         const label = s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ');
         return `${label}: [Item] | [Modifier]`;
     });
+
+    // 2. Build Identity instructions (Simple Strings)
+    if (identityMap && typeof identityMap === 'object') {
+        Object.keys(identityMap).forEach(k => {
+            const label = k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ');
+            formatInstructions.push(`${label}: [Description string]`);
+        });
+    }
+
     formatInstructions.push('Emotion: [Adjective]');
     formatInstructions.push('Pose: [Description]');
 
+    // 3. Contextual Fallback for prompt template
+    const identityAnchor = compileIdentityString(identityMap);
+
     const prompt = PHASE_3_LAYERED_PROMPT
         .replace('{{character_name}}', charName)
-        .replace('{{identity_anchor}}', anchor)
+        .replace('{{identity_anchor}}', identityAnchor || 'No specific description.')
         .replace('{{current_state}}', buildStateSummary(layers))
         .replace('{{slot_format_instructions}}', formatInstructions.join('\n'))
         .replace('{{history}}', history || 'None')

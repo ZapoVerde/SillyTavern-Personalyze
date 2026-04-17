@@ -1,19 +1,30 @@
 /**
  * @file data/default-user/extensions/personalyze/defaults.js
- * @stamp {"utc":"2026-04-19T21:00:00.000Z"}
+ * @stamp {"utc":"2026-04-17T21:00:00.000Z"}
  * @architectural-role Default Configuration
  * @description
  * Default constants for the Layered State Pipeline.
  * 
- * Updated for Explicit Seed Architecture:
- * 1. Added DEFAULT_AUTO_INCREMENT_SEED for global workflow preference.
+ * Updated for Granular Identity Architecture:
+ * 1. Added BASE_IDENTITY_SLOTS for permanent physical trait decomposition.
+ * 2. Maintained Explicit Seed Architecture for generation continuity.
  * 
  * @api-declaration
  * POLLINATIONS_BASE_URL
  * PLZ_IMAGE_FOLDER
+ * POLLINATIONS_MODELS
+ * DEFAULT_IMAGE_MODEL
+ * DEFAULT_IMAGE_WIDTH
+ * DEFAULT_IMAGE_HEIGHT
  * RESOLUTION_TIERS
  * RESOLUTION_OVERRIDES
- * DEFAULT_STYLE_PACKAGE
+ * DEFAULT_PLZ_VN_SPLIT
+ * DEFAULT_DEV_MODE
+ * DEV_IMAGE_WIDTH
+ * DEV_IMAGE_HEIGHT
+ * DEFAULT_VERBOSE_LOGGING
+ * DEFAULT_DETECTION_HISTORY
+ * DEFAULT_DESCRIBER_HISTORY
  * DEFAULT_MAX_RESOLUTION
  * DEFAULT_DYNAMIC_RESOLUTION
  * DEFAULT_KEEP_CACHE
@@ -22,8 +33,35 @@
  * RUNWARE_MODELS
  * RUNWARE_LORA_REGISTRY
  * RUNWARE_RMBG_MODELS
+ * DEFAULT_RUNWARE_MODEL
+ * DEFAULT_RUNWARE_USE_LAYER_DIFFUSE
+ * DEFAULT_RUNWARE_REMOVE_BG
  * DEFAULT_RUNWARE_RMBG_MODEL
+ * META_SLOT_EMOTION
+ * META_SLOT_POSE
+ * META_SLOTS
+ * BASE_SLOTS
+ * BASE_IDENTITY_SLOTS
+ * DEFAULT_SLOTS
+ * DEFAULT_FAST_PROFILE_ID
+ * DEFAULT_SMART_PROFILE_ID
+ * DEFAULT_TEST_PROMPT
+ * FAL_MODELS
+ * DEFAULT_FAL_MODEL
+ * PIAPI_MODELS
+ * DEFAULT_PIAPI_MODEL
+ * DEFAULT_PIAPI_REMOVE_BG
+ * DEFAULT_PIAPI_RMBG_MODEL
+ * PIAPI_RMBG_MODELS
+ * DEFAULT_VN_STYLE_SUFFIX
+ * DEFAULT_STYLE_PACKAGE
  * DEFAULT_BLUEPRINTS
+ * 
+ * @contract
+ *   assertions:
+ *     purity: Pure Data
+ *     state_ownership: []
+ *     external_io: []
  */
 
 /** Primary API gateway for Pollinations. */
@@ -33,7 +71,7 @@ export const POLLINATIONS_BASE_URL = 'https://gen.pollinations.ai';
 export const PLZ_IMAGE_FOLDER = 'personalyze';
 
 /** Available Pollinations image models. */
-export const POLLINATIONS_MODELS = [
+export const POLLINATIONS_MODELS =[
     'flux',
     'zimage',
     'klein',
@@ -63,7 +101,7 @@ export const RESOLUTION_TIERS = {
 };
 
 /** Precise resolution overrides for specific model requirements (Style-level) */
-export const RESOLUTION_OVERRIDES = [
+export const RESOLUTION_OVERRIDES =[
     { label: 'Use Global/Auto', value: null },
     { label: '512 x 512 (1:1)', value: '512x512' },
     { label: '512 x 768 (2:3)', value: '512x768' },
@@ -104,7 +142,7 @@ export const DEFAULT_AUTO_INCREMENT_SEED = false;
 export const SECRET_RUNWARE = 'api_key_runware';
 
 /** Verified Runware Model AIRs */
-export const RUNWARE_MODELS = [
+export const RUNWARE_MODELS =[
     { label: 'Pony Diffusion V6 XL', air: 'civitai:257749@290640' },
     { label: 'V6 Turbo DPO merge', air: 'civitai:257749@298112' },
     { label: 'Flux.1 Dev', air: 'runware:100@1' },
@@ -115,7 +153,7 @@ export const RUNWARE_MODELS = [
  * Global LoRA Registry.
  * Hardcoded to avoid Civitai API/VPN lag.
  */
-export const RUNWARE_LORA_REGISTRY = [
+export const RUNWARE_LORA_REGISTRY =[
     { label: 'None', air: '' },
     { label: 'Hourglass Flux', air: 'civitai:129130@155255', defaultWeight: 0.8 },
     { label: 'Frank Cho Flux', air: 'civitai:1905015@2145391', defaultWeight: 0.7 },
@@ -132,7 +170,7 @@ export const RUNWARE_LORA_REGISTRY = [
 /** 
  * Runware Background Removal Models.
  */
-export const RUNWARE_RMBG_MODELS = [
+export const RUNWARE_RMBG_MODELS =[
     { label: 'BiRefNet (High Precision)', air: 'runware:112@9' },
     { label: 'Bria RMBG 2.0', air: 'bria:51@1' },
     { label: 'RemBG (Fast/Standard)', air: 'rembg:1@4' },
@@ -156,7 +194,7 @@ export const META_SLOTS        = [META_SLOT_EMOTION, META_SLOT_POSE];
  * Base Clothing Slots.
  * Used as the default schema template for all characters.
  */
-export const BASE_SLOTS = [
+export const BASE_SLOTS =[
     'outerwear',
     'top',
     'bottom',
@@ -164,9 +202,20 @@ export const BASE_SLOTS = [
 ];
 
 /**
+ * Base Identity Slots.
+ * Used as the default schema for a character's permanent physical traits.
+ */
+export const BASE_IDENTITY_SLOTS =[
+    'hair',
+    'face',
+    'body',
+    'skin',
+];
+
+/**
  * Legacy Default Slots (Backward Compatibility).
  */
-export const DEFAULT_SLOTS = [
+export const DEFAULT_SLOTS =[
     ...BASE_SLOTS,
     META_SLOT_EMOTION,
     META_SLOT_POSE,
@@ -182,7 +231,7 @@ export const DEFAULT_SMART_PROFILE_ID = null;
 export const DEFAULT_TEST_PROMPT = 'a simple illustration of a blue bird, white background';
 
 /** Fal AI models. */
-export const FAL_MODELS = [
+export const FAL_MODELS =[
     'fal-ai/flux/schnell',
     'fal-ai/flux/dev',
     'fal-ai/flux-pro',
@@ -194,7 +243,7 @@ export const FAL_MODELS = [
 export const DEFAULT_FAL_MODEL = 'fal-ai/z-image/turbo';
 
 /** PiAPI models. */
-export const PIAPI_MODELS = [
+export const PIAPI_MODELS =[
     'Qubico/z-image',
 ];
 
@@ -206,7 +255,7 @@ export const DEFAULT_PIAPI_REMOVE_BG  = false;
 export const DEFAULT_PIAPI_RMBG_MODEL = 'BEN2';
 
 /** Valid rmbg_model values accepted by Qubico/image-toolkit. */
-export const PIAPI_RMBG_MODELS = ['BEN2', 'RMBG-2.0', 'RMBG-1.4'];
+export const PIAPI_RMBG_MODELS =['BEN2', 'RMBG-2.0', 'RMBG-1.4'];
 
 /**
  * Visual Style Suffix.
@@ -230,7 +279,7 @@ export const DEFAULT_STYLE_PACKAGE = {
     resolutionOverride: null,
     template: DEFAULT_VN_STYLE_SUFFIX,
     negativePrompt: '',
-    loras: []
+    loras:[]
 };
 
 /** Default Dynamic Blueprints for Model Parameters */
@@ -242,7 +291,7 @@ export const DEFAULT_BLUEPRINTS = {
     'sdxl': {
         "steps": { "type": "slider", "min": 1, "max": 100, "default": 30, "label": "Steps" },
         "cfgScale": { "type": "slider", "min": 1, "max": 30, "default": 7, "step": 0.5, "label": "CFG Scale" },
-        "scheduler": { "type": "select", "options": ["Euler A", "DPM++ 2M Karras", "UniPC"], "default": "Euler A", "label": "Scheduler" }
+        "scheduler": { "type": "select", "options":["Euler A", "DPM++ 2M Karras", "UniPC"], "default": "Euler A", "label": "Scheduler" }
     },
     'sd15': {
         "steps": { "type": "slider", "min": 1, "max": 100, "default": 20, "label": "Steps" },

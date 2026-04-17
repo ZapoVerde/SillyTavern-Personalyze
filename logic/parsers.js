@@ -1,20 +1,22 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/parsers.js
- * @stamp {"utc":"2026-04-14T10:10:00.000Z"}
+ * @stamp {"utc":"2026-04-17T13:00:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Pure functions to parse structured text responses from the Layered State Pipeline.
- * Implements the logic for handling "KEEP" (persistence) and "None" (removal) instructions.
+ * Implements logic for handling "KEEP" (persistence) and "None" (removal) instructions.
  * 
- * Updated for the Multi-Character Architecture:
- * 1. Added parseSceneRoster for cleaning discovered character lists.
- *
+ * Updated for Granular Identity Architecture:
+ * 1. Added compileIdentityString to join granular traits into a fallback string.
+ * 2. Updated mergeLayeredUpdate to handle identity slots as simple strings.
+ * 
  * @api-declaration
  * parsePhase1(raw) -> string|null
  * parsePhase2(raw) -> boolean
  * parsePhase3(raw) -> object
  * parseSceneRoster(raw) -> string[]
- * mergeLayeredUpdate(current, update) -> object
+ * mergeLayeredUpdate(current, update, identitySlots) -> object
+ * compileIdentityString(identityMap) -> string
  * generateEnsembleLabel(layers) -> string
  * generateEnsembleKey(layers) -> string
  * 
@@ -55,7 +57,7 @@ export function parsePhase2(raw) {
 
 /**
  * Parses Phase 3: Layered State Extraction.
- * Key-agnostic: accepts any "Key: Item | Modifier" line the LLM returns.
+ * Key-agnostic: accepts any "Key: Item | Modifier" or "Key: Value" line.
  * The key is lowercased and slugified so it matches state slot names.
  *
  * @param {string} raw - Raw Key-Value list from LLM.
@@ -109,30 +111,21 @@ export function parseSceneRoster(raw) {
 }
 
 /**
- * Merges a Phase 3 update into the current visual state.
+ * Merges a Phase 3 update into the current state (Visual or Identity).
  * Implements the 3-state transition logic:
  * 1. KEEP | KEEP -> Use existing value from previous turn.
  * 2. None | None -> Set slot to null (explicit removal).
- * 3. Item | Mod  -> Update slot with new visual data.
+ * 3. Item | Mod  -> Update slot with new data.
  * 
- * Ensures all standard slots (including pose) exist in the output even if missing in current.
- * 
- * @param {object} current - The current layers object from state.
+ * @param {object} current - The current map from state.
  * @param {object} update - The parsed update from the LLM.
+ * @param {string[]} stringSlots - Optional list of keys that should be stored as simple strings.
  * @returns {object} The new consolidated state.
  */
-export function mergeLayeredUpdate(current, update) {
-    // 1. Initialize next state with full standard slot template
-    const next = Object.assign({
-        outerwear:   null,
-        top:         null,
-        bottom:      null,
-        accessories: null,
-        emotion:     'neutral',
-        pose:        'upright',
-    }, structuredClone(current ?? {}));
+export function mergeLayeredUpdate(current, update, stringSlots = []) {
+    const next = structuredClone(current ?? {});
+    const stringKeys = [...META_SLOTS, ...stringSlots];
 
-    // 2. Iterate through the LLM-derived updates
     for (const [slot, val] of Object.entries(update)) {
         if (!val || val.item === 'KEEP') {
             continue;
@@ -141,7 +134,7 @@ export function mergeLayeredUpdate(current, update) {
         if (val.item === 'None') {
             next[slot] = null;
         } else {
-            if (META_SLOTS.includes(slot)) {
+            if (stringKeys.includes(slot)) {
                 next[slot] = val.item;
             } else {
                 next[slot] = {
@@ -153,6 +146,22 @@ export function mergeLayeredUpdate(current, update) {
     }
 
     return next;
+}
+
+/**
+ * Compiles a granular identity map into a single comma-separated string.
+ * Used for the {{identity_anchor}} fallback variable.
+ * 
+ * @param {Object} identityMap - { hair: "...", face: "...", ... }
+ * @returns {string}
+ */
+export function compileIdentityString(identityMap) {
+    if (!identityMap || typeof identityMap !== 'object') return '';
+    
+    return Object.values(identityMap)
+        .filter(val => typeof val === 'string' && val.trim().length > 0)
+        .join(', ')
+        .trim();
 }
 
 /**
@@ -170,8 +179,6 @@ function limitToThreeWords(val) {
 
 /**
  * Generates a descriptive, chunky label for an ensemble based on current layers.
- * Format: [Outerwear + Top + Bottom + Accessories] | [Emotion] | [Pose]
- * Each category is limited to its first 3 words.
  * 
  * @param {object} layers 
  * @returns {string}
@@ -195,8 +202,6 @@ export function generateEnsembleLabel(layers) {
 
 /**
  * Generates a stable unique key for an ensemble.
- * Includes accessories in the identity chain to ensure that changes in equipment
- * create distinct ensemble entries.
  * 
  * @param {object} layers 
  * @returns {string}

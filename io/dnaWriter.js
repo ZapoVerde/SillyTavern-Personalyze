@@ -1,17 +1,18 @@
 /**
  * @file data/default-user/extensions/personalyze/io/dnaWriter.js
- * @stamp {"utc":"2026-04-16T21:40:00.000Z"}
+ * @stamp {"utc":"2026-04-17T13:30:00.000Z"}
  * @architectural-role IO Executor / DNA Chain Writer
  * @description
  * Handles all writes to message.extra.personalyze with integrated concurrency 
  * locking. Implements the Array Pattern for the Layered State Pipeline.
  * 
- * Updated for Style-Specific Render Pipeline:
- * 1. Removed engine parameter from lockedWriteCharacterDef.
- * 2. Removed lockedWriteCharacterLora (LoRAs are now defined in Global Styles).
+ * Updated for Granular Identity Architecture:
+ * 1. Modified lockedWriteCharacterDef to accept identity map.
+ * 2. Added lockedWriteIdentityUpdate for permanent physical changes.
  *
  * @api-declaration
- * lockedWriteCharacterDef(messageId, characterId, anchor, seed)
+ * lockedWriteCharacterDef(messageId, characterId, identity, seed)
+ * lockedWriteIdentityUpdate(messageId, characterId, identity)
  * lockedWriteEnsemble(messageId, characterId, key, label, layers)
  * lockedWriteVisualState(messageId, characterId, layers, image)       → recordId (string)
  * lockedPatchVisualStateImage(messageId, characterId, filename, recordId?)
@@ -50,15 +51,43 @@ function ensureArray(message) {
 /**
  * Writes a character identity definition to the DNA chain.
  */
-export async function lockedWriteCharacterDef(messageId, characterId, anchor, seed) {
+export async function lockedWriteCharacterDef(messageId, characterId, identity, seed) {
     await writeLock.acquire();
     try {
         const context = getContext();
         const message = context.chat[messageId];
         if (message) {
             ensureArray(message);
-            const rec = { type: 'character_def', characterId, anchor, seed };
+            const rec = { 
+                type: 'character_def', 
+                characterId, 
+                identity: (typeof identity === 'object' ? structuredClone(identity) : identity), 
+                seed 
+            };
             message.extra.personalyze.push(rec);
+            await saveChatConditional();
+        }
+    } finally {
+        writeLock.release();
+    }
+}
+
+/**
+ * Writes a permanent physical change (identity update) to the DNA chain.
+ * Used when the pipeline detects a permanent change or the user edits the bio.
+ */
+export async function lockedWriteIdentityUpdate(messageId, characterId, identity) {
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (message) {
+            ensureArray(message);
+            message.extra.personalyze.push({
+                type: 'identity_update',
+                characterId,
+                identity: structuredClone(identity)
+            });
             await saveChatConditional();
         }
     } finally {

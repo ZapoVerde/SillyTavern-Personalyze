@@ -1,15 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaIdentity.js
- * @stamp {"utc":"2026-04-19T22:35:00.000Z"}
+ * @stamp {"utc":"2026-04-17T13:15:00.000Z"}
  * @architectural-role UI Sub-module (Metadata & Identity)
  * @description
- * Handles basic character metadata and identity management in the Studio.
- * Manages Display Name, Identity Anchor, Aliases (AKA), and style pinning.
+ * Handles basic character metadata and granular physical identity in the Studio.
+ * Manages Display Name, Physical Traits Grid, Aliases (AKA), and style pinning.
  * 
- * Updated for Explicit Seed Architecture (Bug Fixes):
- * 1. Added listener for #plz-studio-inc to sync global autoIncrementSeed (Fixes Bug 1).
- * 2. Implemented strict clamping (-1 to 999) for the seed input.
- * 3. Standardized on parseInt(..., 10) for safe conversion.
+ * Updated for Granular Identity Architecture:
+ * 1. Replaced monolithic anchor listener with debounced Identity Grid handlers.
+ * 2. Implemented dynamic Physical Feature (Special_x) addition and deletion.
+ * 3. Ensured DNA writes use the structured identity map to prevent data loss.
  * 
  * @api-declaration
  * bindIdentityHandlers($overlay)
@@ -18,7 +18,7 @@
  *   assertions:
  *     purity: IO / Stateful UI
  *     state_ownership: [state.chatCharacters]
- *     external_io: [dnaWriter.js, state.js, imageCache.js, portrait.js, DOM]
+ *     external_io: [dnaWriter.js, state.js, imageCache.js, portrait.js, DOM, callPopup]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -26,20 +26,38 @@ import {
     state, upsertChatCharacterDef, upsertChatCharacterLabel, 
     upsertChatCharacterAka, 
     upsertChatCharacterStyle,
-    updateActiveImage, updateChainLayers, removeFromFileIndex
+    updateActiveImage, updateChainLayers, removeFromFileIndex,
+    ensureChatChar
 } from '../../state.js';
 import { 
     lockedWriteCharacterDef, lockedWriteLabel, lockedWriteAka,
-    lockedWriteCharacterStyle
+    lockedWriteCharacterStyle, lockedWriteIdentityUpdate
 } from '../../io/dnaWriter.js';
 import { deleteFiles, fetchFileIndex } from '../../imageCache.js';
 import { clearPortrait } from '../../portrait.js';
 import { smartResize } from '../../utils/dom.js';
 import { updateSetting } from '../../settings.js';
+import { callPopup } from '../../../../../../script.js';
+import { slugify, escapeHtml } from '../../utils/history.js';
+import { BASE_IDENTITY_SLOTS } from '../../defaults.js';
+import { renderStudioView } from './dnaListeners.js';
 
-let anchorSaveTimeout = null;
-let labelSaveTimeout  = null;
-let seedSaveTimeout   = null;
+let identitySaveTimeout = null;
+let labelSaveTimeout    = null;
+let seedSaveTimeout     = null;
+
+/**
+ * Scrapes the Physical Identity grid and returns a clean map of strings.
+ * @returns {Object}
+ */
+function getIdentityGridMap() {
+    const map = {};
+    $('.plz-studio-identity-item').each(function() {
+        const key = $(this).data('key');
+        map[key] = $(this).val().trim();
+    });
+    return map;
+}
 
 /**
  * Binds event listeners for character identity and metadata.
@@ -47,24 +65,69 @@ let seedSaveTimeout   = null;
  */
 export function bindIdentityHandlers($overlay) {
 
-    // ─── Identity Anchor (Physical Bio) ───
-    $overlay.on('input', '#plz-studio-anchor', function() {
-        smartResize(this);
-        clearTimeout(anchorSaveTimeout);
-        anchorSaveTimeout = setTimeout(async () => {
+    // ─── Granular Identity Grid (Physical Traits) ───
+    $overlay.on('input', '.plz-studio-identity-item', function() {
+        clearTimeout(identitySaveTimeout);
+        identitySaveTimeout = setTimeout(async () => {
             const id = state._workshopCharacterId;
-            const anchor = $('#plz-studio-anchor').val().trim();
             if (!id) return;
             
+            const identity = getIdentityGridMap();
             const char = state.chatCharacters[id];
+
             // Memory Update
-            upsertChatCharacterDef(id, anchor, char.seed); 
+            upsertChatCharacterDef(id, identity, char.seed); 
             
             if (id === '__new__') return; // Ghost Guard
             
             const lastMsgId = Math.max(0, getContext().chat.length - 1);
-            await lockedWriteCharacterDef(lastMsgId, id, anchor, char.seed);
+            await lockedWriteIdentityUpdate(lastMsgId, id, identity);
         }, 600);
+    });
+
+    // ─── Add/Delete Physical Feature ───
+    $overlay.on('click', '#plz-studio-add-feature', async function() {
+        const id = state._workshopCharacterId;
+        if (!id) return;
+
+        const nameRaw = await callPopup('<h3>New Physical Feature</h3>', 'input', '');
+        const label = (nameRaw ?? '').trim();
+        if (!label) return;
+
+        const key = slugify(label);
+        const char = state.chatCharacters[id];
+        
+        if (char.identity[key] !== undefined) {
+            if (window.toastr) window.toastr.warning(`Feature "${label}" already exists.`);
+            return;
+        }
+
+        // Update memory and re-render
+        char.identity[key] = '';
+        renderStudioView();
+    });
+
+    $overlay.on('click', '.plz-studio-delete-identity', async function() {
+        const id = state._workshopCharacterId;
+        const key = $(this).data('key');
+        if (!id || !key) return;
+
+        // Safety: Never delete hardcoded base slots
+        if (BASE_IDENTITY_SLOTS.includes(key) || key === 'base') return;
+
+        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+        const confirmed = await callPopup(`Delete physical feature "<b>${escapeHtml(label)}</b>"?`, 'confirm');
+        if (!confirmed) return;
+
+        const char = state.chatCharacters[id];
+        delete char.identity[key];
+
+        if (id !== '__new__') {
+            const lastMsgId = Math.max(0, getContext().chat.length - 1);
+            await lockedWriteIdentityUpdate(lastMsgId, id, char.identity);
+        }
+
+        renderStudioView();
     });
 
     // ─── Identity Seed ───
@@ -75,28 +138,24 @@ export function bindIdentityHandlers($overlay) {
             let seedVal = parseInt($(this).val(), 10);
             if (!id || isNaN(seedVal)) return;
 
-            // Strict 3-Digit Clamping
             seedVal = Math.max(-1, Math.min(seedVal, 999));
-            
-            // Sync UI to clamped value
             $(this).val(seedVal);
 
             const char = state.chatCharacters[id];
-            const currentAnchor = char.identityAnchor || '';
+            const currentIdentity = getIdentityGridMap();
 
             // Memory Update
-            upsertChatCharacterDef(id, currentAnchor, seedVal);
+            upsertChatCharacterDef(id, currentIdentity, seedVal);
 
             if (id === '__new__') return; // Ghost Guard
 
             const lastMsgId = Math.max(0, getContext().chat.length - 1);
-            // Anchor Trap protection: passing the currentAnchor ensures the bio 
-            // is not wiped during the seed update.
-            await lockedWriteCharacterDef(lastMsgId, id, currentAnchor, seedVal);
+            // Anchor Trap protection: Pass full identity map
+            await lockedWriteCharacterDef(lastMsgId, id, currentIdentity, seedVal);
         }, 600);
     });
 
-    // ─── Seed Increment Preference (Fixes Bug 1) ───
+    // ─── Seed Increment Preference ───
     $overlay.on('change', '#plz-studio-inc', function() {
         const checked = $(this).prop('checked');
         updateSetting('autoIncrementSeed', checked);
@@ -110,7 +169,7 @@ export function bindIdentityHandlers($overlay) {
             const label = $('#plz-studio-label').val().trim();
             if (!id || !label) return;
             
-            upsertChatCharacterLabel(id, label); // Memory update
+            upsertChatCharacterLabel(id, label); 
             
             if (id === '__new__') return; // Ghost Guard
             
@@ -121,16 +180,15 @@ export function bindIdentityHandlers($overlay) {
 
     // ─── AKA / Alias Management ───
     async function commitAka(id, newList) {
-        upsertChatCharacterAka(id, newList); // Memory update
+        upsertChatCharacterAka(id, newList); 
         
-        // Refresh tag UI
         const akaTagsHTML = newList.map(alias => `
             <span class="plz-aka-tag" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;background:rgba(255,255,255,0.08);font-size:0.8em;">
-                ${$('<div>').text(alias).html()}<i class="fa-solid fa-xmark plz-aka-remove" data-alias="${$('<div>').text(alias).html()}" style="cursor:pointer;opacity:0.6;"></i>
+                ${escapeHtml(alias)}<i class="fa-solid fa-xmark plz-aka-remove" data-alias="${escapeHtml(alias)}" style="cursor:pointer;opacity:0.6;"></i>
             </span>`).join('');
         $('#plz-studio-aka-tags').html(akaTagsHTML || '<span style="opacity:0.3;font-size:0.8em;">No aliases yet.</span>');
 
-        if (id === '__new__') return; // Ghost Guard
+        if (id === '__new__') return; 
         
         const lastMsgId = Math.max(0, getContext().chat.length - 1);
         await lockedWriteAka(lastMsgId, id, newList);
@@ -169,9 +227,9 @@ export function bindIdentityHandlers($overlay) {
         if (!id) return;
         const styleName = $(this).val() || null;
         
-        upsertChatCharacterStyle(id, styleName); // Memory update
+        upsertChatCharacterStyle(id, styleName); 
         
-        if (id === '__new__') return; // Ghost Guard
+        if (id === '__new__') return; 
         
         const lastMsgId = Math.max(0, getContext().chat.length - 1);
         await lockedWriteCharacterStyle(lastMsgId, id, styleName);
@@ -180,16 +238,15 @@ export function bindIdentityHandlers($overlay) {
     // ─── Maintenance: Purge Portraits ───
     $overlay.on('click', '#plz-studio-purge', async function() {
         const id = state._workshopCharacterId;
-        if (!id || id === '__new__') return; // Ghost Guard
+        if (!id || id === '__new__') return; 
         
         const displayName = state.chatCharacters[id]?.label || id.replace(/_/g, ' ');
         const confirmed = await callPopup(
-            `Delete all generated portraits for <b>${$('<div>').text(displayName).html()}</b>?<br><br><small>This will free up disk space but requires re-generating images for all visual states.</small>`,
+            `Delete all generated portraits for <b>${escapeHtml(displayName)}</b>?<br><br><small>This will free up disk space but requires re-generating images for all visual states.</small>`,
             `confirm`
         );
         if (!confirmed) return;
 
-        // Scour index for this character's files
         const { fileIndex } = await fetchFileIndex();
         const prefix = `plz_${id}_`;
         const toDelete = Array.from(fileIndex).filter(f => f.startsWith(prefix));
@@ -199,12 +256,10 @@ export function bindIdentityHandlers($overlay) {
             removeFromFileIndex(toDelete);
         }
 
-        // Clear the chain image pointer
         if (state.characterChain[id]) {
             updateChainLayers(id, state.characterChain[id].layers, null);
         }
 
-        // Clear active portrait if this is the current character
         if (state.activeCharacterId === id) {
             updateActiveImage(null);
             clearPortrait();

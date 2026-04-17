@@ -1,15 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaScanning.js
- * @stamp {"utc":"2026-04-12T11:50:00.000Z"}
+ * @stamp {"utc":"2026-04-17T15:20:00.000Z"}
  * @architectural-role UI Sub-module (LLM Tools)
  * @description
  * Handles LLM-driven character scanning tools in the Studio.
- * Implements "Anchor Scan" (Identity) and "Force Costume" (Costume Scan).
  * 
- * Logic:
- * - If character is '__new__', Anchor Scan uses the label input as the search focus.
- * - Population triggers 'input' events to ensure dnaIdentity and dnaListeners
- *   receive the new data for memory updates.
+ * Updated for Granular Identity Architecture:
+ * 1. Overhauled Identity Scan to populate granular Physical Identity grid.
+ * 2. Dynamically updates character physical schema with newly discovered features.
+ * 3. Triggers UI re-render and DNA commitment upon successful discovery.
  * 
  * @api-declaration
  * bindScanningHandlers($overlay)
@@ -18,7 +17,7 @@
  *   assertions:
  *     purity: IO / Stateful UI
  *     state_ownership: [state.chatCharacters]
- *     external_io: [LLM Services, history.js, state.js, DOM]
+ *     external_io: [LLM Services, history.js, state.js, DOM, dnaListeners.js]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -28,6 +27,7 @@ import { META_SLOTS } from '../../defaults.js';
 import { buildDescriberContext, buildHistoryText } from '../../utils/history.js';
 import { detectAnchorScan, detectForceCostume } from '../../io/llm/workshop.js';
 import { parsePhase3 } from '../../logic/parsers.js';
+import { renderStudioView } from './dnaListeners.js';
 
 /**
  * Binds event listeners for LLM-driven scanning tools.
@@ -44,7 +44,6 @@ export function bindScanningHandlers($overlay) {
         const id = state._workshopCharacterId;
         let focus = id;
         
-        // Revised Logic: If ghost, pull focus name from the label input field
         if (id === '__new__') {
             focus = $('#plz-studio-label').val().trim();
             if (!focus) {
@@ -59,8 +58,34 @@ export function bindScanningHandlers($overlay) {
 
         try {
             const result = await detectAnchorScan(context, focus, s.smartProfileId);
-            if (result) {
-                $('#plz-studio-anchor').val(result.anchor).trigger('input');
+            if (result && result.identity) {
+                const char = state.chatCharacters[id];
+                let schemaChanged = false;
+
+                for (const [key, val] of Object.entries(result.identity)) {
+                    // Update Memory
+                    if (char.identity[key] === undefined) {
+                        char.identity[key] = val;
+                        schemaChanged = true;
+                    } else {
+                        // Update existing UI input directly to trigger debounced DNA save
+                        const $input = $(`.plz-studio-identity-item[data-key="${key}"]`);
+                        if ($input.length) {
+                            $input.val(val).trigger('input');
+                        } else {
+                            char.identity[key] = val;
+                        }
+                    }
+                }
+
+                if (schemaChanged) {
+                    // SCHEMA GROWTH: New physical traits discovered. Full re-render.
+                    renderStudioView();
+                    // Final trigger to ensure the new state is committed to DNA ledger
+                    $('.plz-studio-identity-item').trigger('input');
+                }
+
+                if (window.toastr) window.toastr.success(`Physical traits updated for ${result.name || id}.`);
             }
         } catch (err) {
             if (window.toastr) window.toastr.error('Identity scan failed.');
@@ -74,7 +99,6 @@ export function bindScanningHandlers($overlay) {
         const id = state._workshopCharacterId;
         if (!id) return;
         
-        // Resolve focus name: use input label for ghosts, stored label for others
         const label = id === '__new__' 
             ? $('#plz-studio-label').val().trim() 
             : (state.chatCharacters[id]?.label || id.replace(/_/g, ' '));
