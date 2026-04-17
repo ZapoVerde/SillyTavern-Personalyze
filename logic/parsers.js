@@ -200,6 +200,22 @@ export function generateEnsembleLabel(layers) {
 }
 
 /**
+ * Compiles a granular identity map into a flat string for prompt injection.
+ * Joins all non-empty values with a comma, in key-insertion order.
+ * Used as the {{identity_anchor}} variable and as a display fallback.
+ *
+ * @param {object} identityMap - e.g. { hair: 'long black hair', eyes: 'blue', ... }
+ * @returns {string}
+ */
+export function compileIdentityString(identityMap) {
+    if (!identityMap || typeof identityMap !== 'object') return '';
+    return Object.values(identityMap)
+        .filter(v => v && typeof v === 'string' && v.trim())
+        .map(v => v.trim())
+        .join(', ');
+}
+
+/**
  * Generates a stable unique key for an ensemble.
  * Iterates through all slots except pose.
  * 
