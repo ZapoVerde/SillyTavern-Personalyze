@@ -212,6 +212,7 @@ export const BASE_IDENTITY_SLOTS =[
     'body',
     'skin',
     'age',
+    'gender',
     'species',
     'features',
 ];
@@ -264,7 +265,7 @@ export const PIAPI_RMBG_MODELS =['BEN2', 'RMBG-2.0', 'RMBG-1.4'];
 /**
  * Visual Style Suffix.
  * Supports slot-based variables: {{identity_anchor}}, {{layers_description}},
- * {{emotion}}, {{pose}}.
+ * {{emotion}}, {{pose}}, and any granular identity key e.g. {{hair}}, {{eyes}}, {{gender}}.
  */
 export const DEFAULT_VN_STYLE_SUFFIX =
     'A highly detailed anime-style character illustration of {{identity_anchor}}. ' +
