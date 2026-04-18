@@ -17,7 +17,6 @@
  *     external_io: [callPopup, modelRegistry.js, blueprintProcessor.js, blueprintEditorTemplates.js]
  */
 
-import { callPopup } from '../../../../../../script.js';
 import { getModelBlueprint, saveModelBlueprint, getBaseTemplates } from '../../modelRegistry.js';
 import { isValidBlueprint, sanitizeBlueprintObject } from '../../logic/blueprintProcessor.js';
 import {
@@ -83,32 +82,46 @@ function renderRowList(blueprint) {
 }
 
 /**
- * Opens the Visual Blueprint Editor.
+ * Opens the Visual Blueprint Editor as a self-contained fullscreen overlay.
  */
 export async function openBlueprintEditor(modelId) {
     const currentBlueprint = getModelBlueprint(modelId) || {};
     const baseTemplates = getBaseTemplates();
-    
-    const html = getBlueprintShellHTML(modelId, baseTemplates);
+
+    const $overlay = $(getBlueprintShellHTML(modelId, baseTemplates));
+    $('body').append($overlay);
 
     return new Promise((resolve) => {
-        callPopup(html, 'confirm').then(ok => {
-            if (ok) {
-                const raw = scrapeBlueprintFromUI();
-                const clean = sanitizeBlueprintObject(raw);
-                saveModelBlueprint(modelId, clean);
-                resolve(true);
-            } else {
-                resolve(false);
-            }
+        const teardown = (saved) => {
             $(document).off('.plzBP');
-        }).catch(() => {
-            $(document).off('.plzBP');
-            resolve(false);
-        });
+            $overlay.remove();
+            resolve(saved);
+        };
 
         // Initial Render
         renderRowList(currentBlueprint);
+
+        // Save FAB
+        $overlay.find('#plz-bp-save-fab').on('click', () => {
+            const raw = scrapeBlueprintFromUI();
+            const clean = sanitizeBlueprintObject(raw);
+            saveModelBlueprint(modelId, clean);
+            teardown(true);
+        });
+
+        // Cancel button
+        $overlay.find('#plz-bp-cancel').on('click', () => teardown(false));
+
+        // Backdrop click
+        $overlay.on('mousedown', (e) => {
+            if (e.target === $overlay[0]) teardown(false);
+        });
+        $overlay.find('.plz-modal').on('mousedown', (e) => e.stopPropagation());
+
+        // Escape key
+        $(document).on('keydown.plzBP', (e) => {
+            if (e.key === 'Escape') teardown(false);
+        });
 
         // 1. Accordion Toggle
         $(document).on('click.plzBP', '.plz-bp-card-header', function(e) {
@@ -116,7 +129,7 @@ export async function openBlueprintEditor(modelId) {
             const $card = $(this).closest('.plz-bp-card');
             const $body = $card.find('.plz-bp-card-body');
             const $icon = $card.find('.plz-bp-toggle');
-            
+
             const isVisible = $body.is(':visible');
             $body.slideToggle(150);
             $icon.toggleClass('fa-chevron-right', isVisible).toggleClass('fa-chevron-down', !isVisible);
@@ -126,7 +139,6 @@ export async function openBlueprintEditor(modelId) {
         $(document).on('change.plzBP', '.plz-bp-input-type', function() {
             const $card = $(this).closest('.plz-bp-card');
             const newType = $(this).val();
-            // Provide dummy defaults for the new type config
             const dummyDescriptor = { type: newType };
             $card.find('.plz-bp-type-config').html(getTypeConfigHTML(newType, dummyDescriptor));
         });
@@ -170,7 +182,7 @@ export async function openBlueprintEditor(modelId) {
             const raw = scrapeBlueprintFromUI();
             const clean = sanitizeBlueprintObject(raw);
             const json = JSON.stringify(clean, null, 2);
-            
+
             navigator.clipboard.writeText(json).then(() => {
                 if (window.toastr) window.toastr.success('Blueprint JSON copied to clipboard.');
             });

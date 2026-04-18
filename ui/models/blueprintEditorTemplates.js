@@ -23,51 +23,65 @@ import { escapeHtml } from '../../utils/history.js';
 
 /**
  * Main shell for the Blueprint Editor modal.
+ * Returns a full self-contained overlay (same pattern as textModal.js).
  */
 export function getBlueprintShellHTML(modelId, baseTemplates = {}) {
-    const templateOptions = Object.keys(baseTemplates).map(t => 
+    const templateOptions = Object.keys(baseTemplates).map(t =>
         `<option value="${escapeHtml(t)}">Reset to ${escapeHtml(t.toUpperCase())} Template</option>`
     ).join('');
 
     return `
-    <div id="plz-bp-editor-container" style="display:flex; flex-direction:column; gap:12px; width:100%;">
-        <div style="display:flex; justify-content:space-between; align-items:center; overflow:hidden;">
-            <div class="plz-bp-header-text">
-                <h3 style="margin:0; display:inline;">API Blueprint:</h3>
-                <span class="plz-bp-header-id" title="${escapeHtml(modelId)}">${escapeHtml(modelId)}</span>
+    <div id="plz-bp-overlay" class="plz-overlay">
+        <div class="plz-modal" role="dialog" aria-modal="true">
+            <button id="plz-bp-save-fab" class="plz-text-modal-fab">Save</button>
+
+            <!-- Header (fixed, non-scrolling) -->
+            <div class="plz-text-modal-header" style="padding-right:90px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <div class="plz-bp-header-text">
+                        <h3 style="margin:0; display:inline;">API Blueprint:</h3>
+                        <span class="plz-bp-header-id" title="${escapeHtml(modelId)}">${escapeHtml(modelId)}</span>
+                    </div>
+                    <div style="display:flex; gap:6px; flex-shrink:0;">
+                        <button id="plz-bp-copy-json" class="menu_button" title="Copy full blueprint as JSON to clipboard">
+                            <i class="fa-solid fa-copy"></i> JSON
+                        </button>
+                        <button id="plz-bp-import-json" class="menu_button" title="Import/Paste blueprint from JSON">
+                            <i class="fa-solid fa-file-import"></i> Import
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div style="display:flex; gap:6px; flex-shrink:0;">
-                <button id="plz-bp-copy-json" class="menu_button" title="Copy full blueprint as JSON to clipboard">
-                    <i class="fa-solid fa-copy"></i> JSON
-                </button>
-                <button id="plz-bp-import-json" class="menu_button" title="Import/Paste blueprint from JSON">
-                    <i class="fa-solid fa-file-import"></i> Import
-                </button>
+
+            <!-- Body (scrollable) -->
+            <div class="plz-text-modal-body">
+                <!-- Master Utility Bar -->
+                <div style="display:flex; align-items:center; gap:8px; padding:10px; background:rgba(0,0,0,0.15); border-radius:6px; border:1px solid var(--SmartThemeBorderColor); flex-shrink:0;">
+                    <select id="plz-bp-template-select" class="text_pole" style="flex:1;">
+                        <option value="">— Load Base Template —</option>
+                        ${templateOptions}
+                    </select>
+                    <div class="plz-info-icon" title="Resetting will replace all current rows with the selected template."><i class="fa-solid fa-circle-info"></i></div>
+                </div>
+
+                <!-- Parameter List (Accordion Container) -->
+                <div id="plz-bp-row-list" style="display:flex; flex-direction:column; gap:8px;">
+                    <!-- Rows injected here via JS -->
+                </div>
+
+                <!-- Footer Actions -->
+                <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid rgba(255,255,255,0.05); flex-shrink:0;">
+                    <button id="plz-bp-add-row" class="menu_button" style="border-color:var(--SmartThemeQuoteColor);">
+                        <i class="fa-solid fa-plus"></i> Add New Parameter
+                    </button>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <p style="font-size:0.75em; opacity:0.5; margin:0;">
+                            <i class="fa-solid fa-triangle-exclamation"></i> Affects all Styles using this model.
+                        </p>
+                        <button id="plz-bp-cancel" class="menu_button" style="font-size:0.85em;">Cancel</button>
+                    </div>
+                </div>
             </div>
-        </div>
-
-        <!-- Master Utility Bar -->
-        <div style="display:flex; align-items:center; gap:8px; padding:10px; background:rgba(0,0,0,0.15); border-radius:6px; border:1px solid var(--SmartThemeBorderColor);">
-            <select id="plz-bp-template-select" class="text_pole" style="flex:1;">
-                <option value="">— Load Base Template —</option>
-                ${templateOptions}
-            </select>
-            <div class="plz-info-icon" title="Resetting will replace all current rows with the selected template."><i class="fa-solid fa-circle-info"></i></div>
-        </div>
-
-        <!-- Parameter List (Accordion Container) -->
-        <div id="plz-bp-row-list" style="display:flex; flex-direction:column; gap:8px; max-height:450px; overflow-y:auto; padding-right:4px;">
-            <!-- Rows injected here via JS -->
-        </div>
-
-        <!-- Footer Actions -->
-        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid rgba(255,255,255,0.05);">
-            <button id="plz-bp-add-row" class="menu_button" style="border-color:var(--SmartThemeQuoteColor);">
-                <i class="fa-solid fa-plus"></i> Add New Parameter
-            </button>
-            <p style="font-size:0.75em; opacity:0.5; margin:0; text-align:right;">
-                <i class="fa-solid fa-triangle-exclamation"></i> Affects all Styles using this model.
-            </p>
         </div>
     </div>`;
 }
