@@ -1,12 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/roster/templates.js
- * @stamp {"utc":"2026-04-15T11:10:00.000Z"}
+ * @stamp {"utc":"2026-04-18T00:00:00.000Z"}
  * @architectural-role Pure UI Template
  * @description
  * Generates the HTML for individual portrait cards within the roster grid.
- * 
- * Updated for Generation Economy:
- * 1. Added Refresh button (fa-rotate) to trigger on-demand re-generation.
+ *
+ * Updated for Surgical Utility UI:
+ * 1. Replaced the Flip button with a Gear button that opens a sub-menu.
+ * 2. Gear menu contains: Flip, Edit Appearance, Promote to Focus.
  *
  * @api-declaration
  * getPortraitCardHTML(characterId, label, imageUrl, isFlipped) -> string
@@ -49,8 +50,8 @@ export function getPortraitCardHTML(characterId, label, filename, isFlipped = fa
             <img class="plz-card-img" src="${src}" alt="${escapeHtml(label)}" draggable="false" style="${imgStyle}" />
             
             <div class="plz-card-controls">
-                <button class="plz-card-btn plz-card-flip" title="Mirror Portrait">
-                    <i class="fa-solid fa-arrows-left-right"></i>
+                <button class="plz-card-btn plz-card-gear" title="Options">
+                    <i class="fa-solid fa-gear"></i>
                 </button>
                 <div style="flex:1;"></div>
                 <button class="plz-card-btn plz-card-refresh" title="Refresh / Re-generate Image">
@@ -59,6 +60,18 @@ export function getPortraitCardHTML(characterId, label, filename, isFlipped = fa
                 <div style="flex:1;"></div>
                 <button class="plz-card-btn plz-card-close" title="Remove from Scene">
                     <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="plz-gear-menu">
+                <button class="plz-card-btn plz-gear-flip" title="Mirror Portrait">
+                    <i class="fa-solid fa-arrows-left-right"></i>
+                </button>
+                <button class="plz-card-btn plz-gear-edit" title="Edit Appearance">
+                    <i class="fa-solid fa-pen"></i>
+                </button>
+                <button class="plz-card-btn plz-gear-promote" title="Promote to Focus">
+                    <i class="fa-solid fa-arrow-up-right-dots"></i>
                 </button>
             </div>
 

@@ -1,13 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/roster/controls.js
- * @stamp {"utc":"2026-04-17T17:20:00.000Z"}
+ * @stamp {"utc":"2026-04-18T00:00:00.000Z"}
  * @architectural-role UI Orchestrator
  * @description
  * Manages global event delegation for the character roster UI.
- * Handles card-level interactions including flipping, removal, and addition.
- * 
- * Updated for Dynamic Variable Architecture:
- * 1. Removed compilePrompt usage; generate() now handles iterative prompt synthesis.
+ * Handles card-level interactions including gear menu, removal, and addition.
+ *
+ * Updated for Surgical Utility UI:
+ * 1. Replaced Flip handler with Gear menu system (flip, edit, promote).
+ * 2. Added tap-to-toggle control visibility (plz-controls-active class).
+ * 3. Promote fires plz:promote-to-focus event; vnPanel.js owns the state update.
  *
  * @api-declaration
  * bindRosterControls() -> void
@@ -48,16 +50,59 @@ import { startWorkshopTurn } from '../../utils/callLog.js';
 export function bindRosterControls() {
     const $doc = $(document);
 
-    // 1. Mirror / Flip Portrait
-    $doc.on('click', '.plz-card-flip', function(e) {
+    // 1. Card Frame — Tap-to-Toggle Controls
+    // Tapping anywhere on the frame (not a button) pins/unpins the control HUD.
+    // Only one card can be active at a time; stacked (non-top) cards are blocked.
+    $doc.on('click', '.plz-card-frame', function(e) {
+        if ($(e.target).closest('.plz-card-btn, .plz-gear-menu').length) return;
+        const $card = $(this).closest('.plz-portrait-card');
+        if ($card.hasClass('plz-card-stacked')) return;
+        const wasActive = $card.hasClass('plz-controls-active');
+        $('.plz-portrait-card').removeClass('plz-controls-active');
+        $('.plz-gear-menu').removeClass('plz-gear-open');
+        if (!wasActive) $card.addClass('plz-controls-active');
+    });
+
+    // 2. Gear Button — Toggle Sub-menu
+    $doc.on('click', '.plz-card-gear', function(e) {
+        e.stopPropagation();
+        const $menu = $(this).closest('.plz-card-frame').find('.plz-gear-menu');
+        const wasOpen = $menu.hasClass('plz-gear-open');
+        $('.plz-gear-menu').removeClass('plz-gear-open');
+        if (!wasOpen) $menu.addClass('plz-gear-open');
+    });
+
+    // 3. Gear Action: Flip
+    $doc.on('click', '.plz-gear-flip', function(e) {
         e.stopPropagation();
         const id = $(this).closest('.plz-portrait-card').data('id');
         if (id) {
             toggleCharacterFlip(id);
+            $(this).closest('.plz-gear-menu').removeClass('plz-gear-open');
         }
     });
 
-    // 2. Remove from Roster (Scene Exit)
+    // 4. Gear Action: Edit Appearance (opens the character picker)
+    $doc.on('click', '.plz-gear-edit', async function(e) {
+        e.stopPropagation();
+        $(this).closest('.plz-gear-menu').removeClass('plz-gear-open');
+        const { openCharPicker } = await import('../charPicker.js');
+        await openCharPicker();
+    });
+
+    // 5. Gear Action: Promote to Focus
+    // Fires an event; vnPanel.js owns _focusCardId and handles the state update.
+    $doc.on('click', '.plz-gear-promote', function(e) {
+        e.stopPropagation();
+        const id = $(this).closest('.plz-portrait-card').data('id');
+        if (id) {
+            $(this).closest('.plz-gear-menu').removeClass('plz-gear-open');
+            $(this).closest('.plz-portrait-card').removeClass('plz-controls-active');
+            document.dispatchEvent(new CustomEvent('plz:promote-to-focus', { detail: { characterId: id } }));
+        }
+    });
+
+    // 7. Remove from Roster (Scene Exit)
     $doc.on('click', '.plz-card-close', async function(e) {
         e.stopPropagation();
         const id = $(this).closest('.plz-portrait-card').data('id');
@@ -75,14 +120,14 @@ export function bindRosterControls() {
         }
     });
 
-    // 3. Add to Roster (Open Picker)
+    // 8. Add to Roster (Open Picker)
     $doc.on('click', '.plz-card-add-trigger', async function(e) {
         e.stopPropagation();
         const { openCharPicker } = await import('../charPicker.js');
         await openCharPicker();
     });
 
-    // 4. Refresh / Re-generate (Generation Economy)
+    // 9. Refresh / Re-generate (Generation Economy)
     $doc.on('click', '.plz-card-refresh', async function(e) {
         e.stopPropagation();
         const id = $(this).closest('.plz-portrait-card').data('id');

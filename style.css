@@ -189,7 +189,8 @@
 }
 
 .plz-portrait-card:hover .plz-card-controls,
-.plz-portrait-card:focus-within .plz-card-controls { opacity: 1; }
+.plz-portrait-card:focus-within .plz-card-controls,
+.plz-portrait-card.plz-controls-active .plz-card-controls { opacity: 1; }
 
 .plz-card-btn {
     background: rgba(0,0,0,0.4); /* More translucent */
@@ -209,6 +210,26 @@
 .plz-card-btn:hover {
     background: rgba(0,0,0,0.7);
     color: rgba(255,255,255,0.95);
+}
+
+/* ─── Gear Sub-menu ──────────────────────────────────────────────────────── */
+
+.plz-gear-menu {
+    position: absolute;
+    top: 44px; /* below the 8px offset + 28px button + 8px gap */
+    left: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 20;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+}
+
+.plz-gear-menu.plz-gear-open {
+    opacity: 1;
+    pointer-events: all;
 }
 
 .plz-card-status {
@@ -605,6 +626,7 @@ body.plz-vn-active #plz-vn-panel {
 
 .plz-vn-left-group {
     flex: 0 0 auto; /* width is set explicitly by JS */
+    position: relative; /* anchor for ghost scroll arrows */
     height: 100%;
     display: flex;
     flex-direction: row;
@@ -630,7 +652,6 @@ body.plz-vn-active #plz-vn-panel {
 
 .plz-vn-left-group .plz-portrait-card:hover {
     z-index: 5;
-    transform: translateY(-8px);
 }
 
 .plz-vn-left-group .plz-card-frame {
@@ -657,10 +678,6 @@ body.plz-vn-active #plz-vn-panel {
     min-width: 0;
 }
 
-.plz-vn-focus-slot .plz-portrait-card.plz-controls-pinned .plz-card-controls {
-    opacity: 1;
-}
-
 .plz-vn-focus-slot .plz-card-frame {
     height: 100%;
     width: auto;
@@ -668,6 +685,45 @@ body.plz-vn-active #plz-vn-panel {
     background: transparent;
     box-shadow: none;
 }
+
+/* ── Stacked-card control suppression ───────────────────────────────────────
+ * Non-front cards (.plz-card-stacked) in the left group have their controls
+ * fully disabled so taps never hit buttons on a card underneath. */
+
+.plz-vn-left-group .plz-portrait-card.plz-card-stacked .plz-card-controls {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* ── Ghost Scroll Arrows ──────────────────────────────────────────────────── */
+
+.plz-vn-scroll-btn {
+    position: absolute;
+    bottom: 8px;
+    z-index: 10;
+    width: 28px;
+    height: 36px;
+    background: rgba(0, 0, 0, 0.2);
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85em;
+    transition: background 0.15s, color 0.15s;
+    pointer-events: all;
+}
+
+.plz-vn-scroll-btn:hover,
+.plz-vn-scroll-btn:active {
+    background: rgba(0, 0, 0, 0.65);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.plz-vn-scroll-prev { left: 4px; }
+.plz-vn-scroll-next { right: 4px; }
 
 /* ── Portrait area ── */
 
@@ -776,6 +832,12 @@ body.plz-vn-active .plz-vn-side-btn {
     left: 0;
     border-left: none;
     border-radius: 0 6px 6px 0;
+}
+
+/* Keep toggle button visible when PersonaLyze is disabled so user can re-enable */
+#plz-vn-toggle-btn.plz-vn-toggle-disabled {
+    display: flex;
+    opacity: 0.7;
 }
 
 /* Ensure tabs in the header look clean and not like heavy blocks */

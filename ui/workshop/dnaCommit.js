@@ -42,6 +42,7 @@ import { generate, deleteFiles } from '../../imageCache.js';
 import { getGridLayers, renderStudioView, renderDNAView } from './dnaListeners.js';
 
 let layerSaveTimeout = null;
+let _isCommitting = false;
 
 /**
  * Binds event listeners for character promotion and turn commitment.
@@ -68,6 +69,11 @@ export function bindCommitHandlers($overlay) {
     });
 
     $overlay.on('click', '#plz-studio-layers-save', async function() {
+        if (_isCommitting) {
+            if (window.toastr) window.toastr.info('Registration Delayed: Narrative Sync in Progress — The chat ledger is busy. Your previous registration is still being committed. Please wait before trying again.', 'PersonaLyze');
+            return;
+        }
+
         let id = state._workshopCharacterId;
         if (!id) return;
         
@@ -91,10 +97,15 @@ export function bindCommitHandlers($overlay) {
                 'Are you sure you want to save this state?',
                 'confirm'
             );
-            if (!confirmed) return;
+            if (!confirmed) {
+                if (window.toastr) window.toastr.warning('Registration Aborted: Content Review Required — You chose not to save because potential placeholders (brackets) were detected. Remove any square brackets from your descriptions, or click \'Save Anyway\' if they are intentional.', 'PersonaLyze');
+                return;
+            }
         }
 
         // ─── Phase 1: Ghost Promotion ───
+        _isCommitting = true;
+        try {
         if (id === '__new__') {
             if (!labelInput) {
                 if (window.toastr) window.toastr.warning('Enter a character name first.', 'PersonaLyze');
@@ -192,6 +203,9 @@ export function bindCommitHandlers($overlay) {
         } catch (err) {
             error('Commit', 'Manual generation failed:', err);
             if (window.toastr) window.toastr.warning('Portrait generation failed, but visual state was saved.', 'PersonaLyze');
+        }
+        } finally {
+            _isCommitting = false;
         }
     });
 }

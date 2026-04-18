@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/vnPanel.js
- * @stamp {"utc":"2026-04-13T06:22:00.000Z"}
+ * @stamp {"utc":"2026-04-18T00:00:00.000Z"}
  * @architectural-role UI (Split-Screen Character View)
  * @description
  * PersonaLyze's split-screen character display mode.
@@ -9,12 +9,13 @@
  *   LEFT  — non-focus cards, centered, dynamically overlapping so all fit
  *   RIGHT — focus card, always full width, controls always visible
  *
- * Clicking a left-group card promotes it to the focus slot.
- * Overlap in the left group is computed from available width so cards never
- * compress — they overlap more the tighter the space.
- *
- * Updated for Asset Resilience:
- * 1. Validates images against state.fileIndex before rendering to prevent 404s.
+ * Updated for Surgical Utility UI:
+ * 1. Left-group cards no longer promote on click; use Gear → Promote instead.
+ * 2. Ghost scroll arrows (< >) rotate _leftGroupOrder to bring cards to the front.
+ * 3. Only the frontmost (last in DOM order) left-group card has active controls.
+ * 4. Promotes handled via plz:promote-to-focus event dispatched by controls.js.
+ * 5. Hover shows controls via CSS; tap pins them via plz-controls-active class.
+ * 6. Validates images against state.fileIndex before rendering to prevent 404s.
  *
  * @api-declaration
  * injectVnPanel()            — Builds the DOM (idempotent).
@@ -23,7 +24,7 @@
  * @contract
  *   assertions:
  *     purity: IO
- *     state_ownership: [_splitIndex, _focusCardId]
+ *     state_ownership: [_splitIndex, _focusCardId, _leftGroupOrder]
  *     external_io: [DOM, state.js, settings.js]
  */
 
@@ -46,8 +47,9 @@ const SPLIT_PRESETS =[
     { pct: 20,    label: '⅕' },
 ];
 
-let _splitIndex  = 1;    // default: ½
-let _focusCardId = null; // the card currently in the right focus slot
+let _splitIndex      = 1;    // default: ½
+let _focusCardId     = null; // the card currently in the right focus slot
+let _leftGroupOrder  = [];   // display order for left-group cards (rotated by scroll arrows)
 
 // ─── Rendering ────────────────────────────────────────────────────────────────
 
@@ -144,39 +146,57 @@ function _renderVnRoster() {
     // ── Left Group ────────────────────────────────────────────────────────────
     if (nonFocusIds.length > 0) {
         $leftGroup.show();
-        _patchZone($leftGroup, nonFocusIds);
 
-        if (!$leftGroup.data('bound')) {
-            $leftGroup.on('click', '.plz-portrait-card', function (e) {
-                if ($(e.target).closest('.plz-card-btn').length) return;
-                const id = $(this).data('id');
-                if (id) {
-                    _focusCardId = id;
+        // Sync display order: preserve user's scroll position, append new chars at end
+        const existing = _leftGroupOrder.filter(id => nonFocusIds.includes(id));
+        const added    = nonFocusIds.filter(id => !_leftGroupOrder.includes(id));
+        _leftGroupOrder = [...existing, ...added];
+
+        _patchZone($leftGroup, _leftGroupOrder);
+
+        // Mark stacked (non-front) cards — only the last card in DOM order gets controls.
+        // Stacked cards have pointer-events disabled on their controls via CSS.
+        $leftGroup.find('> .plz-portrait-card').each(function(i) {
+            $(this).toggleClass('plz-card-stacked', i < _leftGroupOrder.length - 1);
+        });
+        // Clear any pinned state from cards that just became stacked
+        $leftGroup.find('> .plz-portrait-card.plz-card-stacked').removeClass('plz-controls-active');
+
+        // Ghost scroll arrows — injected once, shown only when stack has 2+ cards
+        if (!$leftGroup.find('.plz-vn-scroll-btn').length) {
+            $leftGroup.append(`
+                <button class="plz-vn-scroll-btn plz-vn-scroll-prev" title="Previous" type="button"><i class="fa-solid fa-chevron-left"></i></button>
+                <button class="plz-vn-scroll-btn plz-vn-scroll-next" title="Next" type="button"><i class="fa-solid fa-chevron-right"></i></button>
+            `);
+            $leftGroup.on('click', '.plz-vn-scroll-prev', function(e) {
+                e.stopPropagation();
+                if (_leftGroupOrder.length > 1) {
+                    _leftGroupOrder.unshift(_leftGroupOrder.pop());
                     _renderVnRoster();
                 }
             });
-            $leftGroup.data('bound', true);
+            $leftGroup.on('click', '.plz-vn-scroll-next', function(e) {
+                e.stopPropagation();
+                if (_leftGroupOrder.length > 1) {
+                    _leftGroupOrder.push(_leftGroupOrder.shift());
+                    _renderVnRoster();
+                }
+            });
         }
+        $leftGroup.find('.plz-vn-scroll-btn').toggle(_leftGroupOrder.length > 1);
+
     } else {
         $leftGroup.hide();
         $leftGroup.empty();
+        _leftGroupOrder = [];
     }
 
     // ── Focus Slot ────────────────────────────────────────────────────────────
+    // Hover is handled by CSS. Tap-to-pin (plz-controls-active) is handled by
+    // the delegated handler in controls.js. No per-slot bindings needed.
     if (_focusCardId) {
         $focusSlot.show();
         _patchZone($focusSlot, [_focusCardId]);
-
-        if (!$focusSlot.data('bound')) {
-            $focusSlot.on('click', '.plz-portrait-card', function (e) {
-                if ($(e.target).closest('.plz-card-btn').length) return;
-                $(this).toggleClass('plz-controls-pinned');
-            });
-            $focusSlot.on('mouseenter', '.plz-portrait-card', function () {
-                $(this).removeClass('plz-controls-pinned');
-            });
-            $focusSlot.data('bound', true);
-        }
     } else {
         $focusSlot.hide();
         $focusSlot.empty();
@@ -185,7 +205,7 @@ function _renderVnRoster() {
     // ── Add FAB — always last ─────────────────────────────────────────────────
     $panel.append($panel.find('.plz-card-add-trigger'));
 
-    if (nonFocusIds.length > 0) _applyLayout($leftGroup, nonFocusIds.length);
+    if (nonFocusIds.length > 0) _applyLayout($leftGroup, _leftGroupOrder.length);
 }
 
 /**
@@ -255,25 +275,53 @@ export function injectVnPanel() {
     document.addEventListener('plz:roster-changed',    () => _syncVisibility());
     document.addEventListener('plz:roster-render-req', () => _syncVisibility());
 
+    // Promote a left-group card into the focus slot (fired by controls.js gear menu)
+    document.addEventListener('plz:promote-to-focus', (e) => {
+        const id = e.detail?.characterId;
+        if (id && state.activeRoster.includes(id)) {
+            _focusCardId = id;
+            _renderVnRoster();
+        }
+    });
+
     // Cycle size button
     $(`#${CYCLE_ID}`).on('click', () => {
         _splitIndex = (_splitIndex + 1) % SPLIT_PRESETS.length;
         _applySplit();
     });
 
-    // Disable toggle button
+    // Disable/enable toggle button
     $(`#plz-vn-toggle-btn`).on('click', () => {
-        updateSetting('enabled', false);
-        $('#plz-enabled').prop('checked', false);
+        const $btn = $(`#plz-vn-toggle-btn`);
+        const isEnabled = getSettings().enabled;
 
-        syncVnState();
-        document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+        if (isEnabled) {
+            updateSetting('enabled', false);
+            $('#plz-enabled').prop('checked', false);
+            $btn.find('i').removeClass('fa-eye-slash').addClass('fa-eye');
+            $btn.attr('title', 'Enable PersonaLyze');
+            $btn.addClass('plz-vn-toggle-disabled');
 
-        import('./badge.js').then(module => {
-            if (module.clearAllBadges) module.clearAllBadges();
-        });
+            syncVnState();
+            document.dispatchEvent(new CustomEvent('plz:roster-changed'));
 
-        if (window.toastr) window.toastr.warning('PersonaLyze disabled.', 'PersonaLyze');
+            import('./badge.js').then(module => {
+                if (module.clearAllBadges) module.clearAllBadges();
+            });
+
+            if (window.toastr) window.toastr.warning('PersonaLyze disabled.', 'PersonaLyze');
+        } else {
+            updateSetting('enabled', true);
+            $('#plz-enabled').prop('checked', true);
+            $btn.find('i').removeClass('fa-eye').addClass('fa-eye-slash');
+            $btn.attr('title', 'Disable PersonaLyze');
+            $btn.removeClass('plz-vn-toggle-disabled');
+
+            syncVnState();
+            document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+
+            if (window.toastr) window.toastr.success('PersonaLyze enabled.', 'PersonaLyze');
+        }
     });
 
     // Recalculate overlap on resize (debounced)
