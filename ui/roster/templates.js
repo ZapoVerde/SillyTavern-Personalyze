@@ -11,7 +11,6 @@
  *
  * @api-declaration
  * getPortraitCardHTML(characterId, label, imageUrl, isFlipped) -> string
- * getAddCardHTML() -> string
  * 
  * @contract
  *   assertions:
@@ -94,13 +93,3 @@ export function getPortraitCardHTML(characterId, label, filename, isFlipped = fa
     </div>`;
 }
 
-/**
- * Builds the HTML for the "Add Character" Floating Action Button.
- * @returns {string}
- */
-export function getAddCardHTML() {
-    return `
-    <div class="plz-card-add-trigger" title="Add Character to Scene">
-        <i class="fa-solid fa-plus"></i>
-    </div>`;
-}

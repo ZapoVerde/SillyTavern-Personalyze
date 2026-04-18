@@ -82,12 +82,13 @@ export function bindRosterControls() {
         }
     });
 
-    // 4. Gear Action: Edit Appearance (opens the character picker)
+    // 4. Gear Action: Edit Appearance (opens the character picker pre-selected to this card's char)
     $doc.on('click', '.plz-gear-edit', async function(e) {
         e.stopPropagation();
+        const id = $(this).closest('.plz-portrait-card').data('id');
         $(this).closest('.plz-gear-menu').removeClass('plz-gear-open');
         const { openCharPicker } = await import('../charPicker.js');
-        await openCharPicker();
+        await openCharPicker(null, id || null);
     });
 
     // 5. Gear Action: Promote to Focus
@@ -120,8 +121,8 @@ export function bindRosterControls() {
         }
     });
 
-    // 8. Add to Roster (Open Picker)
-    $doc.on('click', '.plz-card-add-trigger', async function(e) {
+    // 8. Add Character (VN panel chrome button — opens picker with no pre-selection)
+    $doc.on('click', '#plz-vn-add-btn', async function(e) {
         e.stopPropagation();
         const { openCharPicker } = await import('../charPicker.js');
         await openCharPicker();

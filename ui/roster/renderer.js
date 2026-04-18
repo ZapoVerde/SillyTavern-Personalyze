@@ -24,7 +24,7 @@
  */
 
 import { state } from '../../state.js';
-import { getPortraitCardHTML, getAddCardHTML, getPortraitImageSrc } from './templates.js';
+import { getPortraitCardHTML, getPortraitImageSrc } from './templates.js';
 
 const STATUS_PCT = { pending: 15, starting: 35, processing: 65, retry: 65, removing_bg: 85, success: 100, failed: 100 };
 const STATUS_LABEL = { generating: 'generating…', pending: 'pending…', starting: 'starting…', processing: 'rendering…', retry: 'retrying…', removing_bg: 'removing bg…', success: 'done', failed: 'failed' };
@@ -128,13 +128,7 @@ export function renderRoster(containerSelector) {
             $existingCard.find('.plz-card-label').text(label);
         } else {
             // INSERT NEW
-            const $addBtn = $container.find('> .plz-card-add-trigger');
-            const html = getPortraitCardHTML(id, label, imageToRender, ui.flipped);
-            if ($addBtn.length) {
-                $addBtn.before(html);
-            } else {
-                $container.append(html);
-            }
+            $container.append(getPortraitCardHTML(id, label, imageToRender, ui.flipped));
         }
     });
 
@@ -142,9 +136,4 @@ export function renderRoster(containerSelector) {
     $container.find('> .plz-portrait-card').each(function () {
         if (!processedIds.has($(this).data('id'))) $(this).remove();
     });
-
-    // 3. Ensure Add Trigger exists
-    if (!$container.find('> .plz-card-add-trigger').length) {
-        $container.append(getAddCardHTML());
-    }
 }

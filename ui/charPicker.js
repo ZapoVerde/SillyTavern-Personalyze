@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/charPicker.js
- * @stamp {"utc":"2026-04-17T17:00:00.000Z"}
+ * @stamp {"utc":"2026-04-18T00:00:00.000Z"}
  * @architectural-role UI (Character Picker Modal)
  * @description
  * Cascading layered state picker. Lets the user manually set the active 
@@ -10,7 +10,7 @@
  * 1. Removed compilePrompt usage; generate() now handles iterative prompt synthesis.
  *
  * @api-declaration
- * openCharPicker(initialOverride) → Promise<void>
+ * openCharPicker(initialOverride, initialCharId) → Promise<void>
  *
  * @contract
  *   assertions:
@@ -73,10 +73,11 @@ function getPickerCurrentLayers() {
 
 /**
  * Opens the manual character/layer picker.
- * 
+ *
  * @param {object|null} initialOverride - Optional layers object to restore state on guard re-open.
+ * @param {string|null} initialCharId   - Pre-select this character in the dropdown (e.g. from gear menu).
  */
-export async function openCharPicker(initialOverride = null) {
+export async function openCharPicker(initialOverride = null, initialCharId = null) {
     const context = getContext();
     const lastAiIdx = context.chat.findLastIndex(m => !m.is_user);
     if (lastAiIdx === -1) {
@@ -91,8 +92,11 @@ export async function openCharPicker(initialOverride = null) {
     }
 
     const s = getSettings();
-    const initId = (state.activeCharacterId && dnaChars.includes(state.activeCharacterId))
-        ? state.activeCharacterId : dnaChars[0];
+    const initId = (initialCharId && dnaChars.includes(initialCharId))
+        ? initialCharId
+        : (state.activeCharacterId && dnaChars.includes(state.activeCharacterId))
+            ? state.activeCharacterId
+            : dnaChars[0];
 
     const currentLayers = initialOverride || state.characterChain[initId]?.layers || state.activeLayers;
     const currentSlots = state.chatCharacters[initId]?.slots || [...BASE_SLOTS];

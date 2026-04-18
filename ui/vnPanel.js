@@ -30,7 +30,7 @@
 
 import { state } from '../state.js';
 import { getSettings, updateSetting } from '../settings.js';
-import { getPortraitCardHTML, getAddCardHTML, getPortraitImageSrc } from './roster/templates.js';
+import { getPortraitCardHTML, getPortraitImageSrc } from './roster/templates.js';
 import { log } from '../utils/logger.js';
 
 const PANEL_ID   = 'plz-vn-panel';
@@ -130,7 +130,6 @@ function _renderVnRoster() {
     // Ensure structural containers exist without wiping the panel
     if (!$panel.find('.plz-vn-left-group').length) $panel.append('<div class="plz-vn-left-group"></div>');
     if (!$panel.find('.plz-vn-focus-slot').length) $panel.append('<div class="plz-vn-focus-slot"></div>');
-    if (!$panel.find('.plz-card-add-trigger').length) $panel.append(getAddCardHTML());
 
     const $leftGroup = $panel.find('.plz-vn-left-group');
     const $focusSlot = $panel.find('.plz-vn-focus-slot');
@@ -202,8 +201,6 @@ function _renderVnRoster() {
         $focusSlot.empty();
     }
 
-    // ── Add FAB — always last ─────────────────────────────────────────────────
-    $panel.append($panel.find('.plz-card-add-trigger'));
 
     if (nonFocusIds.length > 0) _applyLayout($leftGroup, _leftGroupOrder.length);
 }
@@ -266,6 +263,9 @@ export function injectVnPanel() {
         <div id="${PANEL_ID}" class="plz-roster-grid">
             <button id="plz-vn-toggle-btn" class="plz-vn-side-btn" title="Disable PersonaLyze" type="button">
                 <i class="fa-solid fa-eye-slash"></i>
+            </button>
+            <button id="plz-vn-add-btn" class="plz-vn-side-btn plz-vn-add-btn" title="Add Character to Scene" type="button">
+                <i class="fa-solid fa-plus"></i>
             </button>
             <button id="${CYCLE_ID}" class="plz-vn-side-btn" title="Cycle portrait size" type="button">½</button>
         </div>
