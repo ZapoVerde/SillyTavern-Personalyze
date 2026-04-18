@@ -47,8 +47,33 @@ import { startWorkshopTurn } from '../../utils/callLog.js';
  * Ensures controls work regardless of whether the card is in the floating 
  * overlay or the VN panel.
  */
+/**
+ * Clamps the controls bar (and gear menu) to the viewport by setting
+ * --plz-controls-dx on the card. Resets before measuring so prior offsets
+ * don't corrupt the rect calculation.
+ * @param {jQuery} $card
+ */
+function _clampControls($card) {
+    const card = $card[0];
+    if (!card) return;
+    card.style.removeProperty('--plz-controls-dx');
+    const el = card.querySelector('.plz-card-controls');
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    let dx = 0;
+    if (rect.left < 0) dx = -rect.left;
+    else if (rect.right > vw) dx = vw - rect.right;
+    if (dx !== 0) card.style.setProperty('--plz-controls-dx', `${Math.round(dx)}px`);
+}
+
 export function bindRosterControls() {
     const $doc = $(document);
+
+    // 0. Viewport clamping — recalculate offset whenever a card is hovered
+    $doc.on('mouseenter', '.plz-portrait-card', function() {
+        _clampControls($(this));
+    });
 
     // 1. Card Frame — Tap-to-Toggle Controls
     // Tapping anywhere on the frame (not a button) pins/unpins the control HUD.
@@ -60,13 +85,16 @@ export function bindRosterControls() {
         const wasActive = $card.hasClass('plz-controls-active');
         $('.plz-portrait-card').removeClass('plz-controls-active');
         $('.plz-gear-menu').removeClass('plz-gear-open');
-        if (!wasActive) $card.addClass('plz-controls-active');
+        if (!wasActive) {
+            $card.addClass('plz-controls-active');
+            _clampControls($card);
+        }
     });
 
     // 2. Gear Button — Toggle Sub-menu
     $doc.on('click', '.plz-card-gear', function(e) {
         e.stopPropagation();
-        const $menu = $(this).closest('.plz-card-frame').find('.plz-gear-menu');
+        const $menu = $(this).closest('.plz-portrait-card').find('.plz-gear-menu');
         const wasOpen = $menu.hasClass('plz-gear-open');
         $('.plz-gear-menu').removeClass('plz-gear-open');
         if (!wasOpen) $menu.addClass('plz-gear-open');

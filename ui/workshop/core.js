@@ -79,12 +79,6 @@ export function injectWorkshop() {
         $overlay.addClass('plz-hidden');
     });
 
-    $overlay.on('click', function(e) {
-        if (e.target === this) {
-            e.stopPropagation();
-            $(this).addClass('plz-hidden');
-        }
-    });
 
     // 3. Sub-Module Handler Binding
     bindDNAHandlers();

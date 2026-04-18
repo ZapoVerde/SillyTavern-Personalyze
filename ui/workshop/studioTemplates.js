@@ -40,7 +40,7 @@ export function getStudioHTML(characterId, character, layers, styleLibrary = {},
     }).join('');
 
     // 2. Wardrobe Grid Construction
-    const slots = character.slots || [...BASE_SLOTS];
+    const slots = (character.slots && character.slots.length > 0) ? character.slots : [...BASE_SLOTS];
     const slotsHTML = slots.map(key => {
         const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
         const isDeletable = !BASE_SLOTS.includes(key);

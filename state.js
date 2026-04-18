@@ -222,6 +222,10 @@ export function upsertChatCharacterDef(id, identity, seed) {
     const char = ensureChatChar(id);
     if (typeof identity === 'object' && identity !== null) {
         char.identity = structuredClone(identity);
+        // Guarantee BASE_IDENTITY_SLOTS are never lost from a partial identity write
+        BASE_IDENTITY_SLOTS.forEach(slot => {
+            if (char.identity[slot] === undefined) char.identity[slot] = '';
+        });
     }
     char.seed = seed;
 }
