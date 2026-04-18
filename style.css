@@ -815,13 +815,13 @@ body.plz-vn-active .plz-vn-side-btn {
     border-radius: 0 6px 6px 0;
 }
 
-/* When disabled, button is detached from panel and sits directly on body with fixed positioning */
+/* When disabled, button is detached from panel and sits just below the main menu bar */
 body > #plz-vn-toggle-btn.plz-vn-toggle-disabled {
     display: flex;
     position: fixed;
-    top: 50%;
+    top: var(--topBarBlockSize, 40px);
     left: 0;
-    transform: translateY(-50%);
+    transform: none;
     opacity: 0.7;
     z-index: 5000;
 }

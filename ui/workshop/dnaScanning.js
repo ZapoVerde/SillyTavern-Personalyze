@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaScanning.js
- * @stamp {"utc":"2026-04-18T16:15:00.000Z"}
+ * @stamp {"utc":"2026-04-18T16:25:00.000Z"}
  * @architectural-role UI Sub-module (LLM Tools)
  * @description
  * Handles LLM-driven character scanning tools in the Studio.
@@ -11,7 +11,9 @@
  * 3. Triggers UI re-render and DNA commitment upon successful discovery.
  * 4. Fixed race condition mapping bug where newly discovered keys triggered a UI rebuild
  *    before existing keys were saved to memory.
- * 
+ * 5. Fixed Force Costume Scan where meta-slots (Emotion, Pose) failed to populate
+ *    due to being raw objects rather than un-wrapped strings.
+ *
  * @api-declaration
  * bindScanningHandlers($overlay)
  * 
@@ -28,8 +30,8 @@ import { getSettings } from '../../settings.js';
 import { META_SLOTS } from '../../defaults.js';
 import { buildDescriberContext, buildHistoryText } from '../../utils/history.js';
 import { detectAnchorScan, detectForceCostume } from '../../io/llm/workshop.js';
-import { parsePhase3 } from '../../logic/parsers.js';
-import { renderStudioView } from './dnaListeners.js';
+import { parsePhase3, mergeLayeredUpdate } from '../../logic/parsers.js';
+import { renderStudioView, getGridLayers } from './dnaListeners.js';
 
 /**
  * Binds event listeners for LLM-driven scanning tools.
@@ -124,20 +126,25 @@ export function bindScanningHandlers($overlay) {
 
         try {
             const raw = await detectForceCostume(history, currentTurn, label, hint, s.forceCostumeHintTemplate, s.smartProfileId, s.forceCostumePrompt);
-            const layers = parsePhase3(raw);
 
-            // Populate meta-slots
-            if (layers.emotion) $('#plz-layer-emotion').val(layers.emotion).trigger('input');
-            if (layers.pose)    $('#plz-layer-pose').val(layers.pose).trigger('input');
+            // Pass the raw parsed output through the standardized merge pipeline.
+            // This safely flattens meta-slots into strings and handles 'KEEP' or 'None' gracefully.
+            const parsed = parsePhase3(raw);
+            const currentLayers = getGridLayers();
+            const newLayers = mergeLayeredUpdate(currentLayers, parsed);
 
-            // Populate clothing slots
-            Object.entries(layers).forEach(([slot, val]) => {
+            // Populate meta-slots (now guaranteed to be un-wrapped strings)
+            if (newLayers.emotion) $('#plz-layer-emotion').val(newLayers.emotion).trigger('input');
+            if (newLayers.pose)    $('#plz-layer-pose').val(newLayers.pose).trigger('input');
+
+            // Populate clothing slots (guaranteed to be objects or null)
+            Object.entries(newLayers).forEach(([slot, val]) => {
                 if (META_SLOTS.includes(slot)) return;
                 const $item = $(`.plz-layer-item[data-slot="${slot}"]`);
                 const $mod  = $(`.plz-layer-mod[data-slot="${slot}"]`);
                 
-                if ($item.length) $item.val(val?.item || '').trigger('input');
-                if ($mod.length)  $mod.val(val?.modifier || '').trigger('input');
+                if ($item.length) $item.val(val?.item ?? '').trigger('input');
+                if ($mod.length)  $mod.val(val?.modifier ?? '').trigger('input');
             });
         } catch (err) {
             if (window.toastr) window.toastr.error('Costume scan failed.');
