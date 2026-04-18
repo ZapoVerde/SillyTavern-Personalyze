@@ -99,7 +99,7 @@ export async function runScenePipeline(messageId, signal) {
         if (id) {
             resolvedIds.push(id);
         } else {
-            if (!isIgnored(entity) && !isPending(entity)) {
+            if (!isIgnored(entity, messageId) && !isPending(entity)) {
                 await runArchivistPipeline(messageId, entity);
             }
         }

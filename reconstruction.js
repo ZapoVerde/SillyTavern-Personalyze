@@ -61,6 +61,7 @@ export function reconstruct(chat) {
                 defaultEnsemble: null,
                 styleName:       null,
                 slots:           [...BASE_SLOTS],
+                isArchived:      false,
             };
             // Initialize empty base slots for consistency
             BASE_IDENTITY_SLOTS.forEach(s => chatCharacters[id].identity[s] = '');
@@ -145,6 +146,13 @@ export function reconstruct(chat) {
                     if (!rec.characterId) break;
                     const char = ensureChar(rec.characterId);
                     char.styleName = rec.styleName || null;
+                    break;
+                }
+
+                case 'archive_update': {
+                    if (!rec.characterId) break;
+                    const char = ensureChar(rec.characterId);
+                    char.isArchived = rec.isArchived === true;
                     break;
                 }
 

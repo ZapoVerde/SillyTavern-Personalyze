@@ -31,6 +31,9 @@ export function detectNamesInText(text, chatCharacters) {
     const matchedIds = new Set();
     
     for (const [id, char] of Object.entries(chatCharacters)) {
+        // Archived characters are permanently excluded from detection
+        if (char.isArchived) continue;
+
         // Collect all candidate strings (Label + AKAs)
         const candidates = [char.label, ...(char.aka || [])].filter(Boolean);
         

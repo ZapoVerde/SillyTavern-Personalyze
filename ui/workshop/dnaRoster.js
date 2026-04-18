@@ -23,10 +23,11 @@
 import { getContext } from '../../../../../extensions.js';
 import {
     state, setWorkshopCharacter, setActiveRoster,
-    getCleanLayers, ensureChatChar, updateChainLayers
+    getCleanLayers, ensureChatChar, updateChainLayers,
+    setCharacterArchived
 } from '../../state.js';
 import { BASE_SLOTS } from '../../defaults.js';
-import { lockedWriteRoster } from '../../io/dnaWriter.js';
+import { lockedWriteRoster, lockedWriteArchiveUpdate } from '../../io/dnaWriter.js';
 import { switchTab } from './core.js';
 import { renderDNAView } from './dnaListeners.js';
 
@@ -66,6 +67,35 @@ export function bindRosterHandlers($overlay) {
         // Commit change to chat DNA
         const lastMsgId = Math.max(0, getContext().chat.length - 1);
         await lockedWriteRoster(lastMsgId, newRoster);
+    });
+
+    // ─── Archive Toggle: Permanent Archive/Restore ───
+    $overlay.on('click', '.plz-dna-archive', async function(e) {
+        e.stopPropagation();
+        const id = $(this).closest('.plz-roster-item').data('id');
+        if (!id || id === '__new__') return;
+
+        const char = state.chatCharacters[id];
+        if (!char) return;
+
+        const newArchivedState = !char.isArchived;
+        const lastMsgId = Math.max(0, getContext().chat.length - 1);
+
+        // Update runtime state
+        setCharacterArchived(id, newArchivedState);
+
+        // If archiving an active character, evict them from the roster first
+        if (newArchivedState && state.activeRoster.includes(id)) {
+            const newRoster = state.activeRoster.filter(x => x !== id);
+            setActiveRoster(newRoster);
+            await lockedWriteRoster(lastMsgId, newRoster);
+            document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+        }
+
+        // Commit archive status to DNA
+        await lockedWriteArchiveUpdate(lastMsgId, id, newArchivedState);
+
+        renderDNAView();
     });
 
     // ─── Edit Character: Studio Navigation ───

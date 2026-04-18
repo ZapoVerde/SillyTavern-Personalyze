@@ -21,18 +21,19 @@
 
 import { getContext } from '../../../../../extensions.js';
 import { log, error } from '../../utils/logger.js';
-import { 
-    state, 
-    updateActiveCharacter, 
-    updateActiveLayers, 
-    updateActiveImage, 
-    addToFileIndex, 
-    getChainEntry, 
+import {
+    state,
+    updateActiveCharacter,
+    updateActiveLayers,
+    updateActiveImage,
+    addToFileIndex,
+    getChainEntry,
     updateChainLayers,
     resolveAliasToId,
     upsertChatEnsemble,
     setActiveRoster,
-    removeFromFileIndex
+    removeFromFileIndex,
+    setCharacterArchived
 } from '../../state.js';
 import { getSettings } from '../../settings.js';
 import { slugify, buildHistoryText } from '../../utils/history.js';
@@ -44,13 +45,14 @@ import {
     generateEnsembleKey
 } from '../parsers.js';
 import { generate, deleteFiles } from '../../imageCache.js';
-import { 
-    lockedWriteVisualState, 
-    lockedPatchVisualStateImage, 
+import {
+    lockedWriteVisualState,
+    lockedPatchVisualStateImage,
     lockedWriteEnsemble,
-    lockedWriteRoster
+    lockedWriteRoster,
+    lockedWriteArchiveUpdate
 } from '../../io/dnaWriter.js';
-import { isIgnored, isPending } from '../blacklist.js';
+import { isIgnored, isPending, snooze } from '../blacklist.js';
 import { runArchivistPipeline } from './archivist.js';
 import { detectNamesInText } from '../heuristics.js';
 import { showHeuristicApprovalModal } from '../../ui/heuristicModal.js';
@@ -74,19 +76,41 @@ export async function runTurnPipeline(messageId, signal) {
 
     // ─── Phase 1a: Heuristics ───
     const heuristicIds = detectNamesInText(message.mes, state.chatCharacters);
-    
+
     if (heuristicIds.length > 0) {
         log('Turn', `Heuristics found: ${heuristicIds.join(', ')}`);
-        
+
         const alreadyActive = heuristicIds.filter(id => state.activeRoster.includes(id));
         const newlyDetected = heuristicIds.filter(id => !state.activeRoster.includes(id));
-        
-        let approvedNew = [];
-        if (newlyDetected.length > 0) {
-            approvedNew = await showHeuristicApprovalModal(newlyDetected);
+
+        // Filter out characters currently snoozed before showing the modal
+        const notSnoozed = newlyDetected.filter(id => !isIgnored(id, messageId));
+
+        let modalResult = { load: [], snooze: [], archive: [] };
+        if (notSnoozed.length > 0) {
+            modalResult = await showHeuristicApprovalModal(notSnoozed);
         }
-        
-        targetSubjects = [...alreadyActive, ...approvedNew];
+
+        // Handle Snooze actions: register expiry in session blacklist
+        for (const { id, duration } of modalResult.snooze) {
+            snooze(id, messageId + duration);
+            log('Turn', `Snoozed ${id} for ${duration} turns (expires at message ${messageId + duration}).`);
+        }
+
+        // Handle Archive actions: write to DNA and remove from active roster
+        for (const id of modalResult.archive) {
+            setCharacterArchived(id, true);
+            await lockedWriteArchiveUpdate(messageId, id, true);
+            if (state.activeRoster.includes(id)) {
+                const newRoster = state.activeRoster.filter(x => x !== id);
+                setActiveRoster(newRoster);
+                await lockedWriteRoster(messageId, newRoster);
+                document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+            }
+            log('Turn', `Archived ${id} permanently.`);
+        }
+
+        targetSubjects = [...alreadyActive, ...modalResult.load];
     }
 
     // ─── Phase 1b: Fallback LLM ───
@@ -114,7 +138,7 @@ export async function runTurnPipeline(messageId, signal) {
             } else {
                 // Route to Archivist for unknown subject
                 log('Turn', `Unknown subject: "${detectedString}". Checking resolution guards...`);
-                if (!isIgnored(detectedString) && !isPending(detectedString)) {
+                if (!isIgnored(detectedString, messageId) && !isPending(detectedString)) {
                     await runArchivistPipeline(messageId, detectedString);
                 }
                 return;

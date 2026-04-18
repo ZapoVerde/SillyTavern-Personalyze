@@ -322,3 +322,29 @@ export async function lockedWriteDefaultEnsemble(messageId, characterId, ensembl
         writeLock.release();
     }
 }
+
+/**
+ * Writes a character's archive status to the DNA chain.
+ * Permanent: reconstructed on every chat load.
+ * @param {number} messageId
+ * @param {string} characterId
+ * @param {boolean} isArchived
+ */
+export async function lockedWriteArchiveUpdate(messageId, characterId, isArchived) {
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (message) {
+            ensureArray(message);
+            message.extra.personalyze.push({
+                type: 'archive_update',
+                characterId,
+                isArchived: isArchived === true
+            });
+            await saveChatConditional();
+        }
+    } finally {
+        writeLock.release();
+    }
+}

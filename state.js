@@ -206,7 +206,8 @@ export function ensureChatChar(id) {
             aka: [], 
             defaultEnsemble: null, 
             styleName: null,
-            slots: [...BASE_SLOTS], 
+            slots: [...BASE_SLOTS],
+            isArchived: false,
         };
         
         // Init with empty base identity slots
@@ -275,6 +276,12 @@ export function upsertChatSlots(id, slots) {
     char.slots = Array.isArray(slots) ? [...slots] : [...BASE_SLOTS];
 }
 
+/** Updates a character's archived status in local DNA. */
+export function setCharacterArchived(id, isArchived) {
+    const char = ensureChatChar(id);
+    char.isArchived = isArchived === true;
+}
+
 // ─── Reverse Lookup ──────────────────────────────────────────────────────────
 
 /**
@@ -284,6 +291,7 @@ export function resolveAliasToId(detectedName) {
     if (!detectedName) return null;
     const target = detectedName.trim().toLowerCase();
     for (const [id, char] of Object.entries(state.chatCharacters)) {
+        if (char.isArchived) continue;
         if (id.toLowerCase().replace(/_/g, ' ') === target.replace(/_/g, ' ')) return id;
         if (char.label && char.label.toLowerCase() === target) return id;
         if (char.aka && char.aka.some(alias => alias.toLowerCase() === target)) return id;
