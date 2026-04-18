@@ -66,16 +66,24 @@ export function snooze(name, expiryMessageId) {
 
 /**
  * Checks if a name is currently blacklisted.
- * A snoozed entry is ignored as long as currentMessageId < expiryMessageId.
+ * While snoozed (currentMessageId < expiryMessageId): ignored.
+ * When the snooze timer expires: auto-promoted to Infinity so the character
+ * remains silently ignored for the rest of the scene without re-triggering
+ * the approval modal. Only a scene change (clearIgnored) lifts the ignore.
  * A permanently ignored entry (Infinity) is always ignored until scene change.
  * @param {string} name
  * @param {number} [currentMessageId] - The current turn's message index.
  * @returns {boolean}
  */
 export function isIgnored(name, currentMessageId = Infinity) {
-    const expiry = _ignored.get(normalize(name));
+    const key = normalize(name);
+    const expiry = _ignored.get(key);
     if (expiry === undefined) return false;
-    return currentMessageId < expiry;
+    if (currentMessageId < expiry) return true;
+    // Snooze timer has elapsed — promote to permanent scene-ignore so the
+    // character stays quiet until a scene change resets the list.
+    _ignored.set(key, Infinity);
+    return true;
 }
 
 /**

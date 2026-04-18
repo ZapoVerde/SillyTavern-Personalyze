@@ -69,6 +69,10 @@ export async function showHeuristicApprovalModal(detectedIds) {
                     <span><i class="fa-solid fa-circle-play"></i> Load</span>
                 </label>
                 <label style="display:flex; align-items:center; gap:5px; cursor:pointer; margin:0;">
+                    <input type="radio" name="plz-action-${safeId}" class="plz-heuristic-action" value="skip" />
+                    <span><i class="fa-solid fa-forward-step"></i> Skip</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:5px; cursor:pointer; margin:0;">
                     <input type="radio" name="plz-action-${safeId}" class="plz-heuristic-action" value="snooze" />
                     <span><i class="fa-solid fa-clock"></i> Snooze</span>
                     <input type="number" class="plz-snooze-turns" min="1" max="99" value="3" disabled
