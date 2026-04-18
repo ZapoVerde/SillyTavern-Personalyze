@@ -153,6 +153,13 @@ function _renderVnRoster() {
 
         _patchZone($leftGroup, _leftGroupOrder);
 
+        // Reorder DOM nodes to match _leftGroupOrder (prepend in reverse so cards
+        // land before any already-injected scroll buttons).
+        [..._leftGroupOrder].reverse().forEach(id => {
+            const $card = $leftGroup.find(`> .plz-portrait-card[data-id="${CSS.escape(id)}"]`);
+            if ($card.length) $leftGroup.prepend($card);
+        });
+
         // Mark stacked (non-front) cards — only the last card in DOM order gets controls.
         // Stacked cards have pointer-events disabled on their controls via CSS.
         $leftGroup.find('> .plz-portrait-card').each(function(i) {
@@ -245,10 +252,8 @@ function _applyLayout($group, cardCount) {
             : 0;
     }
 
-    $group.css({
-        width:           `${Math.round(leftGroupWidth)}px`,
-        '--plz-overlap': `${Math.round(overlap)}px`,
-    });
+    $group.css('width', `${Math.round(leftGroupWidth)}px`);
+    $group[0].style.setProperty('--plz-overlap', `${Math.round(overlap)}px`);
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
@@ -295,12 +300,15 @@ export function injectVnPanel() {
         const $btn = $(`#plz-vn-toggle-btn`);
         const isEnabled = getSettings().enabled;
 
+        const $panel = $(`#${PANEL_ID}`);
+
         if (isEnabled) {
             updateSetting('enabled', false);
             $('#plz-enabled').prop('checked', false);
             $btn.find('i').removeClass('fa-eye-slash').addClass('fa-eye');
             $btn.attr('title', 'Enable PersonaLyze');
             $btn.addClass('plz-vn-toggle-disabled');
+            $panel.addClass('plz-vn-panel-disabled');
 
             syncVnState();
             document.dispatchEvent(new CustomEvent('plz:roster-changed'));
@@ -316,6 +324,7 @@ export function injectVnPanel() {
             $btn.find('i').removeClass('fa-eye').addClass('fa-eye-slash');
             $btn.attr('title', 'Disable PersonaLyze');
             $btn.removeClass('plz-vn-toggle-disabled');
+            $panel.removeClass('plz-vn-panel-disabled');
 
             syncVnState();
             document.dispatchEvent(new CustomEvent('plz:roster-changed'));
