@@ -1,14 +1,16 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/dnaScanning.js
- * @stamp {"utc":"2026-04-17T15:20:00.000Z"}
+ * @stamp {"utc":"2026-04-18T16:15:00.000Z"}
  * @architectural-role UI Sub-module (LLM Tools)
  * @description
  * Handles LLM-driven character scanning tools in the Studio.
- * 
+ *
  * Updated for Granular Identity Architecture:
  * 1. Overhauled Identity Scan to populate granular Physical Identity grid.
  * 2. Dynamically updates character physical schema with newly discovered features.
  * 3. Triggers UI re-render and DNA commitment upon successful discovery.
+ * 4. Fixed race condition mapping bug where newly discovered keys triggered a UI rebuild
+ *    before existing keys were saved to memory.
  * 
  * @api-declaration
  * bindScanningHandlers($overlay)
@@ -62,20 +64,13 @@ export function bindScanningHandlers($overlay) {
                 const char = state.chatCharacters[id];
                 let schemaChanged = false;
 
+                // FIX: Write all new identity items directly to state synchronously first
+                // to prevent the UI re-render from wiping out the form values with stale memory.
                 for (const [key, val] of Object.entries(result.identity)) {
-                    // Update Memory
                     if (char.identity[key] === undefined) {
-                        char.identity[key] = val;
                         schemaChanged = true;
-                    } else {
-                        // Update existing UI input directly to trigger debounced DNA save
-                        const $input = $(`.plz-studio-identity-item[data-key="${key}"]`);
-                        if ($input.length) {
-                            $input.val(val).trigger('input');
-                        } else {
-                            char.identity[key] = val;
-                        }
                     }
+                    char.identity[key] = val;
                 }
 
                 if (schemaChanged) {
@@ -83,6 +78,14 @@ export function bindScanningHandlers($overlay) {
                     renderStudioView();
                     // Final trigger to ensure the new state is committed to DNA ledger
                     $('.plz-studio-identity-item').trigger('input');
+                } else {
+                    // If no schema growth, just update the existing DOM inputs directly
+                    for (const [key, val] of Object.entries(result.identity)) {
+                        const $input = $(`.plz-studio-identity-item[data-key="${key}"]`);
+                        if ($input.length) {
+                            $input.val(val).trigger('input');
+                        }
+                    }
                 }
 
                 if (window.toastr) window.toastr.success(`Physical traits updated for ${result.name || id}.`);

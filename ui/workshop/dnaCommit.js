@@ -86,7 +86,7 @@ export function bindCommitHandlers($overlay) {
         // ─── Phase 0: Buffer & Guard ───
         const layers = getGridLayers();
         const labelInput = $('#plz-studio-label').val().trim();
-        const anchorInput = $('#plz-studio-anchor').val().trim();
+        const anchorInput = ($('#plz-studio-anchor').val() || '').trim();
 
         // Bracket Guard: Check for LLM placeholders
         const fullSerializedState = JSON.stringify(layers) + labelInput + anchorInput;
