@@ -300,15 +300,13 @@ export function injectVnPanel() {
         const $btn = $(`#plz-vn-toggle-btn`);
         const isEnabled = getSettings().enabled;
 
-        const $panel = $(`#${PANEL_ID}`);
-
         if (isEnabled) {
             updateSetting('enabled', false);
             $('#plz-enabled').prop('checked', false);
             $btn.find('i').removeClass('fa-eye-slash').addClass('fa-eye');
             $btn.attr('title', 'Enable PersonaLyze');
             $btn.addClass('plz-vn-toggle-disabled');
-            $panel.addClass('plz-vn-panel-disabled');
+            $btn.detach().appendTo('body');
 
             syncVnState();
             document.dispatchEvent(new CustomEvent('plz:roster-changed'));
@@ -324,7 +322,7 @@ export function injectVnPanel() {
             $btn.find('i').removeClass('fa-eye').addClass('fa-eye-slash');
             $btn.attr('title', 'Disable PersonaLyze');
             $btn.removeClass('plz-vn-toggle-disabled');
-            $panel.removeClass('plz-vn-panel-disabled');
+            $btn.detach().prependTo(`#${PANEL_ID}`);
 
             syncVnState();
             document.dispatchEvent(new CustomEvent('plz:roster-changed'));

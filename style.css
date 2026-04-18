@@ -815,17 +815,15 @@ body.plz-vn-active .plz-vn-side-btn {
     border-radius: 0 6px 6px 0;
 }
 
-/* Keep panel alive (non-blocking) when PersonaLyze is disabled so toggle remains clickable */
-#plz-vn-panel.plz-vn-panel-disabled {
-    display: block;
-    background: transparent;
-    pointer-events: none;
-}
-
-#plz-vn-panel.plz-vn-panel-disabled #plz-vn-toggle-btn {
+/* When disabled, button is detached from panel and sits directly on body with fixed positioning */
+body > #plz-vn-toggle-btn.plz-vn-toggle-disabled {
     display: flex;
-    pointer-events: auto;
+    position: fixed;
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
     opacity: 0.7;
+    z-index: 5000;
 }
 
 /* Ensure tabs in the header look clean and not like heavy blocks */
