@@ -149,11 +149,18 @@ export function bindRosterControls() {
         }
     });
 
-    // 8. Add Character (VN panel chrome button — opens picker with no pre-selection)
-    $doc.on('click', '#plz-vn-add-btn', async function(e) {
+    // 8. Gear Action: Force Apparel Update
+    // Bypasses the Phase 2 Change Gate and runs Phase 3 extraction directly.
+    // Fire-and-forget: spinner feedback is delivered via plz:portrait-status events.
+    $doc.on('click', '.plz-gear-update-apparel', function(e) {
         e.stopPropagation();
-        const { openCharPicker } = await import('../charPicker.js');
-        await openCharPicker();
+        const id = $(this).closest('.plz-portrait-card').data('id');
+        if (id) {
+            $(this).closest('.plz-gear-menu').removeClass('plz-gear-open');
+            import('../../logic/pipeline/forceUpdate.js').then(({ forceApparelUpdate }) => {
+                forceApparelUpdate(id);
+            });
+        }
     });
 
     // 9. Refresh / Re-generate (Generation Economy)

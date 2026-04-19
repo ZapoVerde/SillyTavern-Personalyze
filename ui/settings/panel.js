@@ -21,7 +21,7 @@
 
 import { getSettings, getMetaSettings, updateSetting } from '../../settings.js';
 import { state, removeFromFileIndex } from '../../state.js';
-import { setVnPanelEnabled, syncVnState } from '../vnPanel.js';
+import { setVnPanelEnabled, syncVnState } from '../vn/index.js';
 import { openWorkshop } from '../workshop/core.js';
 import { log, setVerbose } from '../../utils/logger.js';
 import { getLogs, getWorkshopLogs, getSystemLogs } from '../../utils/callLog.js';

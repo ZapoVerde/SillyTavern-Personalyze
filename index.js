@@ -33,7 +33,7 @@ import { runBoot } from './logic/bootstrapper.js';
 import { runPipeline } from './logic/pipeline/master.js';
 import { injectSettingsPanel } from './ui/settings/panel.js';
 import { injectPortraitContainer } from './portrait.js';
-import { injectVnPanel } from './ui/vnPanel.js';
+import { injectVnPanel } from './ui/vn/index.js';
 import { bindRosterControls } from './ui/roster/controls.js';
 import { initRenderer } from './ui/roster/renderer.js';
 import { openWorkshop } from './ui/workshop/core.js';

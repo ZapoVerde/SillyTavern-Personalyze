@@ -807,12 +807,75 @@ body.plz-vn-active .plz-vn-side-btn {
     border-radius: 0 6px 6px 0;
 }
 
-/* Left side: Add Character — stacked above the toggle button */
-#plz-vn-add-btn {
+/* Left side: Add Character wrapper — takes the position the old button occupied */
+.plz-vn-add-wrapper {
+    display: none;
+    position: absolute;
     left: 0;
     top: calc(50% - 56px); /* one button-height above the toggle */
+    z-index: 5000;
+    align-items: flex-start;
+}
+
+body.plz-vn-active .plz-vn-add-wrapper {
+    display: flex;
+}
+
+/* The hamburger button inside the wrapper — override .plz-vn-side-btn's absolute positioning */
+.plz-vn-add-wrapper #plz-vn-add-btn {
+    display: flex;
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    z-index: auto;
     border-left: none;
     border-radius: 0 6px 6px 0;
+}
+
+/* Hamburger dropdown — floats to the right of the button */
+.plz-vn-dropdown {
+    display: none;
+    position: absolute;
+    left: 36px; /* button width */
+    top: 0;
+    z-index: 5001;
+    flex-direction: column;
+    min-width: 160px;
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0 6px 6px 6px;
+    overflow: hidden;
+}
+
+.plz-vn-dropdown.plz-dropdown-open {
+    display: flex;
+}
+
+.plz-vn-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    padding: 9px 13px;
+    text-align: left;
+    font-size: 0.88em;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.plz-vn-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.plz-vn-dropdown-item:hover,
+.plz-vn-dropdown-item:active {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
 }
 
 /* When disabled, button is detached from panel and sits just below the main menu bar */
