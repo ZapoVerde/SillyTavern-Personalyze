@@ -267,11 +267,11 @@ export const DEFAULT_BLUEPRINTS = {
     },
     'sdxl': {
         "steps": { "type": "slider", "min": 1, "max": 100, "default": 30, "label": "Steps" },
-        "cfgScale": { "type": "slider", "min": 1, "max": 30, "default": 7, "step": 0.5, "label": "CFG Scale" },
+        "CFGScale": { "type": "slider", "min": 1, "max": 30, "default": 7, "step": 0.5, "label": "CFG Scale" },
         "scheduler": { "type": "select", "options":["Euler A", "DPM++ 2M Karras", "UniPC"], "default": "Euler A", "label": "Scheduler" }
     },
     'sd15': {
         "steps": { "type": "slider", "min": 1, "max": 100, "default": 20, "label": "Steps" },
-        "cfgScale": { "type": "slider", "min": 1, "max": 30, "default": 7, "step": 0.5, "label": "CFG Scale" }
+        "CFGScale": { "type": "slider", "min": 1, "max": 30, "default": 7, "step": 0.5, "label": "CFG Scale" }
     }
 };

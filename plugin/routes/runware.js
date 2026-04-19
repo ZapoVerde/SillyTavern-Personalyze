@@ -150,10 +150,19 @@ export function registerRunwareRoutes(router) {
             }
 
             const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
+
+            if (taskResult?.errorCode) {
+                const err = new Error(`Runware task error [${taskResult.errorCode}]: ${taskResult.message || taskResult.errorCode}`);
+                err.responseDocument = taskResult;
+                throw err;
+            }
+
             const imageUrl = taskResult?.imageURL;
 
             if (!imageUrl) {
-                throw new Error('Runware failed to return an image URL for the generated task.');
+                const err = new Error('Runware failed to return an image URL for the generated task.');
+                err.responseDocument = data;
+                throw err;
             }
 
             const imgRes = await withRetry(() => fetchChecked(imageUrl), 'RunwareCDN');
@@ -210,6 +219,11 @@ export function registerRunwareRoutes(router) {
             }
 
             const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
+
+            if (taskResult?.errorCode) {
+                throw new Error(`Runware RMBG task error [${taskResult.errorCode}]: ${taskResult.message || taskResult.errorCode}`);
+            }
+
             const imageUrl = taskResult?.imageURL;
 
             if (!imageUrl) {
