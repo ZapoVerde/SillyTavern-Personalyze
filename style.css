@@ -293,6 +293,26 @@ body.plz-modal-open #extensions_settings {
     overflow: hidden; /* Prevent internal blowouts from long code strings */
 }
 
+/* ─── Blueprint Editor Dialog Shell ───────────────────────────────────────── */
+/* Wraps the editor in a native <dialog> so it renders in the browser top    */
+/* layer above any callPopup() (which also uses <dialog>).                   */
+
+dialog.plz-bp-dialog {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    max-width: none;
+    max-height: none;
+    width: 100vw;
+    height: 100dvh;
+    overflow: hidden;
+}
+
+dialog.plz-bp-dialog::backdrop {
+    display: none; /* .plz-overlay inside provides the backdrop */
+}
+
 /* ─── Blueprint Editor Layout Fixes ───────────────────────────────────────── */
 
 /* Header container that holds the Title and long technical ID */

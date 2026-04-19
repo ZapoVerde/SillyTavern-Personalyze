@@ -88,13 +88,21 @@ export async function openBlueprintEditor(modelId) {
     const currentBlueprint = getModelBlueprint(modelId) || {};
     const baseTemplates = getBaseTemplates();
 
+    // Wrap in a native <dialog> so it renders in the browser top layer,
+    // above any callPopup() that triggered this editor.
+    const dialog = document.createElement('dialog');
+    dialog.className = 'plz-bp-dialog';
+    document.body.appendChild(dialog);
+    dialog.showModal();
+
     const $overlay = $(getBlueprintShellHTML(modelId, baseTemplates));
-    $('body').append($overlay);
+    $(dialog).append($overlay);
 
     return new Promise((resolve) => {
         const teardown = (saved) => {
             $(document).off('.plzBP');
-            $overlay.remove();
+            dialog.close();
+            dialog.remove();
             resolve(saved);
         };
 
