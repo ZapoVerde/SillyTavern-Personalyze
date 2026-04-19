@@ -832,7 +832,7 @@ body.plz-vn-active .plz-vn-side-btn {
     display: none;
     position: absolute;
     left: 0;
-    top: calc(50% - 56px); /* one button-height above the toggle */
+    top: calc(50% - 78px); /* flush above the toggle: toggle-top = 50% - 26px, wrapper-height = 52px */
     z-index: 5000;
     align-items: flex-start;
 }

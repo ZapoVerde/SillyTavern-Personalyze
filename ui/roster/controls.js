@@ -61,8 +61,18 @@ function _clampControls($card) {
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const vw = window.innerWidth;
+
+    // Measure the right edge of any visible left-side VN buttons (hamburger + toggle)
+    // so the controls bar slides past them rather than hiding underneath.
+    let leftBoundary = 0;
+    document.querySelectorAll('#plz-vn-toggle-btn, .plz-vn-add-wrapper').forEach(btn => {
+        if (btn.offsetParent !== null) {
+            leftBoundary = Math.max(leftBoundary, btn.getBoundingClientRect().right);
+        }
+    });
+
     let dx = 0;
-    if (rect.left < 0) dx = -rect.left;
+    if (rect.left < leftBoundary) dx = leftBoundary - rect.left;
     else if (rect.right > vw) dx = vw - rect.right;
     if (dx !== 0) card.style.setProperty('--plz-controls-dx', `${Math.round(dx)}px`);
 }
