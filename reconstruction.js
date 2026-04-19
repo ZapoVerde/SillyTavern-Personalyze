@@ -19,6 +19,7 @@
  *   activeCharacterId:   string|null,
  *   activeLayers:        object,
  *   activeImageFile:     string|null,
+ *   chatUuid:            string|null,
  * }
  *
  * @contract
@@ -43,6 +44,7 @@ export function reconstruct(chat) {
     let activeRoster      = [];
     let activeCharacterId = null;
     let activeImageFile   = null;
+    let chatUuid          = null;
     
     // Default empty state for the active layers
     let activeLayers = {
@@ -80,6 +82,10 @@ export function reconstruct(chat) {
             if (!rec || typeof rec !== 'object') continue;
 
             switch (rec.type) {
+                case 'chat_uuid':
+                    if (rec.uuid) chatUuid = rec.uuid;
+                    break;
+
                 case 'roster':
                     activeRoster = Array.isArray(rec.roster) ? [...rec.roster] : [];
                     break;
@@ -217,5 +223,6 @@ export function reconstruct(chat) {
         activeCharacterId,
         activeLayers,
         activeImageFile,
+        chatUuid,
     };
 }

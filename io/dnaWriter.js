@@ -11,6 +11,8 @@
  * 2. Added lockedWriteIdentityUpdate for permanent physical changes.
  *
  * @api-declaration
+ * lockedWriteChatUuid(messageId, uuid)
+ * lockedBatchWrite(messageId, records[])
  * lockedWriteCharacterDef(messageId, characterId, identity, seed)
  * lockedWriteIdentityUpdate(messageId, characterId, identity)
  * lockedWriteEnsemble(messageId, characterId, key, label, layers)
@@ -45,6 +47,54 @@ function ensureArray(message) {
     message.extra = message.extra ?? {};
     if (!message.extra.personalyze || !Array.isArray(message.extra.personalyze)) {
         message.extra.personalyze = [];
+    }
+}
+
+/**
+ * Writes a chat-session UUID to the DNA chain.
+ * One per chat, written to the first AI message on new-chat boot.
+ *
+ * @param {number} messageId
+ * @param {string} uuid - crypto.randomUUID() value
+ */
+export async function lockedWriteChatUuid(messageId, uuid) {
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (message) {
+            ensureArray(message);
+            message.extra.personalyze.push({ type: 'chat_uuid', uuid });
+            await saveChatConditional();
+        }
+    } finally {
+        writeLock.release();
+    }
+}
+
+/**
+ * Writes an arbitrary array of pre-built DNA records to a single message in
+ * one lock acquisition. Used by the boot sequence to seed a new chat from an
+ * anchor without hammering saveChatConditional() once per record.
+ *
+ * @param {number}   messageId
+ * @param {object[]} records - fully-formed DNA record objects
+ */
+export async function lockedBatchWrite(messageId, records) {
+    if (!records || records.length === 0) return;
+    await writeLock.acquire();
+    try {
+        const context = getContext();
+        const message = context.chat[messageId];
+        if (message) {
+            ensureArray(message);
+            for (const rec of records) {
+                message.extra.personalyze.push(rec);
+            }
+            await saveChatConditional();
+        }
+    } finally {
+        writeLock.release();
     }
 }
 

@@ -77,6 +77,10 @@ export const state = {
 
     // Transient UI Preferences (Session-only, not saved to DNA)
     uiState: {}, // { [characterId]: { flipped: boolean } }
+
+    // Per-chat UUID written into the first AI message and stored in the anchor.
+    // null means this chat has no UUID yet (brand new, unseeded).
+    _activeChatUuid: null,
 };
 
 /**
@@ -111,6 +115,7 @@ export function resetState() {
     state.fileIndex            = new Set();
     state._workshopCharacterId = null;
     state.uiState              = {};
+    state._activeChatUuid      = null;
 }
 
 /** Sets the character currently being tracked for this chat turn. */
