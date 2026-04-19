@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/archivist.js
- * @stamp {"utc":"2026-04-17T15:30:00.000Z"}
+ * @stamp {"utc":"2026-04-19T00:00:00.000Z"}
  * @architectural-role Orchestrator (Phase 1.5)
  * @description
  * Manages the resolution of unrecognized characters detected in the narrative.
@@ -9,10 +9,10 @@
  * 2. User resolution via a 3-way modal (Create, Alias, or Ignore).
  * 3. DNA commitment based on the choice.
  *
- * Updated for Granular Identity Architecture:
- * 1. Consumes structured identity map from detectAnchorScan.
- * 2. Passes compiled identity string to modal for user review.
- * 3. Commits granular identity map to character DNA.
+ * Updated for Granular Identity Grid Architecture:
+ * 1. Passes raw identity object directly to modal (no string flattening).
+ * 2. Modal returns a validated identity map; no 'base' fallback required.
+ * 3. Commits structured map directly to character DNA.
  *
  * @api-declaration
  * runArchivistPipeline(messageId, detectedName) -> Promise<void>
@@ -32,7 +32,6 @@ import { addPending, removePending, ignore } from '../blacklist.js';
 import { detectAnchorScan } from '../../io/llm/workshop.js';
 import { showArchivistModal } from '../../ui/archivistModal.js';
 import { processKnownSubject } from './turn.js';
-import { formatIdentityDisplay } from '../../logic/parsers.js';
 import {
     lockedWriteCharacterDef,
     lockedWriteLabel,
@@ -80,9 +79,8 @@ export async function runArchivistPipeline(messageId, detectedName) {
         }
 
         // 3. User Resolution Modal
-        // Format as Key: Value pairs so the user can review individual traits
-        const identityStr = formatIdentityDisplay(scanResult.identity);
-        const resolution = await showArchivistModal(detectedName, identityStr, state.activeRoster);
+        // Pass the raw structured identity object — the modal renders it as a grid.
+        const resolution = await showArchivistModal(detectedName, scanResult.identity, state.activeRoster);
 
         if (!resolution) {
             log('Archivist', 'Resolution cancelled by user.');
@@ -94,16 +92,11 @@ export async function runArchivistPipeline(messageId, detectedName) {
         switch (resolution.action) {
             case 'create': {
                 const newId = slugify(detectedName);
-                
-                // If user edited the text in the modal, we treat it as the 'base' physical slot.
-                // If they didn't touch it, we keep the granular map from the LLM.
-                const finalIdentity = (resolution.anchor && resolution.anchor !== identityStr)
-                    ? { base: resolution.anchor }
-                    : scanResult.identity;
 
-                await lockedWriteCharacterDef(messageId, newId, finalIdentity, 1);
+                // The modal scrapes and validates the grid; commit it directly.
+                await lockedWriteCharacterDef(messageId, newId, resolution.identity, 1);
                 await lockedWriteLabel(messageId, newId, detectedName);
-                upsertChatCharacterDef(newId, finalIdentity, 1);
+                upsertChatCharacterDef(newId, resolution.identity, 1);
                 upsertChatCharacterLabel(newId, detectedName);
 
                 // Ensure they start with a clean wardrobe

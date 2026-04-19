@@ -186,7 +186,6 @@ export function injectVnPanel() {
                 if (module.clearAllBadges) module.clearAllBadges();
             });
 
-            if (window.toastr) window.toastr.warning('PersonaLyze disabled.', 'PersonaLyze');
         } else {
             updateSetting('enabled', true);
             $('#plz-enabled').prop('checked', true);
