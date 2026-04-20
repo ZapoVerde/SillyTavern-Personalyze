@@ -92,6 +92,12 @@ export function getPortraitCardHTML(characterId, label, filename, isFlipped = fa
             <button class="plz-card-btn plz-gear-update-apparel" title="Update Apparel">
                 <i class="fa-solid fa-shirt"></i>
             </button>
+            <button class="plz-card-btn plz-gear-open-workshop" title="Open Workshop">
+                <i class="fa-solid fa-flask"></i>
+            </button>
+            <button class="plz-card-btn plz-gear-open-style" title="Open Style Editor">
+                <i class="fa-solid fa-palette"></i>
+            </button>
         </div>
     </div>`;
 }

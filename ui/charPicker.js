@@ -137,12 +137,66 @@ export async function openCharPicker(initialOverride = null, initialCharId = nul
             <div id="plz-cp-datalists-container">${buildVocabularyDatalists(initId, state.chatCharacters[initId], state.characterChain[initId])}</div>
             <button id="plz-cp-force-regen" class="menu_button" style="width:100%;margin-top:12px;opacity:0.75;">
                 <i class="fa-solid fa-rotate-right"></i> Force New Generation
-            </button>`,
+            </button>
+            <div id="plz-cp-hist-menu"></div>`,
             'confirm'
         ).then(ok => finish(!!ok)).catch(() => finish(false));
 
+        // History dropdown — ▾ button opens a pick-list from the linked datalist
+        $(document).on('click.plzCp', '.plz-history-btn', function(e) {
+            e.stopPropagation();
+            const $btn = $(this);
+            const listId = $btn.data('list');
+            const $input = $btn.closest('.plz-input-wrapper').find('input');
+            const $menu = $('#plz-cp-hist-menu');
+
+            // Toggle: close if already open for this same field
+            if ($menu.hasClass('plz-hist-open') && $menu.data('plz-for') === listId) {
+                $menu.removeClass('plz-hist-open');
+                return;
+            }
+
+            const options = listId
+                ? Array.from(document.querySelectorAll(`#${listId} option`))
+                      .map(o => o.value).filter(Boolean)
+                : [];
+
+            if (!options.length) {
+                $menu.html('<div class="plz-hist-empty">No history yet</div>');
+            } else {
+                $menu.html(options.map(v =>
+                    `<div class="plz-hist-opt">${escapeHtml(v)}</div>`
+                ).join(''));
+            }
+
+            // Position below the input using fixed coords so it floats above the modal
+            const rect = $input[0].getBoundingClientRect();
+            $menu.css({
+                top:      rect.bottom + 4,
+                left:     rect.left,
+                minWidth: rect.width,
+            }).data('plz-for', listId).data('plz-target', $input[0]).addClass('plz-hist-open');
+        });
+
+        // Selecting an option fills the input and closes the menu
+        $(document).on('click.plzCp', '.plz-hist-opt', function(e) {
+            e.stopPropagation();
+            const val = $(this).text();
+            const $input = $($('#plz-cp-hist-menu').data('plz-target'));
+            $input.val(val).trigger('input');
+            $('#plz-cp-hist-menu').removeClass('plz-hist-open');
+        });
+
+        // Click/tap away closes the menu
+        $(document).on('mousedown.plzCp touchstart.plzCp', function(e) {
+            if (!$(e.target).closest('#plz-cp-hist-menu, .plz-history-btn').length) {
+                $('#plz-cp-hist-menu').removeClass('plz-hist-open');
+            }
+        });
+
         $(document).on('click.plzCp', '.plz-input-clear', function(e) {
             e.stopPropagation();
+            $('#plz-cp-hist-menu').removeClass('plz-hist-open');
             const $wrapper = $(this).closest('.plz-input-wrapper');
             const $input = $wrapper.find('input');
             $input.val('').trigger('input');

@@ -113,32 +113,25 @@ export async function showArchivistModal(name, identityMap, activeRoster) {
             </div>
         </div>
 
-        <div style="display:grid; grid-template-columns: 1fr; gap:8px; margin-top:8px;">
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
             <!-- Option 1: Create -->
-            <button id="plz-arch-create" class="menu_button" style="text-align:left; padding:10px; display:flex; flex-direction:column; gap:2px;">
-                <strong><i class="fa-solid fa-user-plus"></i> Create New Character</strong>
-                <span style="font-size:0.75em; opacity:0.6;">Register them in the DNA and generate a portrait.</span>
+            <button id="plz-arch-create" class="menu_button" style="text-align:left;" title="Register them in the DNA and generate a portrait.">
+                <i class="fa-solid fa-user-plus"></i> Create New Character
             </button>
 
             <!-- Option 2: Alias -->
-            <div style="border:1px solid var(--SmartThemeBorderColor); border-radius:6px; padding:8px; display:flex; flex-direction:column; gap:8px;">
-                <div style="display:flex; flex-direction:column; gap:2px;">
-                    <strong><i class="fa-solid fa-link"></i> Link as Alias</strong>
-                    <span style="font-size:0.75em; opacity:0.6;">This is a nickname for an existing character.</span>
-                </div>
-                <div style="display:flex; gap:6px;">
-                    <select id="plz-arch-alias-target" class="text_pole" style="flex:1;">
-                        <option value="">— Select Character —</option>
-                        ${aliasOptions}
-                    </select>
-                    <button id="plz-arch-alias-submit" class="menu_button">Link</button>
-                </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <i class="fa-solid fa-link" style="opacity:0.6; flex-shrink:0;"></i>
+                <select id="plz-arch-alias-target" class="text_pole" style="flex:1;" title="This is a nickname for an existing character.">
+                    <option value="">— Link as Alias to existing character —</option>
+                    ${aliasOptions}
+                </select>
+                <button id="plz-arch-alias-submit" class="menu_button" style="flex-shrink:0;">Link</button>
             </div>
 
             <!-- Option 3: Ignore -->
-            <button id="plz-arch-ignore" class="menu_button" style="text-align:left; padding:10px; display:flex; flex-direction:column; gap:2px;">
-                <strong><i class="fa-solid fa-eye-slash"></i> Ignore for now</strong>
-                <span style="font-size:0.75em; opacity:0.6;">Skip this person until the next scene change.</span>
+            <button id="plz-arch-ignore" class="menu_button" style="text-align:left;" title="Skip this person until the next scene change.">
+                <i class="fa-solid fa-eye-slash"></i> Ignore for now
             </button>
         </div>
     </div>`;

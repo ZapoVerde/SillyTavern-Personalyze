@@ -51,14 +51,16 @@ export function buildGridHTML(slots, layers, charId, seed = 1, autoIncrement = f
         <div style="margin-bottom:10px;">
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">${escapeHtml(label)}</label>
             <div class="plz-layer-row">
-                <div class="plz-input-wrapper" style="flex:2;">
-                    <input class="plz-cp-item text_pole" data-slot="${key}" type="text" placeholder="Item" 
+                <div class="plz-input-wrapper plz-has-history-btn" style="flex:2;">
+                    <input class="plz-cp-item text_pole" data-slot="${key}" type="text" placeholder="Item"
                            list="${itemListId}" value="${escapeHtml(item)}" style="width:100%;" />
+                    <div class="plz-history-btn" data-list="${itemListId}" title="History">▾</div>
                     <div class="plz-input-clear" title="Clear Item">✕</div>
                 </div>
-                <div class="plz-input-wrapper" style="flex:1;">
-                    <input class="plz-cp-mod text_pole" data-slot="${key}" type="text" placeholder="Mod" 
+                <div class="plz-input-wrapper plz-has-history-btn" style="flex:1;">
+                    <input class="plz-cp-mod text_pole" data-slot="${key}" type="text" placeholder="Mod"
                            list="${modIdList}" value="${escapeHtml(mod)}" style="width:100%;" />
+                    <div class="plz-history-btn" data-list="${modIdList}" title="History">▾</div>
                     <div class="plz-input-clear" title="Clear Mod">✕</div>
                 </div>
             </div>
@@ -70,19 +72,21 @@ export function buildGridHTML(slots, layers, charId, seed = 1, autoIncrement = f
         ${clothingHtml}
         <div>
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">Emotion</label>
-            <div class="plz-input-wrapper">
-                <input id="plz-cp-emotion" class="text_pole" type="text" 
-                       list="${getDatalistId(charId, 'emotion')}" 
+            <div class="plz-input-wrapper plz-has-history-btn">
+                <input id="plz-cp-emotion" class="text_pole" type="text"
+                       list="${getDatalistId(charId, 'emotion')}"
                        value="${escapeHtml(layers.emotion || 'neutral')}" style="width:100%;" />
+                <div class="plz-history-btn" data-list="${getDatalistId(charId, 'emotion')}" title="History">▾</div>
                 <div class="plz-input-clear" title="Clear Emotion">✕</div>
             </div>
         </div>
         <div>
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">Pose</label>
-            <div class="plz-input-wrapper">
-                <input id="plz-cp-pose" class="text_pole" type="text" 
-                       list="${getDatalistId(charId, 'pose')}" 
+            <div class="plz-input-wrapper plz-has-history-btn">
+                <input id="plz-cp-pose" class="text_pole" type="text"
+                       list="${getDatalistId(charId, 'pose')}"
                        value="${escapeHtml(layers.pose || 'upright')}" style="width:100%;" />
+                <div class="plz-history-btn" data-list="${getDatalistId(charId, 'pose')}" title="History">▾</div>
                 <div class="plz-input-clear" title="Clear Pose">✕</div>
             </div>
         </div>

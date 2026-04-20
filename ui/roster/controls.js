@@ -41,6 +41,8 @@ import { getSettings } from '../../settings.js';
 import { getContext } from '../../../../../extensions.js';
 import { error } from '../../utils/logger.js';
 import { startWorkshopTurn } from '../../utils/callLog.js';
+import { setWorkshopCharacter } from '../../state.js';
+import { openWorkshop } from '../workshop/core.js';
 
 /**
  * Binds delegated click handlers to the document for roster card interactions.
@@ -173,7 +175,29 @@ export function bindRosterControls() {
         }
     });
 
-    // 9. Refresh / Re-generate (Generation Economy)
+    // 9. Gear Action: Open Workshop for character
+    $doc.on('click', '.plz-gear-open-workshop', function(e) {
+        e.stopPropagation();
+        const id = $(this).closest('.plz-portrait-card').data('id');
+        if (id) {
+            $(this).closest('.plz-gear-menu').removeClass('plz-gear-open');
+            setWorkshopCharacter(id);
+            openWorkshop('dna');
+        }
+    });
+
+    // 10. Gear Action: Open Style Editor for character
+    $doc.on('click', '.plz-gear-open-style', function(e) {
+        e.stopPropagation();
+        const id = $(this).closest('.plz-portrait-card').data('id');
+        if (id) {
+            $(this).closest('.plz-gear-menu').removeClass('plz-gear-open');
+            setWorkshopCharacter(id);
+            openWorkshop('styles');
+        }
+    });
+
+    // 11. Refresh / Re-generate (Generation Economy)
     $doc.on('click', '.plz-card-refresh', async function(e) {
         e.stopPropagation();
         const id = $(this).closest('.plz-portrait-card').data('id');

@@ -60,17 +60,22 @@ export function getStudioHTML(characterId, character, layers, styleLibrary = {},
 
     return `
     <div style="margin-bottom:10px;">
-        <div class="plz-input-wrapper">
-            <input id="plz-studio-label" class="text_pole" type="text" value="${isGhost ? '' : escapeHtml(displayName)}"
-                   placeholder="Character Name"
-                   style="width:100%;font-size:1.1em;font-weight:bold;margin-bottom:4px;" />
-            <div class="plz-input-clear plz-studio-clear" title="Clear Name">✕</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <div class="plz-input-wrapper" style="flex:1;">
+                <input id="plz-studio-label" class="text_pole" type="text" value="${isGhost ? '' : escapeHtml(displayName)}"
+                       placeholder="Character Name"
+                       style="width:100%;font-size:1.1em;font-weight:bold;" />
+                <div class="plz-input-clear plz-studio-clear" title="Clear Name">✕</div>
+            </div>
+            ${isGhost ? '<button id="plz-studio-layers-save" class="menu_button" style="flex-shrink:0; padding:0 14px; font-weight:bold;">Register</button>' : ''}
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
             ${idLabel}
             <button class="menu_button plz-save-ensemble-btn" style="font-size:0.8em;" ${isGhost ? 'disabled title="Save character first"' : ''}>Save as Ensemble</button>
         </div>
     </div>
+
+    <div ${isGhost ? 'style="pointer-events:none; opacity:0.35; user-select:none;"' : ''}>
 
     <!-- Section: Physical Identity -->
     <div style="margin-bottom:20px;">
@@ -115,7 +120,6 @@ export function getStudioHTML(characterId, character, layers, styleLibrary = {},
         <div style="flex:1;"></div>
         <input id="plz-studio-hint" type="text" class="text_pole" placeholder="Wardrobe Hint" style="width:120px; font-size:0.85em;" />
         <button id="plz-studio-force-costume" class="menu_button" style="font-size:0.85em;">Scan</button>
-        ${isGhost ? '<button id="plz-studio-layers-save" class="menu_button" style="padding:0 15px;">Register &amp; Apply</button>' : ''}
     </div>
 
     <!-- Section: Technical Rendering -->
@@ -155,6 +159,8 @@ export function getStudioHTML(characterId, character, layers, styleLibrary = {},
         <div id="plz-studio-ensembles">
             ${getEnsembleListHTML(character.ensembles, character.defaultEnsemble)}
         </div>
+    </div>
+
     </div>
 
     <div id="plz-studio-datalists-container"></div>`;
