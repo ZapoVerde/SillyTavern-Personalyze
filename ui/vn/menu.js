@@ -26,7 +26,7 @@
  */
 
 import { getContext } from '../../../../../extensions.js';
-import { callPopup } from '../../../../../script.js';
+import { callPopup } from '../../../../../../script.js';
 
 import {
     state,
