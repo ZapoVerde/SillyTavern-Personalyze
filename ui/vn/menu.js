@@ -26,7 +26,8 @@
  */
 
 import { getContext } from '../../../../../extensions.js';
-import { getSettings } from '../../settings.js';
+import { callPopup } from '../../../../../script.js';
+
 import {
     state,
     resolveAliasToId,
@@ -58,7 +59,6 @@ async function _addAndHeal(id) {
 
     const char  = state.chatCharacters[id];
     const layers = chain?.layers || {};
-    const s     = getSettings();
 
     document.dispatchEvent(new CustomEvent('plz:portrait-status', {
         detail: { characterId: id, status: 'generating' }
@@ -111,14 +111,26 @@ export function bindMenuHandlers() {
         e.stopPropagation();
         $('#plz-vn-add-dropdown').removeClass('plz-dropdown-open');
 
-        const text  = _cachedSelection;
+        // Best-effort selection capture: use the hamburger mousedown cache first
+        // (most reliable on desktop), fall back to a live read (works when the
+        // selection survives to click time), otherwise leave blank for the user to type.
+        const captured = _cachedSelection || window.getSelection()?.toString().trim() || '';
         _cachedSelection = '';
-        const words = text ? text.split(/\s+/).filter(Boolean) : [];
 
-        // Sanity check: empty or suspiciously long → fall back to char picker
-        if (!text || text.length > 40 || words.length > 4) {
-            const { openCharPicker } = await import('../charPicker.js');
-            await openCharPicker();
+        // Show an editable confirmation modal so the user can adjust the name
+        // before the scan runs — critical on mobile where selection is often lost.
+        const confirmed = await callPopup(
+            '<h3>Scan for character</h3><p>Confirm or edit the name to scan for:</p>',
+            'input',
+            captured
+        );
+
+        const text = (confirmed ?? '').trim();
+        if (!text) return;
+
+        const words = text.split(/\s+/).filter(Boolean);
+        if (text.length > 40 || words.length > 4) {
+            window.toastr?.warning('Name is too long to scan — please use a shorter character name.', 'PersonaLyze');
             return;
         }
 
