@@ -87,6 +87,14 @@ export function bindRosterControls() {
         _clampControls($(this));
     });
 
+    // 0b. Click-away — dismiss active controls and open gear menus when clicking outside any card
+    $doc.on('click', function(e) {
+        if (!$(e.target).closest('.plz-portrait-card').length) {
+            $('.plz-portrait-card').removeClass('plz-controls-active');
+            $('.plz-gear-menu').removeClass('plz-gear-open');
+        }
+    });
+
     // 1. Card Frame — Tap-to-Toggle Controls
     // Tapping anywhere on the frame (not a button) pins/unpins the control HUD.
     // Only one card can be active at a time; stacked (non-top) cards are blocked.
@@ -182,7 +190,7 @@ export function bindRosterControls() {
         if (id) {
             $(this).closest('.plz-gear-menu').removeClass('plz-gear-open');
             setWorkshopCharacter(id);
-            openWorkshop('dna');
+            openWorkshop('studio');
         }
     });
 

@@ -43,7 +43,7 @@ export function getBaseWorkshopHTML() {
                     <button id="plz-workshop-close" class="menu_button" style="padding:2px 10px;">✕</button>
                 </div>
                 <div class="plz-tab-bar">
-                    <button class="plz-tab-btn menu_button" data-tab="dna">DNA</button>
+                    <button class="plz-tab-btn menu_button" data-tab="dna">Characters</button>
                     <button class="plz-tab-btn menu_button" data-tab="studio">Studio</button>
                     <button class="plz-tab-btn menu_button" data-tab="styles">Global Styles</button>
                     <button class="plz-tab-btn menu_button" data-tab="library">Library</button>
@@ -94,7 +94,7 @@ export function getDnaRosterHTML(characters, activeRoster, activeId) {
     let rosterHtml = '';
     if (entries.length === 0) {
         rosterHtml = `<div style="text-align:center;padding:40px;opacity:0.5;font-size:0.9em;">
-            No character DNA found in this chat.
+            No characters found in this chat.
         </div>`;
     } else {
         // Sort: non-archived first, archived last
@@ -140,7 +140,7 @@ export function getDnaRosterHTML(characters, activeRoster, activeId) {
                     <i class="fa-solid ${archiveIcon} plz-dna-archive"
                        title="${archiveTitle}"
                        style="cursor:pointer; font-size:1em;"></i>
-                    <i class="fa-solid fa-pen-to-square plz-dna-edit" title="Edit DNA in Studio"></i>
+                    <i class="fa-solid fa-pen-to-square plz-dna-edit" title="Edit in Studio"></i>
                 </div>
             </div>`;
         }).join('');

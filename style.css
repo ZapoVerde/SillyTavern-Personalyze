@@ -160,17 +160,20 @@
     transform: translateX(var(--plz-controls-dx, 0px));
 }
 
-.plz-portrait-card:hover .plz-card-controls,
-.plz-portrait-card:focus-within .plz-card-controls,
+@media (hover: hover) {
+    .plz-portrait-card:hover .plz-card-controls,
+    .plz-portrait-card:focus-within .plz-card-controls { opacity: 1; }
+}
+
 .plz-portrait-card.plz-controls-active .plz-card-controls { opacity: 1; }
 
 .plz-card-btn {
     background: rgba(0,0,0,0.4); /* More translucent */
     border: none; /* Removed harsh border */
     color: rgba(255,255,255,0.6); /* Less bold icon color */
-    font-size: 0.85em; /* Smaller visual icon */
-    width: 28px; /* Touch receiver width unchanged */
-    height: 28px; /* Touch receiver height unchanged */
+    font-size: 1.275em;
+    width: 42px;
+    height: 42px;
     border-radius: 5px;
     cursor: pointer;
     display: flex;
@@ -188,7 +191,7 @@
 
 .plz-gear-menu {
     position: absolute;
-    top: 44px; /* below the 8px offset + 28px button + 8px gap */
+    top: 58px; /* below the 8px offset + 42px button + 8px gap */
     left: 8px;
     display: flex;
     flex-direction: column;
