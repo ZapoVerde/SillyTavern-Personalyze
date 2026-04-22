@@ -5,7 +5,7 @@
  * @description
  * Coordinates the sequential execution of the PersonaLyze detection pipeline.
  * Ensures Scene-level checks (Phase 0) occur before Turn-level extraction (Phases 1-3).
- * Handles Localyze integration and clears temporary session blacklists on scene changes.
+ * Handles Vistalyze integration and clears temporary session blacklists on scene changes.
  *
  * @api-declaration
  * runPipeline(messageId) -> Promise<void>
@@ -14,7 +14,7 @@
  *   assertions:
  *     purity: Stateful Orchestrator
  *     state_ownership: []
- *     external_io: [Localyze, LLM Scene Detect, turn.js, scene.js, callLog.js]
+ *     external_io: [Vistalyze, LLM Scene Detect, turn.js, scene.js, callLog.js]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -52,13 +52,13 @@ export async function runPipeline(messageId, signal) {
 
         let sceneChanged = false;
 
-        // If Localyze is active it will broadcast 'localyze:location-changed' after its
+        // If Vistalyze is active it will broadcast 'vistalyze:location-changed' after its
         // own pipeline commits the scene record. index.js catches that event and runs
         // runScenePipeline directly, so we skip the LLM check here entirely.
-        // Only fall back to our own LLM check when Localyze is absent.
-        const localyzeActive = !!(window.extension_settings?.localyze?.enabled);
+        // Only fall back to our own LLM check when Vistalyze is absent.
+        const vistalyzeActive = !!(window.extension_settings?.vistalyze?.enabled);
 
-        if (!localyzeActive) {
+        if (!vistalyzeActive) {
             const history = buildHistoryText(context.chat, messageId, s.detectionHistory);
             sceneChanged = await detectSceneChange(
                 'Unknown',

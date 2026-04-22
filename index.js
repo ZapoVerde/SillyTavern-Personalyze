@@ -127,13 +127,13 @@ async function init() {
         //eventSource.on(event_types.MESSAGE_SWIPED, handleMessageReceived);
         eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
         
-        // Localyze Integration
-        document.addEventListener('localyze:location-changed', async (e) => {
+        // Vistalyze Integration
+        document.addEventListener('vistalyze:location-changed', async (e) => {
             const context = getContext();
             if (!context?.chatId) return;
             const messageId = e.detail?.messageId ?? context.chat.length - 1;
             if (messageId < 0) return;
-            log('Core', `Localyze scene change confirmed (msg ${messageId}). Running redress...`);
+            log('Core', `Vistalyze scene change confirmed (msg ${messageId}). Running redress...`);
             clearIgnored();
             const { runScenePipeline } = await import('./logic/pipeline/scene.js');
             await runScenePipeline(messageId);

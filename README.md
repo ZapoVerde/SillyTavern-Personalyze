@@ -1,27 +1,27 @@
-# PersonaLyze
+# Personalyze
 **The Visual Novel Continuity Engine for SillyTavern**
 
-PersonaLyze transforms your text-based roleplays into a dynamic, multi-character Visual Novel. It isn't just a simple "prompt-to-image" script—it is a **stateful narrative engine**. 
+Personalyze transforms your text-based roleplays into a dynamic, multi-character Visual Novel. It isn't just a simple "prompt-to-image" script—it is a **stateful narrative engine**. 
 
-PersonaLyze silently reads the story, tracks multiple characters, understands exactly what they are wearing layer-by-layer (Outerwear, Top, Bottom, Accessories), and automatically generates updated portraits as the scene evolves.
+Personalyze silently reads the story, tracks multiple characters, understands exactly what they are wearing layer-by-layer (Outerwear, Top, Bottom, Accessories), and automatically generates updated portraits as the scene evolves.
 
-⚠️ **Note:** PersonaLyze uses a **Split-Screen Visual Novel (VN) interface** as its exclusive display mode. Characters are dynamically rendered in a row at the top of your chat window.
+⚠️ **Note:** Personalyze uses a **Split-Screen Visual Novel (VN) interface** as its exclusive display mode. Characters are dynamically rendered in a row at the top of your chat window.
 
 ---
 
 ## 🛠️ Phase 1: Installation
 
-PersonaLyze requires both a frontend extension and a backend server plugin to securely route API requests and handle background processing.
+Personalyze requires both a frontend extension and a backend server plugin to securely route API requests and handle background processing.
 
 **Step 1: Install the Frontend**
 1. Open SillyTavern.
 2. Go to the **Extensions** menu (the block icon).
-3. Click **Install Extension** and paste the GitHub URL for PersonaLyze.
+3. Click **Install Extension** and paste the GitHub URL for Personalyze.
 
 **Step 2: Install the Backend Plugin**
 1. Navigate to your SillyTavern installation folder on your computer.
-2. Go to `SillyTavern/public/extensions/personalyze/plugin`.
-3. Copy the entire `personalyze` folder found inside.
+2. Go to `SillyTavern/public/extensions/Personalyze/plugin`.
+3. Copy the entire `Personalyze` folder found inside.
 4. Paste that folder into your root `SillyTavern/plugins` directory. *(If the `plugins` folder doesn't exist, create it).*
 
 **Step 3: Authorize the Plugin in `config.yaml`**
@@ -34,16 +34,16 @@ PersonaLyze requires both a frontend extension and a backend server plugin to se
 
 ## ⚙️ Phase 2: The "Day Zero" Configuration
 
-Before you start chatting, you need to provide PersonaLyze with its "Fuel" (Image Generators), its "Brains" (LLMs), and its "Art Direction" (Global Styles).
+Before you start chatting, you need to provide Personalyze with its "Fuel" (Image Generators), its "Brains" (LLMs), and its "Art Direction" (Global Styles).
 
 ### 1. The Fuel (Image Generators)
 You need an account and API key from a supported image provider. We highly recommend **Runware**, **Fal AI**, or **PiAPI**.
 
 > 💡 **RECOMMENDATION: Use Natural Language Models!**
-> PersonaLyze works best with **Z-Image Turbo** or **Flux.1** models. The extension extracts complex, human-readable clothing descriptions from your story, which these models understand perfectly. 
+> Personalyze works best with **Z-Image Turbo** or **Flux.1** models. The extension extracts complex, human-readable clothing descriptions from your story, which these models understand perfectly. 
 > *While traditional Diffusion models (SD 1.5, SDXL) are technically supported via custom Blueprints and LoRAs, they rely heavily on comma-separated tags and are notoriously difficult to tune for an automated pipeline.*
 
-1. Open the PersonaLyze Settings Panel in SillyTavern.
+1. Open the Personalyze Settings Panel in SillyTavern.
 2. Click **Configure Engines**.
 3. Navigate to the tab of your chosen provider (e.g., Runware).
 4. Paste your API Key and click **Save to Vault**.
@@ -51,8 +51,8 @@ You need an account and API key from a supported image provider. We highly recom
 6. Click **Ping** to verify your connection is working.
 
 ### 2. The Brains (LLM Connections)
-To save you money and tokens, PersonaLyze uses a "Cascade" system. It uses a cheap model to check *if* a visual change happened, and an expensive model to figure out *what* changed.
-1. In the PersonaLyze Settings Panel, look for the **Connection** dropdowns.
+To save you money and tokens, Personalyze uses a "Cascade" system. It uses a cheap model to check *if* a visual change happened, and an expensive model to figure out *what* changed.
+1. In the Personalyze Settings Panel, look for the **Connection** dropdowns.
 2. **Fast Model (Phases 1-2):** Map this to a fast, cheap LLM profile (e.g., Claude Haiku, Llama-3 8B).
 3. **Smart Model (Phase 3+):** Map this to a highly capable LLM profile (e.g., Claude 3.5 Sonnet, GPT-4o).
 
@@ -99,6 +99,6 @@ If you don't like an outfit generation:
 ## 🔬 Advanced Features
 
 *   **Ensembles:** In the Studio, click **Save as Ensemble** to snapshot a character's current 5-slot wardrobe. You can star (⭐) an ensemble to make it their "Everyday Wear."
-*   **Proactive Scene Redressing:** PersonaLyze detects when characters change locations. It will evaluate the active roster and automatically redress them in the background if their clothes no longer fit the environment (e.g., going from a snowy mountain to a beach).
-*   **Localyze Integration:** If you use the spatial mapping extension [Localyze](https://github.com/SillyTavern/Extension-Localyze), PersonaLyze hooks into it automatically, bypassing redundant LLM scene-checks.
+*   **Proactive Scene Redressing:** Personalyze detects when characters change locations. It will evaluate the active roster and automatically redress them in the background if their clothes no longer fit the environment (e.g., going from a snowy mountain to a beach).
+*   **Vistalyze Integration:** If you use the spatial mapping extension [Vistalyze](https://github.com/SillyTavern/Extension-Vistalyze), Personalyze hooks into it automatically, bypassing redundant LLM scene-checks.
 *   **Forensic Flight Recorder:** Having issues? Click the **Logs** button in the Settings Panel. The Flight Recorder tracks the exact JSON payloads, API errors, and prompts sent to the engines over the last few turns. You can copy full "Debug Bundles" with one click.
