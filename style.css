@@ -618,6 +618,18 @@ body.plz-vn-active #plz-vn-panel {
     overflow: visible;
 }
 
+/* ── Overlap mode: cards render at 2× split height, faces above chat, bodies behind it ── */
+
+body.plz-vn-overlap #plz-vn-panel {
+    height: calc(var(--plz-vn-split, 40) * 2dvh - var(--topBarBlockSize, 50px));
+    z-index: 29; /* behind #sheld (z-index: 30) */
+}
+
+/* Keep < > arrows pinned at the original split line (top half of the 2× panel) */
+body.plz-vn-overlap .plz-vn-scroll-btn {
+    bottom: calc(50% + 8px);
+}
+
 /* ── Left Group: explicit width set by JS — acts as a positioner for the focus card ── */
 
 .plz-vn-left-group {

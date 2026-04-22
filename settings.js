@@ -69,6 +69,7 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     enabled:                true,
     plzVnMode:              false,
     plzVnSplitPercent:      DEFAULT_PLZ_VN_SPLIT,
+    vnOverlap:              false,
     imageModel:             DEFAULT_IMAGE_MODEL,
     falModel:               DEFAULT_FAL_MODEL,
     piapiModel:             DEFAULT_PIAPI_MODEL,

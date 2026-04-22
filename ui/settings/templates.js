@@ -208,8 +208,11 @@ function buildImageSettingsHTML(settings) {
         <div style="margin-bottom:8px;">
             <label class="checkbox_label"><input type="checkbox" id="plz-keep-cache" ${settings.keepCache ? 'checked' : ''} /><span>Persistent Cache</span></label>${tip("Prevents auto-cleanup of old portraits.")}
         </div>
-        <div style="margin-bottom:12px;">
+        <div style="margin-bottom:8px;">
             <label class="checkbox_label"><input type="checkbox" id="plz-portrait-status" ${settings.showPortraitStatus ? 'checked' : ''} /><span>Show generation progress bar</span></label>
+        </div>
+        <div style="margin-bottom:12px;">
+            <label class="checkbox_label"><input type="checkbox" id="plz-vn-overlap" ${settings.vnOverlap ? 'checked' : ''} /><span>Overlap chat (show faces above text)</span></label>${tip("Cards render at 2× height behind the chat panel — faces show above, bodies hidden below.")}
         </div>
         <div style="display:flex; gap:8px;">
             <button class="menu_button" id="plz-purge-chat" style="flex:1; font-size:0.85em;">Purge Chat</button>

@@ -31,10 +31,11 @@ import { getVnPanelShellHTML } from './templates.js';
 import { patchZone, applyLayout } from './layout.js';
 import { bindMenuHandlers } from './menu.js';
 
-const PANEL_ID   = 'plz-vn-panel';
-const CYCLE_ID   = 'plz-vn-cycle-btn';
-const BODY_CLASS = 'plz-vn-active';
-const SPLIT_VAR  = '--plz-vn-split';
+const PANEL_ID     = 'plz-vn-panel';
+const CYCLE_ID     = 'plz-vn-cycle-btn';
+const BODY_CLASS   = 'plz-vn-active';
+const OVERLAP_CLASS = 'plz-vn-overlap';
+const SPLIT_VAR    = '--plz-vn-split';
 
 /** Preset split sizes (% of viewport height) cycling through 2/3 → 1/2 → 1/3 → 1/4 → 1/5. */
 const SPLIT_PRESETS = [
@@ -255,12 +256,14 @@ export function setVnPanelEnabled(enabled) {
 
 function _activate() {
     document.body.classList.add(BODY_CLASS);
+    document.body.classList.toggle(OVERLAP_CLASS, !!getSettings().vnOverlap);
     _applySheldOverride(SPLIT_PRESETS[_splitIndex].pct);
     _syncVisibility();
 }
 
 function _deactivate() {
     document.body.classList.remove(BODY_CLASS);
+    document.body.classList.remove(OVERLAP_CLASS);
     _removeSheldOverride();
     document.dispatchEvent(new CustomEvent('plz:roster-changed'));
 }
@@ -273,6 +276,7 @@ function _applySplit(save = true) {
     $(`#${CYCLE_ID}`).text(label);
 
     if (document.body.classList.contains(BODY_CLASS)) {
+        document.body.classList.toggle(OVERLAP_CLASS, !!getSettings().vnOverlap);
         _applySheldOverride(pct);
     }
 

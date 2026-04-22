@@ -53,6 +53,7 @@ function refreshUI() {
     $(`#plz-max-resolution`).val(s.maxResolution);
     $(`#plz-dynamic-resolution`).prop('checked', s.dynamicResolution);
     $(`#plz-keep-cache`).prop('checked', s.keepCache);
+    $(`#plz-vn-overlap`).prop('checked', s.vnOverlap);
 
     $(`.plz-history-input`).each(function () {
         const key = $(this).data('history-key');
@@ -89,6 +90,10 @@ function bindHandlers() {
     $panel.on('change', '#plz-max-resolution', () => updateSetting('maxResolution', $('#plz-max-resolution').val()));
     $panel.on('change', '#plz-dynamic-resolution', () => updateSetting('dynamicResolution', $('#plz-dynamic-resolution').prop('checked')));
     $panel.on('change', '#plz-keep-cache', () => updateSetting('keepCache', $('#plz-keep-cache').prop('checked')));
+    $panel.on('change', '#plz-vn-overlap', function () {
+        updateSetting('vnOverlap', $(this).prop('checked'));
+        syncVnState();
+    });
 
     $panel.on('click', '#plz-purge-chat', async function() {
         const roster = state.activeRoster;
