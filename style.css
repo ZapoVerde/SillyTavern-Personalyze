@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/style.css
- * @stamp {"utc":"2026-04-05T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-23T00:00:00.000Z"}
  * @architectural-role UI Styling
  * @description
  * Primary stylesheet for PersonaLyze.
@@ -663,20 +663,23 @@ body.plz-vn-overlap .plz-vn-scroll-btn {
 }
 
 /* Side buttons: anchor to the visual centre of the visible VN half.
- * Panel is 2× height → 25% of panel = 50% of the visible top area. */
+ * Panel is 2× height → 25% of panel = 50% of the visible top area.
+ * min 80px keeps them below the nameplate (top:8px) + controls (top:30px)
+ * at very small split sizes where plain 25% would overlap those elements. */
 body.plz-vn-overlap .plz-vn-side-btn {
-    top: 25%;
+    top: max(80px, 25%);
 }
 
 /* Add/hamburger wrapper sits flush above the toggle; same offset, new base */
 body.plz-vn-overlap .plz-vn-add-wrapper {
-    top: calc(25% - 78px);
+    top: calc(max(80px, 25%) - 78px);
 }
 
-/* Nameplate: pin below the controls row, strip the dark gradient */
+/* Nameplate: pin at the very top of the card, strip the dark gradient.
+ * Controls row shifts to top: 30px so it sits cleanly below the label. */
 body.plz-vn-overlap .plz-card-footer {
     bottom: auto;
-    top: 55px;
+    top: 8px;
     padding: 5px;
     background: transparent;
 }
@@ -684,6 +687,11 @@ body.plz-vn-overlap .plz-card-footer {
 /* Compensate for removed gradient with a stronger text shadow */
 body.plz-vn-overlap .plz-card-label {
     text-shadow: 0 1px 5px black, 0 0 12px rgba(0, 0, 0, 0.9);
+}
+
+/* Push controls below the nameplate in overlap mode */
+body.plz-vn-overlap .plz-card-controls {
+    top: 30px;
 }
 
 /* ── Left Group: explicit width set by JS — acts as a positioner for the focus card ── */
@@ -748,6 +756,28 @@ body.plz-vn-overlap .plz-card-label {
     border: none;
     background: transparent;
     box-shadow: none;
+}
+
+/* ── Gear Menu Portal ──────────────────────────────────────────────────────
+ * Rendered as a direct child of <body> so it escapes #plz-vn-panel's
+ * fixed-position stacking context (which sits below #sheld at z-index 30).
+ * Used in VN mode; the in-card .plz-gear-menu is used in floating mode
+ * where #plz-portrait-container already has z-index 1000. */
+
+#plz-gear-portal {
+    position: fixed;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 5001;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+}
+
+#plz-gear-portal.plz-gear-open {
+    opacity: 1;
+    pointer-events: all;
 }
 
 /* ── Stacked-card control suppression ───────────────────────────────────────
