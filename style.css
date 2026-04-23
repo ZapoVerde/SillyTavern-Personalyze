@@ -603,7 +603,7 @@ dialog.plz-bp-dialog::backdrop {
     top: var(--topBarBlockSize, 50px);
     left: 0;
     width: 100%;
-    z-index: 31; /* above #sheld (z-index: 30) */
+    z-index: auto; /* no stacking context — children layer independently against the root */
 }
 
 body.plz-vn-active #plz-vn-panel {
@@ -618,16 +618,72 @@ body.plz-vn-active #plz-vn-panel {
     overflow: visible;
 }
 
-/* ── Overlap mode: cards render at 2× split height, faces above chat, bodies behind it ── */
+/* ── VN mode: permanent z-index architecture ─────────────────────────────────
+ *
+ * The panel has z-index: auto so it creates no stacking context.
+ * Children compete directly in the root stacking context:
+ *   card frames   → z-index 20  (below #sheld at 30 — slides behind in overlap)
+ *   controls/menu → z-index 35  (above #sheld at 30 — always clickable)
+ *
+ * This is unconditional: in normal VN mode the chat is spatially below the
+ * panel so the image/chat ordering is irrelevant; in overlap mode it becomes
+ * meaningful as the doubled card height reaches behind the chat.
+ *
+ * The left-group hover rule assigns z-index: 5 to the whole card, which would
+ * create a stacking context and trap the controls behind the chat.
+ * We override it to elevate only the frame (for image layering between
+ * adjacent cards) while keeping the card itself at z-index: auto.           */
+
+body.plz-vn-active .plz-card-frame {
+    z-index: 20;
+}
+
+body.plz-vn-active .plz-card-controls,
+body.plz-vn-active .plz-gear-menu {
+    z-index: 35;
+}
+
+body.plz-vn-active .plz-vn-left-group .plz-portrait-card:hover {
+    z-index: auto;
+}
+
+body.plz-vn-active .plz-vn-left-group .plz-portrait-card:hover .plz-card-frame {
+    z-index: 25; /* above siblings (20), still below chat (30) */
+}
+
+/* ── Overlap mode: geometry adjustments only ─────────────────────────────── */
 
 body.plz-vn-overlap #plz-vn-panel {
     height: calc(var(--plz-vn-split, 40) * 2dvh - var(--topBarBlockSize, 50px));
-    z-index: 29; /* behind #sheld (z-index: 30) */
 }
 
 /* Keep < > arrows pinned at the original split line (top half of the 2× panel) */
 body.plz-vn-overlap .plz-vn-scroll-btn {
     bottom: calc(50% + 8px);
+}
+
+/* Side buttons: anchor to the visual centre of the visible VN half.
+ * Panel is 2× height → 25% of panel = 50% of the visible top area. */
+body.plz-vn-overlap .plz-vn-side-btn {
+    top: 25%;
+}
+
+/* Add/hamburger wrapper sits flush above the toggle; same offset, new base */
+body.plz-vn-overlap .plz-vn-add-wrapper {
+    top: calc(25% - 78px);
+}
+
+/* Nameplate: pin below the controls row, strip the dark gradient */
+body.plz-vn-overlap .plz-card-footer {
+    bottom: auto;
+    top: 55px;
+    padding: 5px;
+    background: transparent;
+}
+
+/* Compensate for removed gradient with a stronger text shadow */
+body.plz-vn-overlap .plz-card-label {
+    text-shadow: 0 1px 5px black, 0 0 12px rgba(0, 0, 0, 0.9);
 }
 
 /* ── Left Group: explicit width set by JS — acts as a positioner for the focus card ── */
