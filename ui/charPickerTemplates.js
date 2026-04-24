@@ -51,13 +51,13 @@ export function buildGridHTML(slots, layers, charId, seed = 1, autoIncrement = f
         <div style="margin-bottom:10px;">
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">${escapeHtml(label)}</label>
             <div class="plz-layer-row">
-                <div class="plz-input-wrapper plz-has-history-btn" style="flex:2;">
+                <div class="plz-input-wrapper plz-has-history-btn">
                     <input class="plz-cp-item text_pole" data-slot="${key}" type="text" placeholder="Item"
                            list="${itemListId}" value="${escapeHtml(item)}" style="width:100%;" />
                     <div class="plz-history-btn" data-list="${itemListId}" title="History">▾</div>
                     <div class="plz-input-clear" title="Clear Item">✕</div>
                 </div>
-                <div class="plz-input-wrapper plz-has-history-btn" style="flex:1;">
+                <div class="plz-input-wrapper plz-has-history-btn">
                     <input class="plz-cp-mod text_pole" data-slot="${key}" type="text" placeholder="Mod"
                            list="${modIdList}" value="${escapeHtml(mod)}" style="width:100%;" />
                     <div class="plz-history-btn" data-list="${modIdList}" title="History">▾</div>
@@ -92,6 +92,12 @@ export function buildGridHTML(slots, layers, charId, seed = 1, autoIncrement = f
         </div>
     </div>
     
+    <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+        <button id="plz-cp-add-slot" class="menu_button" style="font-size:0.75em; opacity:0.7; white-space:nowrap;">
+            <i class="fa-solid fa-plus"></i> Add Category
+        </button>
+    </div>
+
     <!-- Generation Options Row -->
     <div class="plz-cp-seed-row" style="display:flex; align-items:center; gap:10px; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.05);">
         <div style="flex:1; display:flex; align-items:center; gap:8px;">
@@ -102,11 +108,5 @@ export function buildGridHTML(slots, layers, charId, seed = 1, autoIncrement = f
             <input id="plz-cp-inc" type="checkbox" ${autoIncrement ? 'checked' : ''} ${seed === -1 ? 'disabled' : ''} />
             <span>Auto-increment</span>
         </label>
-    </div>
-
-    <div style="margin-top:10px; display:flex; justify-content:flex-end;">
-        <button id="plz-cp-add-slot" class="menu_button" style="font-size:0.75em; opacity:0.7;">
-            <i class="fa-solid fa-plus"></i> Add Category
-        </button>
     </div>`;
 }

@@ -1123,39 +1123,31 @@ body > #plz-vn-toggle-btn.plz-vn-toggle-disabled {
 
 .plz-layer-row {
     display: flex;
-    gap: 6px;
+    flex-direction: column;
+    gap: 5px;
+}
+
+/* Modifier indented with L-hook to visually link it to its item */
+.plz-layer-row .plz-input-wrapper:nth-child(2) {
+    margin-left: 22px;
+    position: relative;
+}
+
+.plz-layer-row .plz-input-wrapper:nth-child(2)::before {
+    content: "└";
+    position: absolute;
+    left: -15px;
+    top: 50%;
+    transform: translateY(-60%);
+    opacity: 0.3;
+    font-size: 1.2em;
+    pointer-events: none;
 }
 
 /* Mobile Adjustments (Phones and Small Tablets) */
 @media (max-width: 768px) {
     .plz-layered-grid {
         grid-template-columns: 1fr;
-    }
-}
-
-/* Deep Mobile Stacking (Small screens where width is critical) */
-@media (max-width: 480px) {
-    .plz-layer-row {
-        flex-direction: column;
-        gap: 5px;
-    }
-
-    /* Target the Modifier (the second wrapper in the row) */
-    .plz-layer-row .plz-input-wrapper:nth-child(2) {
-        margin-left: 22px;
-        position: relative;
-    }
-
-    /* Visual L-hook to link the indented modifier to the item above */
-    .plz-layer-row .plz-input-wrapper:nth-child(2)::before {
-        content: "└";
-        position: absolute;
-        left: -15px;
-        top: 50%;
-        transform: translateY(-60%);
-        opacity: 0.3;
-        font-size: 1.2em;
-        pointer-events: none;
     }
 }
 

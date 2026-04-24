@@ -135,12 +135,17 @@ export async function openCharPicker(initialOverride = null, initialCharId = nul
             </div>
             <div id="plz-cp-grid-container">${buildGridHTML(currentSlots, currentLayers, initId, initialSeed, !!s.autoIncrementSeed)}</div>
             <div id="plz-cp-datalists-container">${buildVocabularyDatalists(initId, state.chatCharacters[initId], state.characterChain[initId])}</div>
-            <button id="plz-cp-force-regen" class="menu_button" style="width:100%;margin-top:12px;opacity:0.75;">
-                <i class="fa-solid fa-rotate-right"></i> Force New Generation
-            </button>
             <div id="plz-cp-hist-menu"></div>`,
             'confirm'
         ).then(ok => finish(!!ok)).catch(() => finish(false));
+
+        // Move Force New Generation into the button row and rename Yes → Accept
+        setTimeout(() => {
+            $('#dialogue_popup_controls').prepend(
+                $('<div id="plz-cp-force-regen" class="menu_button" style="opacity:0.75;"><i class="fa-solid fa-rotate-right"></i> Force New Generation</div>')
+            );
+            $('#dialogue_popup_ok').text('Accept');
+        }, 0);
 
         // History dropdown — ▾ button opens a pick-list from the linked datalist
         $(document).on('click.plzCp', '.plz-history-btn', function(e) {
