@@ -794,7 +794,7 @@ body.plz-vn-overlap .plz-card-controls {
 .plz-vn-scroll-btn {
     position: absolute;
     bottom: 8px;
-    z-index: 10;
+    z-index: 30;
     width: 28px;
     height: 36px;
     background: rgba(0, 0, 0, 0.2);
