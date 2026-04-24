@@ -139,10 +139,11 @@ export async function openCharPicker(initialOverride = null, initialCharId = nul
             'confirm'
         ).then(ok => finish(!!ok)).catch(() => finish(false));
 
-        // Move Force New Generation into the button row and rename Yes → Accept
+        // Move Force Gen into the button row and rename Yes → Accept
         setTimeout(() => {
+            $('#plz-cp-force-regen').remove();
             $('#dialogue_popup_controls').prepend(
-                $('<div id="plz-cp-force-regen" class="menu_button" style="opacity:0.75;"><i class="fa-solid fa-rotate-right"></i> Force New Generation</div>')
+                $('<div id="plz-cp-force-regen" class="menu_button" style="opacity:0.75; white-space:nowrap;"><i class="fa-solid fa-rotate-right"></i> Force Gen</div>')
             );
             $('#dialogue_popup_ok').text('Accept');
         }, 0);

@@ -70,7 +70,10 @@ export function buildGridHTML(slots, layers, charId, seed = 1, autoIncrement = f
     return `
     <div class="plz-layered-grid">
         ${clothingHtml}
-        <div>
+    </div>
+
+    <div style="border-top:1px solid rgba(255,255,255,0.08); margin-top:10px; padding-top:10px;">
+        <div style="margin-bottom:8px;">
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:2px;">Emotion</label>
             <div class="plz-input-wrapper plz-has-history-btn">
                 <input id="plz-cp-emotion" class="text_pole" type="text"
@@ -91,12 +94,10 @@ export function buildGridHTML(slots, layers, charId, seed = 1, autoIncrement = f
             </div>
         </div>
     </div>
-    
-    <div style="margin-top:10px; display:flex; justify-content:flex-end;">
-        <button id="plz-cp-add-slot" class="menu_button" style="font-size:0.75em; opacity:0.7; white-space:nowrap;">
-            <i class="fa-solid fa-plus"></i> Add Category
-        </button>
-    </div>
+
+    <button id="plz-cp-add-slot" class="menu_button" style="width:100%; margin-top:10px;">
+        <i class="fa-solid fa-plus"></i> Add Category
+    </button>
 
     <!-- Generation Options Row -->
     <div class="plz-cp-seed-row" style="display:flex; align-items:center; gap:10px; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.05);">
