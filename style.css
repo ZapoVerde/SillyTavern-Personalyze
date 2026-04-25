@@ -160,10 +160,6 @@
     transform: translateX(var(--plz-controls-dx, 0px));
 }
 
-@media (hover: hover) {
-    .plz-portrait-card:hover .plz-card-controls,
-    .plz-portrait-card:focus-within .plz-card-controls { opacity: 1; }
-}
 
 .plz-portrait-card.plz-controls-active .plz-card-controls { opacity: 1; }
 
