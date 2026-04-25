@@ -113,7 +113,12 @@ export async function runBoot() {
 
         if (!state._activeChatUuid) {
             // New chat — no UUID found in DNA.
-            const newUuid = crypto.randomUUID();
+            const newUuid = (typeof crypto?.randomUUID === 'function')
+                ? crypto.randomUUID()
+                : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                    const r = Math.random() * 16 | 0;
+                    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+                });
             state._activeChatUuid = newUuid;
 
             if (anchor) {
