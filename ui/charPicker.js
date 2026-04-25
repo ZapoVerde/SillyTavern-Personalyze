@@ -124,6 +124,7 @@ export async function openCharPicker(initialOverride = null, initialCharId = nul
             if (_settled) return;
             _settled = true;
             $(document).off('.plzCp');
+            $('#plz-cp-force-regen').remove();
             resolve(result);
         }
 
