@@ -9,7 +9,7 @@
  * The protected space model: PLZ owns everything below the -\*-\*- delimiter.
  * CNZ owns everything above it. Neither extension touches the other's half.
  * The delimiter must be written as \n\n-\*-\*-\n so CNZ's stitchProtectedBlock
- * regex (/\n\n-\*-\*-[\s\S]*/) can locate and re-attach it correctly.
+ * regex (/\n\n-\*-\*-[\s\S]* /) can locate and re-attach it correctly.
  *
  * @api-declaration
  * findEntryUid, formatIdentityMarker, stitchIdentityMarker,
