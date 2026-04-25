@@ -39,6 +39,8 @@ import { smartResize } from '../../utils/dom.js';
 import { updateSetting } from '../../settings.js';
 import { callPopup } from '../../../../../../script.js';
 import { slugify, escapeHtml } from '../../utils/history.js';
+import { error } from '../../utils/logger.js';
+import { syncCharacterToLorebook } from '../../logic/pipeline/lorebookSync.js';
 import { BASE_IDENTITY_SLOTS } from '../../defaults.js';
 import { renderStudioView } from './dnaListeners.js';
 
@@ -82,6 +84,9 @@ export function bindIdentityHandlers($overlay) {
             
             const lastMsgId = Math.max(0, getContext().chat.length - 1);
             await lockedWriteIdentityUpdate(lastMsgId, id, identity);
+
+            syncCharacterToLorebook(id, char.label || id, identity, char.aka ?? [])
+                .catch(err => error('Identity', 'LB sync failed:', err));
         }, 600);
     });
 
@@ -125,6 +130,8 @@ export function bindIdentityHandlers($overlay) {
         if (id !== '__new__') {
             const lastMsgId = Math.max(0, getContext().chat.length - 1);
             await lockedWriteIdentityUpdate(lastMsgId, id, char.identity);
+            syncCharacterToLorebook(id, char.label || id, char.identity, char.aka ?? [])
+                .catch(err => error('Identity', 'LB sync failed:', err));
         }
 
         renderStudioView();
@@ -175,6 +182,12 @@ export function bindIdentityHandlers($overlay) {
             
             const lastMsgId = Math.max(0, getContext().chat.length - 1);
             await lockedWriteLabel(lastMsgId, id, label);
+
+            const char = state.chatCharacters[id];
+            if (char?.identity) {
+                syncCharacterToLorebook(id, label, char.identity, char.aka ?? [])
+                    .catch(err => error('Identity', 'LB sync failed:', err));
+            }
         }, 800);
     });
 
@@ -192,6 +205,12 @@ export function bindIdentityHandlers($overlay) {
         
         const lastMsgId = Math.max(0, getContext().chat.length - 1);
         await lockedWriteAka(lastMsgId, id, newList);
+
+        const char = state.chatCharacters[id];
+        if (char?.identity) {
+            syncCharacterToLorebook(id, char.label || id, char.identity, newList)
+                .catch(err => error('Identity', 'LB sync failed:', err));
+        }
     }
 
     $overlay.on('click', '.plz-aka-add', async function() {

@@ -32,6 +32,7 @@ import { addPending, removePending, ignore } from '../blacklist.js';
 import { detectAnchorScan } from '../../io/llm/workshop.js';
 import { showArchivistModal } from '../../ui/archivistModal.js';
 import { processKnownSubject } from './turn.js';
+import { syncCharacterToLorebook } from './lorebookSync.js';
 import {
     lockedWriteCharacterDef,
     lockedWriteLabel,
@@ -107,6 +108,9 @@ export async function runArchivistPipeline(messageId, detectedName) {
                 setActiveRoster(newRoster);
                 
                 document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+
+                syncCharacterToLorebook(newId, detectedName, resolution.identity)
+                    .catch(err => error('Archivist', 'LB sync failed:', err));
 
                 // Immediately process their visual state and generate image
                 await processKnownSubject(messageId, newId, context.chat[messageId].mes, historyContext, s);

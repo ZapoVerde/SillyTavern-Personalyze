@@ -38,6 +38,7 @@ import { bindRosterControls } from './ui/roster/controls.js';
 import { initRenderer } from './ui/roster/renderer.js';
 import { openWorkshop } from './ui/workshop/core.js';
 import { smartResize, initMobileFocusMode } from './utils/dom.js';
+import { notifyCnzSyncStarted, notifyCnzSyncCompleted, reconcileRosterToLorebook } from './logic/pipeline/lorebookSync.js';
 
 /** AbortController for the currently-running pipeline, if any. */
 let _pipelineController = null;
@@ -127,6 +128,13 @@ async function init() {
         //eventSource.on(event_types.MESSAGE_SWIPED, handleMessageReceived);
         eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
         
+        // CNZ Integration — hold PLZ lorebook writes during CNZ sync cycles
+        document.addEventListener('cnz:sync-started',   () => notifyCnzSyncStarted());
+        document.addEventListener('cnz:sync-completed', () => {
+            notifyCnzSyncCompleted();
+            reconcileRosterToLorebook().catch(err => error('Core', 'LB reconciliation failed:', err));
+        });
+
         // Vistalyze Integration
         document.addEventListener('vistalyze:location-changed', async (e) => {
             const context = getContext();

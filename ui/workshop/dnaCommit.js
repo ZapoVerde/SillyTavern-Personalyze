@@ -39,6 +39,7 @@ import {
 } from '../../io/dnaWriter.js';
 import { generateEnsembleLabel, generateEnsembleKey } from '../../logic/parsers.js';
 import { generate, deleteFiles } from '../../imageCache.js';
+import { syncCharacterToLorebook } from '../../logic/pipeline/lorebookSync.js';
 import { getGridLayers, renderStudioView, renderDNAView } from './dnaListeners.js';
 
 let layerSaveTimeout = null;
@@ -145,8 +146,11 @@ export function bindCommitHandlers($overlay) {
 
             id = targetId;
             setWorkshopCharacter(id);
-            
+
             document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+
+            syncCharacterToLorebook(id, charData.label, charData.identity ?? {}, charData.aka ?? [])
+                .catch(err => error('Commit', 'LB sync failed:', err));
         }
 
         // ─── Phase 2: Visual State Commitment ───

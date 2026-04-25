@@ -35,6 +35,7 @@ import {
     lockedWriteRoster
 } from '../io/dnaWriter.js';
 import { log, error } from '../utils/logger.js';
+import { syncCharacterToLorebook } from './pipeline/lorebookSync.js';
 
 /**
  * Imports a character and their ensembles from the Library into chat DNA.
@@ -86,6 +87,12 @@ export async function handleImportToChat(characterId) {
             const newRoster = [...state.activeRoster, characterId];
             await lockedWriteRoster(lastMsgId, newRoster);
             setActiveRoster(newRoster);
+        }
+
+        const imported = state.chatCharacters[characterId];
+        if (imported?.identity && typeof imported.identity === 'object') {
+            syncCharacterToLorebook(characterId, imported.label || characterId, imported.identity, imported.aka ?? [])
+                .catch(err => error('Import', 'LB sync failed:', err));
         }
 
         if (window.toastr) window.toastr.success(`"${characterId}" imported to DNA.`, 'Personalyze');
