@@ -18,7 +18,6 @@
  */
 
 import { getRequestHeaders, eventSource, event_types } from '../../../../../script.js';
-import { updateWorldInfoList } from '../../../../../scripts/world-info.js';
 
 // ─── Lorebook Endpoints ───────────────────────────────────────────────────────
 
@@ -65,7 +64,6 @@ export async function lbEnsureLorebook(name) {
     }
     if (!list.some(item => item.name === name)) {
         await lbSaveLorebook(name, { entries: {} });
-        await updateWorldInfoList();
     }
     return lbGetLorebook(name);
 }
