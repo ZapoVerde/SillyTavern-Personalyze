@@ -101,11 +101,14 @@ export async function showHeuristicApprovalModal(detectedIds) {
     const popupPromise = callPopup(html, 'confirm');
 
     // Bind real-time interaction: enable/disable the snooze turns input
+    // Also rename the generic Yes/Cancel buttons to context-appropriate labels
     setTimeout(() => {
         $(document).on('change.plz-heuristic', '.plz-heuristic-action', function() {
             const $row = $(this).closest('.plz-heuristic-row');
             $row.find('.plz-snooze-turns').prop('disabled', $(this).val() !== 'snooze');
         });
+        $('#dialogue_popup_ok').text('Accept');
+        $('#dialogue_popup_cancel').text('Skip All');
     }, 0);
 
     return new Promise((resolve) => {
