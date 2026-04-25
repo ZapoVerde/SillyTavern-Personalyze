@@ -115,7 +115,7 @@ export async function showArchivistModal(name, identityMap, activeRoster) {
 
         <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
             <!-- Option 1: Create -->
-            <button id="plz-arch-create" class="menu_button" style="text-align:left;" title="Register them in the DNA and generate a portrait.">
+            <button id="plz-arch-create" class="menu_button" style="text-align:left; white-space:nowrap;" title="Register them in the DNA and generate a portrait.">
                 <i class="fa-solid fa-user-plus"></i> Create New Character
             </button>
 
@@ -130,7 +130,7 @@ export async function showArchivistModal(name, identityMap, activeRoster) {
             </div>
 
             <!-- Option 3: Ignore -->
-            <button id="plz-arch-ignore" class="menu_button" style="text-align:left;" title="Skip this person until the next scene change.">
+            <button id="plz-arch-ignore" class="menu_button" style="text-align:left; white-space:nowrap;" title="Skip this person until the next scene change.">
                 <i class="fa-solid fa-eye-slash"></i> Ignore for now
             </button>
         </div>
@@ -141,6 +141,7 @@ export async function showArchivistModal(name, identityMap, activeRoster) {
             $(document).off('.plzArch');
             resolve(null);
         });
+        $('#dialogue_popup_ok').hide();
 
         const cleanup = () => {
             $(document).off('.plzArch');
