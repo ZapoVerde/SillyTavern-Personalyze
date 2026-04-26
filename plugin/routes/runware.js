@@ -242,7 +242,7 @@ export function registerRunwareRoutes(router) {
     // ─── Runware: Model Upload ────────────────────────────────────────────────
     router.post('/runware-upload-model', async (req, res) => {
         try {
-            const { name, air, downloadURL, architecture, category, version } = req.body;
+            const { name, air, downloadURL, architecture, category, format, version } = req.body;
             const apiKey = readSecret(req.user.directories, 'api_key_runware');
 
             if (!apiKey) {
@@ -259,7 +259,7 @@ export function registerRunwareRoutes(router) {
                 downloadURL,
                 architecture,
                 category,
-                format: "safetensors",
+                format: format || "safetensors",
                 uniqueIdentifier: crypto.randomUUID().replace(/-/g, ''),
                 version: version || "v1",
                 private: true,

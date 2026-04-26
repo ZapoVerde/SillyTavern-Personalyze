@@ -285,6 +285,13 @@ export function getRunwareUploadFormHTML() {
                     <option value="embeddings">Embedding</option>
                 </select>
             </div>
+            <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+                <label style="font-size:0.85em; opacity:0.75;">Format</label>
+                <select id="plz-upload-format" class="text_pole">
+                    <option value="safetensors" selected>safetensors</option>
+                    <option value="pickletensor">pickletensor</option>
+                </select>
+            </div>
         </div>
     </div>`;
 }

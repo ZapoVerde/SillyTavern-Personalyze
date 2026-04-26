@@ -36,7 +36,7 @@ import { saveManualModel, saveManualLora } from '../panel/models.js';
 import { getRunwareUploadFormHTML } from './templates.js';
 
 // ─── Upload Form State (ephemeral session memory) ─────────────────────────────
-const _uploadState = { name: '', air: '', version: 'v1', downloadURL: '', architecture: 'sdxl', category: 'checkpoint' };
+const _uploadState = { name: '', air: '', version: 'v1', downloadURL: '', architecture: 'sdxl', category: 'checkpoint', format: 'safetensors' };
 
 // ─── Key Status ───────────────────────────────────────────────────────────────
 
@@ -155,7 +155,12 @@ export function bindEnginesHandlers($modal) {
                     </div>
                     <div class="plz-workshop-body">
                         ${getRunwareUploadFormHTML()}
-                        <div id="plz-upload-status" style="margin-top:8px; font-size:0.85em; min-height:1.4em;"></div>
+                        <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                            <button id="plz-upload-copy" class="menu_button" style="font-size:0.75em; padding:1px 8px;" title="Copy response to clipboard">
+                                <i class="fa-regular fa-copy"></i> Copy
+                            </button>
+                        </div>
+                        <div id="plz-upload-status" style="font-size:0.85em; min-height:1.4em;"></div>
                         <div id="plz-upload-btn-row" style="display:flex; gap:8px; margin-top:4px;">
                             <button id="plz-upload-submit" class="menu_button" style="flex:1;">
                                 <i class="fa-solid fa-upload"></i> Submit Upload
@@ -174,6 +179,7 @@ export function bindEnginesHandlers($modal) {
         $overlay.find('#plz-upload-url').val(_uploadState.downloadURL);
         $overlay.find('#plz-upload-arch').val(_uploadState.architecture);
         $overlay.find('#plz-upload-category').val(_uploadState.category);
+        $overlay.find('#plz-upload-format').val(_uploadState.format);
 
         // Sync state on any input change
         $overlay.on('input change', 'input, select', () => {
@@ -183,18 +189,31 @@ export function bindEnginesHandlers($modal) {
             _uploadState.downloadURL  = $overlay.find('#plz-upload-url').val();
             _uploadState.architecture = $overlay.find('#plz-upload-arch').val();
             _uploadState.category     = $overlay.find('#plz-upload-category').val();
+            _uploadState.format       = $overlay.find('#plz-upload-format').val();
         });
 
         // Reset button
         $overlay.on('click', '#plz-upload-reset', () => {
-            Object.assign(_uploadState, { name: '', air: '', version: 'v1', downloadURL: '', architecture: 'sdxl', category: 'checkpoint' });
+            Object.assign(_uploadState, { name: '', air: '', version: 'v1', downloadURL: '', architecture: 'sdxl', category: 'checkpoint', format: 'safetensors' });
             $overlay.find('#plz-upload-name').val('');
             $overlay.find('#plz-upload-air').val('');
             $overlay.find('#plz-upload-version').val('v1');
             $overlay.find('#plz-upload-url').val('');
             $overlay.find('#plz-upload-arch').val('sdxl');
             $overlay.find('#plz-upload-category').val('checkpoint');
+            $overlay.find('#plz-upload-format').val('safetensors');
             $overlay.find('#plz-upload-status').html('');
+        });
+
+        $overlay.on('click', '#plz-upload-copy', async () => {
+            const text = $overlay.find('#plz-upload-status').text().trim();
+            if (!text) return;
+            try {
+                await navigator.clipboard.writeText(text);
+                if (window.toastr) window.toastr.info('Copied to clipboard.');
+            } catch {
+                if (window.toastr) window.toastr.warning('Copy failed — select manually.');
+            }
         });
 
         $overlay.on('click', '#plz-upload-close', () => $overlay.remove());
@@ -207,6 +226,7 @@ export function bindEnginesHandlers($modal) {
             const downloadURL  = $overlay.find('#plz-upload-url').val().trim();
             const architecture = $overlay.find('#plz-upload-arch').val();
             const category     = $overlay.find('#plz-upload-category').val();
+            const format       = $overlay.find('#plz-upload-format').val();
             const $status      = $overlay.find('#plz-upload-status');
             const $submit      = $overlay.find('#plz-upload-submit');
 
@@ -215,7 +235,7 @@ export function bindEnginesHandlers($modal) {
                 return;
             }
 
-            const reqBundle = { name, air, version, downloadURL, architecture, category };
+            const reqBundle = { name, air, version, downloadURL, architecture, category, format };
             const $btnRow = $overlay.find('#plz-upload-btn-row');
 
             // Switch to in-progress button row
