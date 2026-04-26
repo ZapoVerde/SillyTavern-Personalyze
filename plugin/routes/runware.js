@@ -280,26 +280,37 @@ export function registerRunwareRoutes(router) {
                 return res.status(upstream.status).json({ error: text });
             }
 
-            // Stream Runware's NDJSON response through to the client line by line
+            // Stream Runware's response through to the client line by line
             res.setHeader('Content-Type', 'application/x-ndjson');
             res.setHeader('Cache-Control', 'no-cache');
 
             const reader = upstream.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
+            let chunkCount = 0;
 
             try {
                 while (true) {
                     const { done, value } = await reader.read();
+                    console.log(`[PLZ:Upload] Chunk #${++chunkCount} done=${done} bytes=${value?.length ?? 0}`);
                     if (done) break;
-                    buffer += decoder.decode(value, { stream: true });
+                    const text = decoder.decode(value, { stream: true });
+                    console.log(`[PLZ:Upload] Raw chunk: ${text}`);
+                    buffer += text;
                     const lines = buffer.split('\n');
                     buffer = lines.pop() ?? '';
                     for (const line of lines) {
-                        if (line.trim()) res.write(line + '\n');
+                        if (line.trim()) {
+                            console.log(`[PLZ:Upload] Writing line: ${line}`);
+                            res.write(line + '\n');
+                        }
                     }
                 }
-                if (buffer.trim()) res.write(buffer + '\n');
+                if (buffer.trim()) {
+                    console.log(`[PLZ:Upload] Writing final buffer: ${buffer}`);
+                    res.write(buffer + '\n');
+                }
+                console.log(`[PLZ:Upload] Stream complete after ${chunkCount} chunks.`);
             } finally {
                 res.end();
             }

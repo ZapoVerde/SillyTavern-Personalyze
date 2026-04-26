@@ -300,36 +300,47 @@ export function bindEnginesHandlers($modal) {
                     return;
                 }
 
-                // Read the NDJSON stream — one JSON object per status phase
+                // Read the stream — Runware may send NDJSON or a single JSON blob
+                log('UploadStream', `Response ok, status=${response.status}, streaming body...`);
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buf = '';
                 let lastResult = null;
                 let lastError = null;
+                let chunkCount = 0;
+
+                const processChunk = (text) => {
+                    try {
+                        const chunk = JSON.parse(text);
+                        log('UploadStream', `Parsed chunk:`, chunk);
+                        const errors = chunk.errors ?? [];
+                        const result = chunk.data?.[0];
+                        if (errors.length) {
+                            lastError = errors[0].message || JSON.stringify(errors[0]);
+                            if (isOpen()) $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${lastError}</span>`);
+                        } else if (result?.status) {
+                            lastResult = result;
+                            if (isOpen()) $status.html(`<span style="opacity:0.8;">⟳ ${result.status}…</span>`);
+                        }
+                    } catch { /* not yet a complete JSON object */ }
+                };
 
                 while (true) {
                     const { done, value } = await reader.read();
+                    log('UploadStream', `Chunk #${++chunkCount} done=${done} bytes=${value?.length ?? 0}`);
                     if (done) break;
                     buf += decoder.decode(value, { stream: true });
+
+                    // Try newline-delimited first (NDJSON)
                     const lines = buf.split('\n');
                     buf = lines.pop() ?? '';
-
                     for (const line of lines) {
-                        if (!line.trim()) continue;
-                        try {
-                            const chunk = JSON.parse(line);
-                            const errors = chunk.errors ?? [];
-                            const result = chunk.data?.[0];
-
-                            if (errors.length) {
-                                lastError = errors[0].message || JSON.stringify(errors[0]);
-                                if (isOpen()) $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${lastError}</span>`);
-                            } else if (result?.status) {
-                                lastResult = result;
-                                if (isOpen()) $status.html(`<span style="opacity:0.8;">⟳ ${result.status}…</span>`);
-                            }
-                        } catch { /* incomplete chunk, continue */ }
+                        if (line.trim()) processChunk(line);
                     }
+
+                    // Also try parsing the accumulated buffer as a complete JSON object
+                    // — handles the case where Runware sends one blob without trailing newline
+                    if (buf.trim()) processChunk(buf);
                 }
 
                 // Stream closed — surface final state
