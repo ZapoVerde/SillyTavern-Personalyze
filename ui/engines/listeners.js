@@ -280,7 +280,7 @@ export function bindEnginesHandlers($modal) {
             const isOpen = () => $.contains(document, $overlay[0]);
 
             startSystemTurn('Runware Model Upload');
-            logCall('UploadModel', `[${architecture}/${category}] ${name}\n${downloadURL}`, null, null, reqBundle);
+            logCall(`UploadModel [${air}]`, `[${architecture}/${category}] ${name}\n${downloadURL}`, null, null, reqBundle);
 
             const resetBtn = () => {
                 $overlay.find('#plz-upload-bg').remove();

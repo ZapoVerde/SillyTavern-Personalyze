@@ -241,9 +241,12 @@ export function registerRunwareRoutes(router) {
 
     // ─── Runware: Model Upload ────────────────────────────────────────────────
     router.post('/runware-upload-model', async (req, res) => {
+        console.log('[PLZ:Upload] Route hit.');
         try {
             const { name, air, downloadURL, architecture, category, format, version, type } = req.body;
+            console.log(`[PLZ:Upload] Payload received — air=${air} name=${name} arch=${architecture} cat=${category}`);
             const apiKey = readSecret(req.user.directories, 'api_key_runware');
+            console.log(`[PLZ:Upload] API key present: ${!!apiKey}`);
 
             if (!apiKey) {
                 return res.status(401).json({ error: 'Runware API key not configured.' });
@@ -266,6 +269,7 @@ export function registerRunwareRoutes(router) {
                 private: true,
             };
 
+            console.log('[PLZ:Upload] Dispatching to Runware API...');
             const upstream = await fetch('https://api.runware.ai/v1', {
                 method: 'POST',
                 headers: {
@@ -316,6 +320,7 @@ export function registerRunwareRoutes(router) {
             }
 
         } catch (err) {
+            console.error(`[PLZ:Upload] CAUGHT ERROR: ${err.message}`, err);
             if (!res.headersSent) {
                 res.status(500).json({ error: err.message });
             }
