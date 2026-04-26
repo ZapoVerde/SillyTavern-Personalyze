@@ -239,6 +239,72 @@ export function registerRunwareRoutes(router) {
         }
     });
 
+    // ─── Runware: Model Upload ────────────────────────────────────────────────
+    router.post('/runware-upload-model', async (req, res) => {
+        try {
+            const { name, air, downloadURL, architecture, category, format } = req.body;
+            const apiKey = readSecret(req.user.directories, 'api_key_runware');
+
+            if (!apiKey) {
+                return res.status(401).json({ error: 'Runware API key not configured.' });
+            }
+
+            const taskUUID = crypto.randomUUID();
+
+            const task = {
+                taskType: "modelUpload",
+                taskUUID,
+                air,
+                name,
+                downloadURL,
+                architecture,
+                category,
+                format,
+                uniqueIdentifier: crypto.randomUUID().replace(/-/g, ''),
+                version: "1.0",
+                private: true,
+            };
+
+            const response = await withRetry(() => fetchChecked('https://api.runware.ai/v1', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify([task])
+            }), 'RunwareUpload');
+
+            const data = await response.json();
+
+            if (data.error) {
+                const err = new Error(`Runware API Error: ${data.errorMessage || data.error}`);
+                err.responseDocument = data;
+                throw err;
+            }
+
+            const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
+
+            if (taskResult?.errorCode) {
+                const err = new Error(`Runware upload error [${taskResult.errorCode}]: ${taskResult.message || taskResult.errorCode}`);
+                err.responseDocument = taskResult;
+                throw err;
+            }
+
+            return res.json({ ok: true, result: taskResult, responseDocument: data });
+
+        } catch (err) {
+            if (err.httpStatus) {
+                const fatal = FATAL_HTTP_CODES.has(err.httpStatus);
+                return res.status(err.httpStatus).json({
+                    error: err.responseText || err.message,
+                    fatal,
+                    responseDocument: err.responseDocument
+                });
+            }
+            res.status(500).json({ error: err.message, responseDocument: err.responseDocument });
+        }
+    });
+
     // ─── Runware: Key Validation ──────────────────────────────────────────────
     router.post('/runware-ping', async (req, res) => {
         try {

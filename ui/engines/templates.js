@@ -202,6 +202,10 @@ function getRunwareTabHTML(settings) {
             </select>
         </div>
 
+        <button id="plz-upload-runware-model" class="menu_button" style="width:100%;">
+            <i class="fa-solid fa-cloud-arrow-up"></i> Upload Custom Model to Runware
+        </button>
+
         <div style="padding:10px; border:1px solid var(--SmartThemeBorderColor,#444); border-radius:6px; display:flex; flex-direction:column; gap:10px;">
             <label class="checkbox_label" style="font-size:0.9em; cursor:pointer;" title="Generate transparency in a single pass.">
                 <input type="checkbox" id="plz-eng-runware-layerdiffuse" ${s.runwareUseLayerDiffuse ? 'checked' : ''} />
@@ -224,6 +228,51 @@ function getRunwareTabHTML(settings) {
             <button class="menu_button" id="plz-eng-runware-test" style="flex:1;"><i class="fa-solid fa-flask"></i> Test</button>
         </div>
         <div id="plz-eng-runware-status" style="font-size:0.8em; opacity:0.8;"></div>
+    </div>`;
+}
+
+// ─── Runware Upload Form ──────────────────────────────────────────────────────
+
+export function getRunwareUploadFormHTML() {
+    return `
+    <div style="display:flex; flex-direction:column; gap:12px; min-width:340px;">
+        <h3 style="margin:0 0 4px;">Upload Model to Runware</h3>
+        <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:0.85em; opacity:0.75;">Model Name</label>
+            <input type="text" id="plz-upload-name" class="text_pole" placeholder="e.g. My Custom SDXL" />
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:0.85em; opacity:0.75;">AIR ID</label>
+            <input type="text" id="plz-upload-air" class="text_pole" placeholder="e.g. runware:my_model@1" />
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:0.85em; opacity:0.75;">Direct Download URL</label>
+            <input type="text" id="plz-upload-url" class="text_pole" placeholder="https://civitai.com/api/download/..." />
+        </div>
+        <div style="display:flex; gap:12px;">
+            <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+                <label style="font-size:0.85em; opacity:0.75;">Architecture</label>
+                <select id="plz-upload-arch" class="text_pole">
+                    <option value="sd15">SD 1.5</option>
+                    <option value="sdxl" selected>SDXL</option>
+                    <option value="flux">Flux</option>
+                </select>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+                <label style="font-size:0.85em; opacity:0.75;">Category</label>
+                <select id="plz-upload-category" class="text_pole">
+                    <option value="checkpoint">Checkpoint</option>
+                    <option value="lora">LoRA</option>
+                </select>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+                <label style="font-size:0.85em; opacity:0.75;">Format</label>
+                <select id="plz-upload-format" class="text_pole">
+                    <option value="safetensors" selected>safetensors</option>
+                    <option value="ckpt">ckpt</option>
+                </select>
+            </div>
+        </div>
     </div>`;
 }
 

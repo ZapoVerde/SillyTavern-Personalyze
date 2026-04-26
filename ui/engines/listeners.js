@@ -31,6 +31,9 @@ import { getRequestHeaders, callPopup } from '../../../../../../script.js';
 import { getCachedModels } from '../panel/models.js';
 import { smartResize } from '../../utils/dom.js';
 import { openModelManager } from '../models/modelManagerModal.js';
+import { startSystemTurn, logCall, logPatchLast } from '../../utils/callLog.js';
+import { saveManualModel, saveManualLora } from '../panel/models.js';
+import { getRunwareUploadFormHTML } from './templates.js';
 
 // ─── Key Status ───────────────────────────────────────────────────────────────
 
@@ -129,6 +132,61 @@ export function bindEnginesHandlers($modal) {
     // 0. Model Manager Trigger
     $modal.on('click', '#plz-open-model-manager', async () => {
         await openModelManager();
+    });
+
+    // 0a. Runware Model Upload
+    $modal.on('click', '#plz-upload-runware-model', async () => {
+        const confirmed = await callPopup(getRunwareUploadFormHTML(), 'confirm');
+        if (!confirmed) return;
+
+        const name        = $('#plz-upload-name').val().trim();
+        const air         = $('#plz-upload-air').val().trim();
+        const downloadURL = $('#plz-upload-url').val().trim();
+        const architecture = $('#plz-upload-arch').val();
+        const category    = $('#plz-upload-category').val();
+        const format      = $('#plz-upload-format').val();
+
+        if (!name || !air || !downloadURL) {
+            if (window.toastr) window.toastr.warning('Name, AIR ID, and URL are required.');
+            return;
+        }
+
+        const reqBundle = { name, air, downloadURL, architecture, category, format };
+        startSystemTurn('Runware Model Upload');
+        logCall('UploadModel', `[${architecture}/${category}] ${name}\n${downloadURL}`, null, null, reqBundle);
+
+        try {
+            const response = await fetch('/api/plugins/personalyze/runware-upload-model', {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify(reqBundle)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || data.error) {
+                const msg = data.error || `HTTP ${response.status}`;
+                logPatchLast(null, msg, null, data.responseDocument ?? null);
+                if (window.toastr) window.toastr.error(`Upload failed: ${msg}`);
+                return;
+            }
+
+            logPatchLast(data.result, null, null, data.responseDocument ?? null);
+
+            if (category === 'lora') {
+                saveManualLora(name, air, null);
+            } else {
+                saveManualModel(name, air);
+            }
+
+            await refreshEnginesUI();
+            if (window.toastr) window.toastr.success('Model upload submitted to Runware.');
+
+        } catch (err) {
+            logPatchLast(null, err.message, null, null);
+            error('EnginesModal', 'Model upload failed:', err);
+            if (window.toastr) window.toastr.error(`Upload error: ${err.message}`);
+        }
     });
 
     // 1. Vault Save
