@@ -248,6 +248,7 @@ export function bindEnginesHandlers($modal) {
         $overlay.on('click', function (e) { if (e.target === this) $overlay.remove(); });
 
         $overlay.on('click', '#plz-upload-submit', async () => {
+            log('UploadStream', 'Submit clicked — handler firing.');
             const name         = $overlay.find('#plz-upload-name').val().trim();
             const air          = $overlay.find('#plz-upload-air').val().trim();
             const version      = $overlay.find('#plz-upload-version').val().trim();
@@ -265,6 +266,7 @@ export function bindEnginesHandlers($modal) {
             }
 
             const reqBundle = { name, air, version, downloadURL, architecture, category, format, ...(type ? { type } : {}) };
+            log('UploadStream', 'reqBundle:', reqBundle);
             const $btnRow = $overlay.find('#plz-upload-btn-row');
 
             // Switch to in-progress button row
@@ -286,11 +288,13 @@ export function bindEnginesHandlers($modal) {
             };
 
             try {
+                log('UploadStream', 'Sending fetch to backend...');
                 const response = await fetch('/api/plugins/personalyze/runware-upload-model', {
                     method: 'POST',
                     headers: getRequestHeaders(),
                     body: JSON.stringify(reqBundle)
                 });
+                log('UploadStream', `Fetch returned — status=${response.status} ok=${response.ok}`);
 
                 if (!response.ok) {
                     const msg = (await response.json().catch(() => ({}))).error || `HTTP ${response.status}`;
