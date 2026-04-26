@@ -44,7 +44,7 @@ import { logJobStart, logJobResponse, logJobPollTick, logJobResolved, openUpload
 const _uploadState = {
     name: '', air: '', version: 'v1', downloadURL: '',
     architecture: 'sdxl', category: 'checkpoint',
-    format: 'safetensors', type: 'base',
+    format: 'safetensors', type: 'base', isPublic: false,
 };
 
 const _typeOptions = {
@@ -185,6 +185,7 @@ export function bindRunwareUploadHandler($modal) {
         $overlay.find('#plz-upload-arch').val(_uploadState.architecture);
         $overlay.find('#plz-upload-category').val(_uploadState.category);
         $overlay.find('#plz-upload-format').val(_uploadState.format);
+        $overlay.find('#plz-upload-public').prop('checked', _uploadState.isPublic);
         _rebuildTypeOptions($overlay, _uploadState.category, _uploadState.type);
 
         // ── Sync state on every change ─────────────────────────────────────────
@@ -197,6 +198,7 @@ export function bindRunwareUploadHandler($modal) {
             _uploadState.category     = $overlay.find('#plz-upload-category').val();
             _uploadState.format       = $overlay.find('#plz-upload-format').val();
             _uploadState.type         = $overlay.find('#plz-upload-type').val();
+            _uploadState.isPublic     = $overlay.find('#plz-upload-public').prop('checked');
         });
 
         // ── Reset button ───────────────────────────────────────────────────────
@@ -204,7 +206,7 @@ export function bindRunwareUploadHandler($modal) {
             Object.assign(_uploadState, {
                 name: '', air: '', version: 'v1', downloadURL: '',
                 architecture: 'sdxl', category: 'checkpoint',
-                format: 'safetensors', type: 'base',
+                format: 'safetensors', type: 'base', isPublic: false,
             });
             $overlay.find('#plz-upload-name').val('');
             $overlay.find('#plz-upload-air').val('');
@@ -213,6 +215,7 @@ export function bindRunwareUploadHandler($modal) {
             $overlay.find('#plz-upload-arch').val('sdxl');
             $overlay.find('#plz-upload-category').val('checkpoint');
             $overlay.find('#plz-upload-format').val('safetensors');
+            $overlay.find('#plz-upload-public').prop('checked', false);
             $overlay.find('#plz-upload-status').html('');
             _rebuildTypeOptions($overlay, 'checkpoint', 'base');
         });
@@ -248,6 +251,7 @@ export function bindRunwareUploadHandler($modal) {
             const category     = $overlay.find('#plz-upload-category').val();
             const format       = $overlay.find('#plz-upload-format').val();
             const type         = $overlay.find('#plz-upload-type').val();
+            const isPublic     = $overlay.find('#plz-upload-public').prop('checked');
             const $status      = $overlay.find('#plz-upload-status');
             const $submit      = $overlay.find('#plz-upload-submit');
 
@@ -256,7 +260,7 @@ export function bindRunwareUploadHandler($modal) {
                 return;
             }
 
-            const reqBundle = { name, air, version, downloadURL, architecture, category, format, ...(type ? { type } : {}) };
+            const reqBundle = { name, air, version, downloadURL, architecture, category, format, isPublic, ...(type ? { type } : {}) };
             const $btnRow = $overlay.find('#plz-upload-btn-row');
 
             $submit.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Uploading...');

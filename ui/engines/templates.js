@@ -304,6 +304,10 @@ export function getRunwareUploadFormHTML() {
                 </select>
             </div>
         </div>
+        <label class="checkbox_label" style="font-size:0.85em; cursor:pointer; margin-top:2px;">
+            <input type="checkbox" id="plz-upload-public" />
+            <span>Make public on Runware <span style="opacity:0.5;">(default: private)</span></span>
+        </label>
     </div>`;
 }
 
