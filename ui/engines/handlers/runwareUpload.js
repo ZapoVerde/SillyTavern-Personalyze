@@ -15,6 +15,9 @@
  *   be dismissed while the fetch is in flight; completion falls back to toastr.
  * - On successful "ready" status, registers the model in the local blueprint
  *   store and triggers a UI refresh.
+ * - When Runware returns "accepted" (async processing), polls /runware-search
+ *   every 10 s (up to 5 min) to detect when the model becomes available,
+ *   then completes the registration automatically.
  *
  * @api-declaration
  * bindRunwareUploadHandler($modal) → void
@@ -23,7 +26,8 @@
  *   assertions:
  *     purity: IO Executor + Stateful Owner
  *     state_ownership: [_uploadState]
- *     external_io: [DOM, /api/plugins/personalyze/runware-upload-model, getRequestHeaders,
+ *     external_io: [DOM, /api/plugins/personalyze/runware-upload-model,
+ *                   /api/plugins/personalyze/runware-search, getRequestHeaders,
  *                   callLog.js, models.js, uiRefresh.js]
  */
 
@@ -33,6 +37,7 @@ import { startSystemTurn, logCall, logPatchLast } from '../../../utils/callLog.j
 import { saveManualModel, saveManualLora } from '../../panel/models.js';
 import { getRunwareUploadFormHTML } from '../templates.js';
 import { refreshEnginesUI } from './uiRefresh.js';
+import { logJobStart, logJobResponse, logJobPollTick, logJobResolved, openUploadLogModal } from './uploadLog.js';
 
 // ─── Session-Ephemeral Form State ─────────────────────────────────────────────
 // Owned by this module. Survives overlay close/reopen within one page session.
@@ -52,6 +57,58 @@ const _typeOptions = {
 
 // ─── Private Helpers ──────────────────────────────────────────────────────────
 
+const _POLL_INTERVAL_MS = 10_000;   // 10 s between checks
+const _POLL_MAX_TRIES   = 30;       // give up after 5 min
+
+/**
+ * Polls /runware-search until the uploaded model's AIR appears in results,
+ * indicating Runware has finished processing it.
+ *
+ * @param {object}   opts
+ * @param {string}   opts.air        - The model AIR ID to watch for.
+ * @param {string}   opts.name       - Human-readable name (for toastr fallback).
+ * @param {string}   opts.category   - Runware category to narrow the search.
+ * @param {string}   opts.taskUUID   - Task UUID surfaced from the upload response.
+ * @param {Function} opts.onReady    - Called when the model is confirmed available.
+ * @param {Function} opts.onTimeout  - Called if max polls reached without detection.
+ * @param {Function} opts.onTick     - Called on each poll with `{ attempt, max }`.
+ */
+function _pollUploadReady({ air, name, category, taskUUID, onReady, onTimeout, onTick }) {
+    let attempt = 0;
+
+    const interval = setInterval(async () => {
+        attempt++;
+        onTick?.({ attempt, max: _POLL_MAX_TRIES });
+
+        try {
+            const response = await fetch('/api/plugins/personalyze/runware-search', {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify({ category, search: name, limit: 50 })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const match = (data.models ?? []).find(m => m.air === air);
+                if (match) {
+                    clearInterval(interval);
+                    onReady(match);
+                    return;
+                }
+            }
+        } catch {
+            // transient network error — keep polling
+        }
+
+        if (attempt >= _POLL_MAX_TRIES) {
+            clearInterval(interval);
+            onTimeout();
+        }
+    }, _POLL_INTERVAL_MS);
+
+    return interval;
+}
+
 function _rebuildTypeOptions($overlay, category, selectedType) {
     const opts = _typeOptions[category] ?? [];
     const $sel = $overlay.find('#plz-upload-type');
@@ -68,6 +125,8 @@ function _rebuildTypeOptions($overlay, category, selectedType) {
  * @param {jQuery} $modal - The #plz-engines-overlay element.
  */
 export function bindRunwareUploadHandler($modal) {
+    $modal.on('click', '#plz-view-upload-log', () => openUploadLogModal());
+
     $modal.on('click', '#plz-upload-runware-model', () => {
         $('#plz-upload-overlay').remove();
 
@@ -208,10 +267,15 @@ export function bindRunwareUploadHandler($modal) {
                 });
                 const taskUUID = response.headers.get('x-task-uuid') ?? '—';
 
+                // Open the persistent log entry as soon as we have a taskUUID
+                logJobStart({ taskUUID, air, name, category, architecture, format, reqBundle });
+
                 if (!response.ok) {
                     const errData = await response.json().catch(() => ({}));
                     const msg = errData.error || `HTTP ${response.status}`;
                     logPatchLast(null, msg, { taskUUID }, errData.responseDocument ?? null);
+                    logJobResponse(taskUUID, { result: null, error: msg, responseDocument: errData.responseDocument ?? null });
+                    logJobResolved(taskUUID, 'error', msg);
                     if (isOpen()) { $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${msg}</span>`); resetBtn(); }
                     else if (window.toastr) window.toastr.error(`Upload failed: ${msg}`);
                     return;
@@ -219,8 +283,10 @@ export function bindRunwareUploadHandler($modal) {
 
                 const data = await response.json();
                 logPatchLast(data.result, data.error ?? null, { taskUUID }, data.responseDocument ?? null);
+                logJobResponse(taskUUID, { result: data.result, error: data.error ?? null, responseDocument: data.responseDocument ?? null });
 
                 if (data.error) {
+                    logJobResolved(taskUUID, 'error', data.error);
                     if (isOpen()) { $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${data.error}</span>`); resetBtn(); }
                     else if (window.toastr) window.toastr.error(`Upload failed: ${data.error}`);
                     return;
@@ -228,17 +294,50 @@ export function bindRunwareUploadHandler($modal) {
 
                 const result = data.result;
                 const statusText = result?.status ?? 'accepted';
+                const uuidTag = `<span style="opacity:0.5; font-size:0.8em;">[${taskUUID}]</span>`;
 
                 if (statusText === 'ready') {
+                    // Runware processed it synchronously — register and finish.
+                    logJobResolved(taskUUID, 'ready');
                     if (category === 'lora') saveManualLora(name, air, null);
                     else saveManualModel(name, air);
                     await refreshEnginesUI();
-                }
+                    const statusLine = `✓ ready ${uuidTag}`;
+                    if (isOpen()) { $status.html(`<span style="color:var(--SmartThemeQuoteColor);">${statusLine}</span>`); resetBtn(); }
+                    else if (window.toastr) window.toastr.success(`Model ready: ${name}`);
 
-                const statusColor = statusText === 'ready' ? 'var(--SmartThemeQuoteColor)' : 'inherit';
-                const statusLine  = `✓ ${statusText}${result?.message ? ' — ' + result.message : ''} <span style="opacity:0.5; font-size:0.8em;">[${taskUUID}]</span>`;
-                if (isOpen()) { $status.html(`<span style="color:${statusColor};">${statusLine}</span>`); resetBtn(); }
-                else if (window.toastr) window.toastr.success(`Upload ${statusText}: ${name}`);
+                } else {
+                    // Runware is processing asynchronously — poll until ready.
+                    const pollLine = (attempt) =>
+                        `⏳ ${statusText} — checking every 10 s (${attempt}/${_POLL_MAX_TRIES}) ${uuidTag}`;
+
+                    if (isOpen()) $status.html(`<span>${pollLine(0)}</span>`);
+
+                    _pollUploadReady({
+                        air, name, category, taskUUID,
+                        onTick: ({ attempt }) => {
+                            logJobPollTick(taskUUID, attempt, false);
+                            if (isOpen()) $status.html(`<span>${pollLine(attempt)}</span>`);
+                        },
+                        onReady: async () => {
+                            logJobResolved(taskUUID, 'ready');
+                            if (category === 'lora') saveManualLora(name, air, null);
+                            else saveManualModel(name, air);
+                            await refreshEnginesUI();
+                            const line = `✓ ready ${uuidTag}`;
+                            if (isOpen()) { $status.html(`<span style="color:var(--SmartThemeQuoteColor);">${line}</span>`); resetBtn(); }
+                            else if (window.toastr) window.toastr.success(`Model ready: ${name}`);
+                        },
+                        onTimeout: () => {
+                            logJobResolved(taskUUID, 'timeout');
+                            const line = `⚠ Timed out waiting for ready status. Check Runware dashboard. ${uuidTag}`;
+                            if (isOpen()) { $status.html(`<span style="color:var(--SmartThemeWarnColor,#e0a040);">${line}</span>`); resetBtn(); }
+                            else if (window.toastr) window.toastr.warning(`Upload timeout: ${name} — check Runware dashboard`);
+                        },
+                    });
+                    // Leave the submit button disabled while polling;
+                    // resetBtn() is called by onReady/onTimeout above.
+                }
 
             } catch (err) {
                 logPatchLast(null, err.message, null, null);

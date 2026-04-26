@@ -346,9 +346,12 @@ export function getEnginesModalHTML(settings) {
                 <button id="plz-open-model-manager" class="menu_button" style="width:100%; border-color:var(--SmartThemeQuoteColor);">
                     <i class="fa-solid fa-microchip"></i> Manage Models & Blueprints
                 </button>
-                <div id="plz-runware-upload-container" class="plz-hidden">
-                    <button id="plz-upload-runware-model" class="menu_button" style="width:100%;">
-                        <i class="fa-solid fa-cloud-arrow-up"></i> Upload Custom Model to Runware
+                <div id="plz-runware-upload-container" class="plz-hidden" style="display:flex; gap:6px;">
+                    <button id="plz-upload-runware-model" class="menu_button" style="flex:1;">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> Upload Custom Model
+                    </button>
+                    <button id="plz-view-upload-log" class="menu_button" title="View upload job log" style="flex-shrink:0;">
+                        <i class="fa-solid fa-list-check"></i> Log
                     </button>
                 </div>
             </div>
