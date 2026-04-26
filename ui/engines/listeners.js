@@ -35,6 +35,9 @@ import { startSystemTurn, logCall, logPatchLast } from '../../utils/callLog.js';
 import { saveManualModel, saveManualLora } from '../panel/models.js';
 import { getRunwareUploadFormHTML } from './templates.js';
 
+// ─── Upload Form State (ephemeral session memory) ─────────────────────────────
+const _uploadState = { name: '', air: '', version: 'v1', downloadURL: '', architecture: 'sdxl', category: 'checkpoint' };
+
 // ─── Key Status ───────────────────────────────────────────────────────────────
 
 /**
@@ -135,58 +138,151 @@ export function bindEnginesHandlers($modal) {
     });
 
     // 0a. Runware Model Upload
-    $modal.on('click', '#plz-upload-runware-model', async () => {
-        const confirmed = await callPopup(getRunwareUploadFormHTML(), 'confirm');
-        if (!confirmed) return;
+    $modal.on('click', '#plz-upload-runware-model', () => {
+        $('#plz-upload-overlay').remove();
 
-        const name         = $('#plz-upload-name').val().trim();
-        const air          = $('#plz-upload-air').val().trim();
-        const version      = $('#plz-upload-version').val().trim();
-        const downloadURL  = $('#plz-upload-url').val().trim();
-        const architecture = $('#plz-upload-arch').val();
-        const category     = $('#plz-upload-category').val();
+        const $overlay = $(`
+            <div id="plz-upload-overlay" class="plz-overlay" style="z-index:10001;">
+                <div class="plz-modal" style="max-width:440px;">
+                    <div class="plz-workshop-header">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <h3 style="margin:0;"><i class="fa-solid fa-cloud-arrow-up"></i> Upload Model to Runware</h3>
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                <button id="plz-upload-reset" class="menu_button" style="padding:2px 8px; font-size:0.8em;">Reset</button>
+                                <button id="plz-upload-close" class="menu_button" style="padding:2px 10px;">✕</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="plz-workshop-body">
+                        ${getRunwareUploadFormHTML()}
+                        <div id="plz-upload-status" style="margin-top:8px; font-size:0.85em; min-height:1.4em;"></div>
+                        <div id="plz-upload-btn-row" style="display:flex; gap:8px; margin-top:4px;">
+                            <button id="plz-upload-submit" class="menu_button" style="flex:1;">
+                                <i class="fa-solid fa-upload"></i> Submit Upload
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>`);
 
-        if (!name || !air || !downloadURL) {
-            if (window.toastr) window.toastr.warning('Name, AIR ID, and URL are required.');
-            return;
-        }
+        $('body').append($overlay);
 
-        const reqBundle = { name, air, version, downloadURL, architecture, category };
-        startSystemTurn('Runware Model Upload');
-        logCall('UploadModel', `[${architecture}/${category}] ${name}\n${downloadURL}`, null, null, reqBundle);
+        // Restore persisted values
+        $overlay.find('#plz-upload-name').val(_uploadState.name);
+        $overlay.find('#plz-upload-air').val(_uploadState.air);
+        $overlay.find('#plz-upload-version').val(_uploadState.version);
+        $overlay.find('#plz-upload-url').val(_uploadState.downloadURL);
+        $overlay.find('#plz-upload-arch').val(_uploadState.architecture);
+        $overlay.find('#plz-upload-category').val(_uploadState.category);
 
-        try {
-            const response = await fetch('/api/plugins/personalyze/runware-upload-model', {
-                method: 'POST',
-                headers: getRequestHeaders(),
-                body: JSON.stringify(reqBundle)
-            });
+        // Sync state on any input change
+        $overlay.on('input change', 'input, select', () => {
+            _uploadState.name         = $overlay.find('#plz-upload-name').val();
+            _uploadState.air          = $overlay.find('#plz-upload-air').val();
+            _uploadState.version      = $overlay.find('#plz-upload-version').val();
+            _uploadState.downloadURL  = $overlay.find('#plz-upload-url').val();
+            _uploadState.architecture = $overlay.find('#plz-upload-arch').val();
+            _uploadState.category     = $overlay.find('#plz-upload-category').val();
+        });
 
-            const data = await response.json();
+        // Reset button
+        $overlay.on('click', '#plz-upload-reset', () => {
+            Object.assign(_uploadState, { name: '', air: '', version: 'v1', downloadURL: '', architecture: 'sdxl', category: 'checkpoint' });
+            $overlay.find('#plz-upload-name').val('');
+            $overlay.find('#plz-upload-air').val('');
+            $overlay.find('#plz-upload-version').val('v1');
+            $overlay.find('#plz-upload-url').val('');
+            $overlay.find('#plz-upload-arch').val('sdxl');
+            $overlay.find('#plz-upload-category').val('checkpoint');
+            $overlay.find('#plz-upload-status').html('');
+        });
 
-            if (!response.ok || data.error) {
-                const msg = data.error || `HTTP ${response.status}`;
-                logPatchLast(null, msg, null, data.responseDocument ?? null);
-                if (window.toastr) window.toastr.error(`Upload failed: ${msg}`);
+        $overlay.on('click', '#plz-upload-close', () => $overlay.remove());
+        $overlay.on('click', function (e) { if (e.target === this) $overlay.remove(); });
+
+        $overlay.on('click', '#plz-upload-submit', async () => {
+            const name         = $overlay.find('#plz-upload-name').val().trim();
+            const air          = $overlay.find('#plz-upload-air').val().trim();
+            const version      = $overlay.find('#plz-upload-version').val().trim();
+            const downloadURL  = $overlay.find('#plz-upload-url').val().trim();
+            const architecture = $overlay.find('#plz-upload-arch').val();
+            const category     = $overlay.find('#plz-upload-category').val();
+            const $status      = $overlay.find('#plz-upload-status');
+            const $submit      = $overlay.find('#plz-upload-submit');
+
+            if (!name || !air || !downloadURL) {
+                $status.html('<span style="color:var(--SmartThemeErrorColor);">Name, AIR ID, and URL are required.</span>');
                 return;
             }
 
-            logPatchLast(data.result, null, null, data.responseDocument ?? null);
+            const reqBundle = { name, air, version, downloadURL, architecture, category };
+            const $btnRow = $overlay.find('#plz-upload-btn-row');
 
-            if (category === 'lora') {
-                saveManualLora(name, air, null);
-            } else {
-                saveManualModel(name, air);
+            // Switch to in-progress button row
+            $submit.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Uploading...');
+            $btnRow.append(`<button id="plz-upload-bg" class="menu_button" style="flex:1;">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i> Close & Continue
+            </button>`);
+            $overlay.on('click', '#plz-upload-bg', () => $overlay.remove());
+            $status.html('<span style="opacity:0.7;">Submitting to Runware...</span>');
+
+            const isOpen = () => $.contains(document, $overlay[0]);
+
+            startSystemTurn('Runware Model Upload');
+            logCall('UploadModel', `[${architecture}/${category}] ${name}\n${downloadURL}`, null, null, reqBundle);
+
+            try {
+                const response = await fetch('/api/plugins/personalyze/runware-upload-model', {
+                    method: 'POST',
+                    headers: getRequestHeaders(),
+                    body: JSON.stringify(reqBundle)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || data.error) {
+                    const msg = data.error || `HTTP ${response.status}`;
+                    logPatchLast(null, msg, null, data.responseDocument ?? null);
+                    if (isOpen()) {
+                        $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${msg}</span>`);
+                        $overlay.find('#plz-upload-bg').remove();
+                        $submit.prop('disabled', false).html('<i class="fa-solid fa-upload"></i> Submit Upload');
+                    } else {
+                        if (window.toastr) window.toastr.error(`Upload failed: ${msg}`);
+                    }
+                    return;
+                }
+
+                logPatchLast(data.result, null, null, data.responseDocument ?? null);
+
+                if (category === 'lora') {
+                    saveManualLora(name, air, null);
+                } else {
+                    saveManualModel(name, air);
+                }
+
+                await refreshEnginesUI();
+
+                if (isOpen()) {
+                    $status.html(`<span style="color:var(--SmartThemeQuoteColor);">✓ Submitted — status: ${data.result?.status ?? 'accepted'}</span>`);
+                    $overlay.find('#plz-upload-bg').remove();
+                    $submit.prop('disabled', false).html('<i class="fa-solid fa-upload"></i> Submit Upload');
+                } else {
+                    if (window.toastr) window.toastr.success(`Upload accepted: ${name}`);
+                }
+
+            } catch (err) {
+                logPatchLast(null, err.message, null, null);
+                error('EnginesModal', 'Model upload failed:', err);
+                if (isOpen()) {
+                    $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${err.message}</span>`);
+                    $overlay.find('#plz-upload-bg').remove();
+                    $submit.prop('disabled', false).html('<i class="fa-solid fa-upload"></i> Submit Upload');
+                } else {
+                    if (window.toastr) window.toastr.error(`Upload error: ${err.message}`);
+                }
             }
-
-            await refreshEnginesUI();
-            if (window.toastr) window.toastr.success('Model upload submitted to Runware.');
-
-        } catch (err) {
-            logPatchLast(null, err.message, null, null);
-            error('EnginesModal', 'Model upload failed:', err);
-            if (window.toastr) window.toastr.error(`Upload error: ${err.message}`);
-        }
+        });
     });
 
     // 1. Vault Save

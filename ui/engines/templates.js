@@ -232,7 +232,6 @@ function getRunwareTabHTML(settings) {
 export function getRunwareUploadFormHTML() {
     return `
     <div style="display:flex; flex-direction:column; gap:12px; min-width:340px;">
-        <h3 style="margin:0 0 4px;">Upload Model to Runware</h3>
         <div style="display:flex; flex-direction:column; gap:4px;">
             <label style="font-size:0.85em; opacity:0.75;">Model Name</label>
             <input type="text" id="plz-upload-name" class="text_pole" placeholder="e.g. My Custom SDXL" />
