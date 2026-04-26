@@ -18,6 +18,7 @@
  * logJobResponse(taskUUID, data)           → void
  * logJobPollTick(taskUUID, attempt, found) → void
  * logJobResolved(taskUUID, status, err)    → void
+ * registerResumeHandler(fn)               → void
  * openUploadLogModal()                     → void
  *
  * @contract
@@ -29,6 +30,18 @@
 
 const _STORAGE_KEY = 'plz_runware_upload_log';
 const _MAX_ENTRIES = 50;
+
+// Injected by runwareUpload.js to avoid circular imports
+let _resumeHandler = null;
+
+/**
+ * Registers the function that resumes polling for a timed-out job.
+ * Called once during bindRunwareUploadHandler().
+ * @param {Function} fn - fn({ air, name, category, taskUUID, onTick, onReady, onTimeout })
+ */
+export function registerResumeHandler(fn) {
+    _resumeHandler = fn;
+}
 
 // ─── Storage Helpers ──────────────────────────────────────────────────────────
 
@@ -146,6 +159,36 @@ export function openUploadLogModal() {
         _write([]);
         _renderEntries($overlay);
     });
+
+    // Resume polling for a timed-out job
+    $overlay.on('click', '.plz-log-resume', function () {
+        const taskUUID = $(this).data('task-uuid');
+        const entries  = _read();
+        const entry    = entries.find(e => e.taskUUID === taskUUID);
+        if (!entry || !_resumeHandler) return;
+
+        const $btn = $(this);
+        $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Watching...');
+
+        // Reset timeout status so the log entry reflects we're trying again
+        _patch(taskUUID, e => { e.finalStatus = 'polling'; e.resolvedAt = null; });
+
+        _resumeHandler({
+            ...entry,
+            onTick: ({ attempt }) => {
+                logJobPollTick(taskUUID, attempt, false);
+                $btn.html(`<i class="fa-solid fa-spinner fa-spin"></i> attempt ${attempt}`);
+            },
+            onReady: () => {
+                logJobResolved(taskUUID, 'ready');
+                _renderEntries($overlay);
+            },
+            onTimeout: () => {
+                logJobResolved(taskUUID, 'timeout');
+                _renderEntries($overlay);
+            },
+        });
+    });
 }
 
 // ─── Private Render ───────────────────────────────────────────────────────────
@@ -215,7 +258,10 @@ function _renderJob(entry) {
             <div style="padding:8px 4px 4px; display:flex; flex-direction:column; gap:10px;">
 
                 <div>
-                    <div style="font-size:0.75em; font-weight:bold; opacity:0.6; margin-bottom:3px; text-transform:uppercase; letter-spacing:.04em;">Job Info</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+                        <div style="font-size:0.75em; font-weight:bold; opacity:0.6; text-transform:uppercase; letter-spacing:.04em;">Job Info</div>
+                        ${finalStatus === 'timeout' ? `<button class="plz-log-resume menu_button" data-task-uuid="${taskUUID}" style="font-size:0.75em; padding:1px 8px;"><i class="fa-solid fa-rotate-right"></i> Resume Watch</button>` : ''}
+                    </div>
                     <div style="font-size:0.8em; font-family:monospace; display:grid; grid-template-columns:auto 1fr; gap:2px 12px;">
                         <span style="opacity:0.5;">Task UUID</span><span>${taskUUID ?? '—'}</span>
                         <span style="opacity:0.5;">Category</span><span>${category} / ${architecture} / ${format}</span>

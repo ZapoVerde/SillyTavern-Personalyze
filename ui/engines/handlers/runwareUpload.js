@@ -37,7 +37,7 @@ import { startSystemTurn, logCall, logPatchLast } from '../../../utils/callLog.j
 import { saveManualModel, saveManualLora } from '../../panel/models.js';
 import { getRunwareUploadFormHTML } from '../templates.js';
 import { refreshEnginesUI } from './uiRefresh.js';
-import { logJobStart, logJobResponse, logJobPollTick, logJobResolved, openUploadLogModal } from './uploadLog.js';
+import { logJobStart, logJobResponse, logJobPollTick, logJobResolved, openUploadLogModal, registerResumeHandler } from './uploadLog.js';
 
 // ─── Session-Ephemeral Form State ─────────────────────────────────────────────
 // Owned by this module. Survives overlay close/reopen within one page session.
@@ -57,8 +57,8 @@ const _typeOptions = {
 
 // ─── Private Helpers ──────────────────────────────────────────────────────────
 
-const _POLL_INTERVAL_MS = 10_000;   // 10 s between checks
-const _POLL_MAX_TRIES   = 30;       // give up after 5 min
+const _POLL_INTERVAL_MS = 30_000;   // 30 s between checks
+const _POLL_MAX_TRIES   = 50;       // give up after 25 min
 
 /**
  * Polls /runware-search until the uploaded model's AIR appears in results,
@@ -126,6 +126,22 @@ function _rebuildTypeOptions($overlay, category, selectedType) {
  */
 export function bindRunwareUploadHandler($modal) {
     $modal.on('click', '#plz-view-upload-log', () => openUploadLogModal());
+
+    // Provide the log viewer with a way to resume polling without circular imports
+    registerResumeHandler(({ air, name, category, taskUUID, onTick, onReady, onTimeout }) => {
+        _pollUploadReady({
+            air, name, category, taskUUID,
+            onTick,
+            onReady: async () => {
+                if (category === 'lora') saveManualLora(name, air, null);
+                else saveManualModel(name, air);
+                await refreshEnginesUI();
+                onReady();
+                if (window.toastr) window.toastr.success(`Model ready: ${name}`);
+            },
+            onTimeout,
+        });
+    });
 
     $modal.on('click', '#plz-upload-runware-model', () => {
         $('#plz-upload-overlay').remove();
@@ -309,7 +325,7 @@ export function bindRunwareUploadHandler($modal) {
                 } else {
                     // Runware is processing asynchronously — poll until ready.
                     const pollLine = (attempt) =>
-                        `⏳ ${statusText} — checking every 10 s (${attempt}/${_POLL_MAX_TRIES}) ${uuidTag}`;
+                        `⏳ ${statusText} — checking every 30 s (${attempt}/${_POLL_MAX_TRIES}) ${uuidTag}`;
 
                     if (isOpen()) $status.html(`<span>${pollLine(0)}</span>`);
 
