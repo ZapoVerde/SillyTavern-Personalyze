@@ -280,6 +280,11 @@ export function bindEnginesHandlers($modal) {
             startSystemTurn('Runware Model Upload');
             logCall('UploadModel', `[${architecture}/${category}] ${name}\n${downloadURL}`, null, null, reqBundle);
 
+            const resetBtn = () => {
+                $overlay.find('#plz-upload-bg').remove();
+                $submit.prop('disabled', false).html('<i class="fa-solid fa-upload"></i> Submit Upload');
+            };
+
             try {
                 const response = await fetch('/api/plugins/personalyze/runware-upload-model', {
                     method: 'POST',
@@ -287,49 +292,72 @@ export function bindEnginesHandlers($modal) {
                     body: JSON.stringify(reqBundle)
                 });
 
-                const data = await response.json();
-
-                if (!response.ok || data.error) {
-                    const msg = data.error || `HTTP ${response.status}`;
-                    logPatchLast(null, msg, null, data.responseDocument ?? null);
-                    if (isOpen()) {
-                        $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${msg}</span>`);
-                        $overlay.find('#plz-upload-bg').remove();
-                        $submit.prop('disabled', false).html('<i class="fa-solid fa-upload"></i> Submit Upload');
-                    } else {
-                        if (window.toastr) window.toastr.error(`Upload failed: ${msg}`);
-                    }
+                if (!response.ok) {
+                    const msg = (await response.json().catch(() => ({}))).error || `HTTP ${response.status}`;
+                    logPatchLast(null, msg, null, null);
+                    if (isOpen()) { $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${msg}</span>`); resetBtn(); }
+                    else if (window.toastr) window.toastr.error(`Upload failed: ${msg}`);
                     return;
                 }
 
-                logPatchLast(data.result, null, null, data.responseDocument ?? null);
+                // Read the NDJSON stream — one JSON object per status phase
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buf = '';
+                let lastResult = null;
+                let lastError = null;
 
-                if (category === 'lora') {
-                    saveManualLora(name, air, null);
-                } else {
-                    saveManualModel(name, air);
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buf += decoder.decode(value, { stream: true });
+                    const lines = buf.split('\n');
+                    buf = lines.pop() ?? '';
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        try {
+                            const chunk = JSON.parse(line);
+                            const errors = chunk.errors ?? [];
+                            const result = chunk.data?.[0];
+
+                            if (errors.length) {
+                                lastError = errors[0].message || JSON.stringify(errors[0]);
+                                if (isOpen()) $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${lastError}</span>`);
+                            } else if (result?.status) {
+                                lastResult = result;
+                                if (isOpen()) $status.html(`<span style="opacity:0.8;">⟳ ${result.status}…</span>`);
+                            }
+                        } catch { /* incomplete chunk, continue */ }
+                    }
                 }
 
-                await refreshEnginesUI();
-
-                if (isOpen()) {
-                    $status.html(`<span style="color:var(--SmartThemeQuoteColor);">✓ Submitted — status: ${data.result?.status ?? 'accepted'}</span>`);
-                    $overlay.find('#plz-upload-bg').remove();
-                    $submit.prop('disabled', false).html('<i class="fa-solid fa-upload"></i> Submit Upload');
-                } else {
-                    if (window.toastr) window.toastr.success(`Upload accepted: ${name}`);
+                // Stream closed — surface final state
+                if (lastError) {
+                    logPatchLast(null, lastError, null, null);
+                    if (isOpen()) { $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${lastError}</span>`); resetBtn(); }
+                    else if (window.toastr) window.toastr.error(`Upload failed: ${lastError}`);
+                } else if (lastResult) {
+                    logPatchLast(lastResult, null, null, lastResult);
+                    if (lastResult.status === 'ready') {
+                        if (category === 'lora') saveManualLora(name, air, null);
+                        else saveManualModel(name, air);
+                        await refreshEnginesUI();
+                    }
+                    if (isOpen()) {
+                        const color = lastResult.status === 'ready' ? 'var(--SmartThemeQuoteColor)' : 'inherit';
+                        $status.html(`<span style="color:${color};">✓ ${lastResult.status}${lastResult.message ? ' — ' + lastResult.message : ''}</span>`);
+                        resetBtn();
+                    } else {
+                        if (window.toastr) window.toastr.success(`Upload ${lastResult.status}: ${name}`);
+                    }
                 }
 
             } catch (err) {
                 logPatchLast(null, err.message, null, null);
                 error('EnginesModal', 'Model upload failed:', err);
-                if (isOpen()) {
-                    $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${err.message}</span>`);
-                    $overlay.find('#plz-upload-bg').remove();
-                    $submit.prop('disabled', false).html('<i class="fa-solid fa-upload"></i> Submit Upload');
-                } else {
-                    if (window.toastr) window.toastr.error(`Upload error: ${err.message}`);
-                }
+                if (isOpen()) { $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${err.message}</span>`); resetBtn(); }
+                else if (window.toastr) window.toastr.error(`Upload error: ${err.message}`);
             }
         });
     });

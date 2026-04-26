@@ -266,43 +266,48 @@ export function registerRunwareRoutes(router) {
                 private: true,
             };
 
-            const response = await withRetry(() => fetchChecked('https://api.runware.ai/v1', {
+            const upstream = await fetch('https://api.runware.ai/v1', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apiKey}`
                 },
                 body: JSON.stringify([task])
-            }), 'RunwareUpload');
+            });
 
-            const data = await response.json();
-
-            if (data.error) {
-                const err = new Error(`Runware API Error: ${data.errorMessage || data.error}`);
-                err.responseDocument = data;
-                throw err;
+            if (!upstream.ok) {
+                const text = await upstream.text();
+                return res.status(upstream.status).json({ error: text });
             }
 
-            const taskResult = data.data?.find(t => t.taskUUID === taskUUID);
+            // Stream Runware's NDJSON response through to the client line by line
+            res.setHeader('Content-Type', 'application/x-ndjson');
+            res.setHeader('Cache-Control', 'no-cache');
 
-            if (taskResult?.errorCode) {
-                const err = new Error(`Runware upload error [${taskResult.errorCode}]: ${taskResult.message || taskResult.errorCode}`);
-                err.responseDocument = taskResult;
-                throw err;
+            const reader = upstream.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() ?? '';
+                    for (const line of lines) {
+                        if (line.trim()) res.write(line + '\n');
+                    }
+                }
+                if (buffer.trim()) res.write(buffer + '\n');
+            } finally {
+                res.end();
             }
-
-            return res.json({ ok: true, result: taskResult, responseDocument: data });
 
         } catch (err) {
-            if (err.httpStatus) {
-                const fatal = FATAL_HTTP_CODES.has(err.httpStatus);
-                return res.status(err.httpStatus).json({
-                    error: err.responseText || err.message,
-                    fatal,
-                    responseDocument: err.responseDocument
-                });
+            if (!res.headersSent) {
+                res.status(500).json({ error: err.message });
             }
-            res.status(500).json({ error: err.message, responseDocument: err.responseDocument });
         }
     });
 
