@@ -47,6 +47,8 @@ export function injectEnginesModal() {
 
         $overlay.find('.plz-tab-panel').addClass('plz-hidden');
         $overlay.find(`#plz-eng-tab-${tab}`).removeClass('plz-hidden');
+
+        $overlay.find('#plz-runware-upload-container').toggleClass('plz-hidden', tab !== 'runware');
     });
 
     // 2. Close button

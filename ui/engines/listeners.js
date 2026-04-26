@@ -139,19 +139,19 @@ export function bindEnginesHandlers($modal) {
         const confirmed = await callPopup(getRunwareUploadFormHTML(), 'confirm');
         if (!confirmed) return;
 
-        const name        = $('#plz-upload-name').val().trim();
-        const air         = $('#plz-upload-air').val().trim();
-        const downloadURL = $('#plz-upload-url').val().trim();
+        const name         = $('#plz-upload-name').val().trim();
+        const air          = $('#plz-upload-air').val().trim();
+        const version      = $('#plz-upload-version').val().trim();
+        const downloadURL  = $('#plz-upload-url').val().trim();
         const architecture = $('#plz-upload-arch').val();
-        const category    = $('#plz-upload-category').val();
-        const format      = $('#plz-upload-format').val();
+        const category     = $('#plz-upload-category').val();
 
         if (!name || !air || !downloadURL) {
             if (window.toastr) window.toastr.warning('Name, AIR ID, and URL are required.');
             return;
         }
 
-        const reqBundle = { name, air, downloadURL, architecture, category, format };
+        const reqBundle = { name, air, version, downloadURL, architecture, category };
         startSystemTurn('Runware Model Upload');
         logCall('UploadModel', `[${architecture}/${category}] ${name}\n${downloadURL}`, null, null, reqBundle);
 
