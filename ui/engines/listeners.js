@@ -36,7 +36,27 @@ import { saveManualModel, saveManualLora } from '../panel/models.js';
 import { getRunwareUploadFormHTML } from './templates.js';
 
 // ─── Upload Form State (ephemeral session memory) ─────────────────────────────
-const _uploadState = { name: '', air: '', version: 'v1', downloadURL: '', architecture: 'sdxl', category: 'checkpoint', format: 'safetensors' };
+const _uploadState = { name: '', air: '', version: 'v1', downloadURL: '', architecture: 'sdxl', category: 'checkpoint', format: 'safetensors', type: 'base' };
+
+const _typeOptions = {
+    checkpoint: [['base','base'],['inpainting','inpainting'],['refiner','refiner'],['pix2pix','pix2pix']],
+    lora:       [['positive','positive'],['negative','negative']],
+    lycoris:    [['positive','positive'],['negative','negative']],
+    embeddings: [['positive','positive'],['negative','negative']],
+    vae:        [],
+};
+
+function _rebuildTypeOptions($overlay, category, selectedType) {
+    const opts = _typeOptions[category] ?? [];
+    const $sel = $overlay.find('#plz-upload-type');
+    const $row = $overlay.find('#plz-upload-type-row');
+    if (opts.length === 0) {
+        $row.hide();
+        return;
+    }
+    $row.show();
+    $sel.html(opts.map(([v, l]) => `<option value="${v}"${v === selectedType ? ' selected' : ''}>${l}</option>`).join(''));
+}
 
 // ─── Key Status ───────────────────────────────────────────────────────────────
 
@@ -180,6 +200,7 @@ export function bindEnginesHandlers($modal) {
         $overlay.find('#plz-upload-arch').val(_uploadState.architecture);
         $overlay.find('#plz-upload-category').val(_uploadState.category);
         $overlay.find('#plz-upload-format').val(_uploadState.format);
+        _rebuildTypeOptions($overlay, _uploadState.category, _uploadState.type);
 
         // Sync state on any input change
         $overlay.on('input change', 'input, select', () => {
@@ -190,11 +211,12 @@ export function bindEnginesHandlers($modal) {
             _uploadState.architecture = $overlay.find('#plz-upload-arch').val();
             _uploadState.category     = $overlay.find('#plz-upload-category').val();
             _uploadState.format       = $overlay.find('#plz-upload-format').val();
+            _uploadState.type         = $overlay.find('#plz-upload-type').val();
         });
 
         // Reset button
         $overlay.on('click', '#plz-upload-reset', () => {
-            Object.assign(_uploadState, { name: '', air: '', version: 'v1', downloadURL: '', architecture: 'sdxl', category: 'checkpoint', format: 'safetensors' });
+            Object.assign(_uploadState, { name: '', air: '', version: 'v1', downloadURL: '', architecture: 'sdxl', category: 'checkpoint', format: 'safetensors', type: 'base' });
             $overlay.find('#plz-upload-name').val('');
             $overlay.find('#plz-upload-air').val('');
             $overlay.find('#plz-upload-version').val('v1');
@@ -203,6 +225,12 @@ export function bindEnginesHandlers($modal) {
             $overlay.find('#plz-upload-category').val('checkpoint');
             $overlay.find('#plz-upload-format').val('safetensors');
             $overlay.find('#plz-upload-status').html('');
+            _rebuildTypeOptions($overlay, 'checkpoint', 'base');
+        });
+
+        // Rebuild type options when category changes
+        $overlay.on('change', '#plz-upload-category', function () {
+            _rebuildTypeOptions($overlay, $(this).val(), '');
         });
 
         $overlay.on('click', '#plz-upload-copy', async () => {
@@ -227,6 +255,7 @@ export function bindEnginesHandlers($modal) {
             const architecture = $overlay.find('#plz-upload-arch').val();
             const category     = $overlay.find('#plz-upload-category').val();
             const format       = $overlay.find('#plz-upload-format').val();
+            const type         = $overlay.find('#plz-upload-type').val();
             const $status      = $overlay.find('#plz-upload-status');
             const $submit      = $overlay.find('#plz-upload-submit');
 
@@ -235,7 +264,7 @@ export function bindEnginesHandlers($modal) {
                 return;
             }
 
-            const reqBundle = { name, air, version, downloadURL, architecture, category, format };
+            const reqBundle = { name, air, version, downloadURL, architecture, category, format, ...(type ? { type } : {}) };
             const $btnRow = $overlay.find('#plz-upload-btn-row');
 
             // Switch to in-progress button row

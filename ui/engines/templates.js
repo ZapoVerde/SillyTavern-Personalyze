@@ -248,7 +248,9 @@ export function getRunwareUploadFormHTML() {
         </div>
         <div style="display:flex; flex-direction:column; gap:4px;">
             <label style="font-size:0.85em; opacity:0.75;">Direct Download URL</label>
-            <input type="text" id="plz-upload-url" class="text_pole" placeholder="https://civitai.com/api/download/..." />
+            <textarea id="plz-upload-url" class="text_pole" rows="2"
+                style="word-break:break-all; resize:none; font-size:0.82em; font-family:monospace;"
+                placeholder="https://civitai.com/api/download/..."></textarea>
         </div>
         <div style="display:flex; gap:8px;">
             <div style="display:flex; flex-direction:column; gap:4px; flex:2;">
@@ -290,6 +292,15 @@ export function getRunwareUploadFormHTML() {
                 <select id="plz-upload-format" class="text_pole">
                     <option value="safetensors" selected>safetensors</option>
                     <option value="pickletensor">pickletensor</option>
+                </select>
+            </div>
+            <div id="plz-upload-type-row" style="display:flex; flex-direction:column; gap:4px; flex:1;">
+                <label style="font-size:0.85em; opacity:0.75;">Type</label>
+                <select id="plz-upload-type" class="text_pole">
+                    <option value="base" selected>base</option>
+                    <option value="inpainting">inpainting</option>
+                    <option value="refiner">refiner</option>
+                    <option value="pix2pix">pix2pix</option>
                 </select>
             </div>
         </div>
