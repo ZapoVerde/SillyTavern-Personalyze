@@ -294,7 +294,9 @@ export function bindEnginesHandlers($modal) {
                     headers: getRequestHeaders(),
                     body: JSON.stringify(reqBundle)
                 });
-                log('UploadStream', `Fetch returned — status=${response.status} ok=${response.ok}`);
+                const taskUUID = response.headers.get('x-task-uuid') ?? '—';
+                log('UploadStream', `Fetch returned — status=${response.status} ok=${response.ok} taskUUID=${taskUUID}`);
+                logPatchLast(null, null, { taskUUID }, null);
 
                 if (!response.ok) {
                     const msg = (await response.json().catch(() => ({}))).error || `HTTP ${response.status}`;
@@ -306,6 +308,7 @@ export function bindEnginesHandlers($modal) {
 
                 // Read the stream — Runware may send NDJSON or a single JSON blob
                 log('UploadStream', `Response ok, status=${response.status}, streaming body...`);
+                if (isOpen()) $status.html(`<span style="opacity:0.6; font-size:0.85em;">job ${taskUUID}</span>`);
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buf = '';

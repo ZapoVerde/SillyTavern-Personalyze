@@ -287,6 +287,7 @@ export function registerRunwareRoutes(router) {
             // Stream Runware's response through to the client line by line
             res.setHeader('Content-Type', 'application/x-ndjson');
             res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('X-Task-UUID', taskUUID);
 
             const reader = upstream.body.getReader();
             const decoder = new TextDecoder();
