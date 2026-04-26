@@ -241,12 +241,9 @@ export function registerRunwareRoutes(router) {
 
     // ─── Runware: Model Upload ────────────────────────────────────────────────
     router.post('/runware-upload-model', async (req, res) => {
-        console.log('[PLZ:Upload] Route hit.');
         try {
             const { name, air, downloadURL, architecture, category, format, version, type } = req.body;
-            console.log(`[PLZ:Upload] Payload received — air=${air} name=${name} arch=${architecture} cat=${category}`);
             const apiKey = readSecret(req.user.directories, 'api_key_runware');
-            console.log(`[PLZ:Upload] API key present: ${!!apiKey}`);
 
             if (!apiKey) {
                 return res.status(401).json({ error: 'Runware API key not configured.' });
@@ -269,59 +266,27 @@ export function registerRunwareRoutes(router) {
                 private: true,
             };
 
-            console.log('[PLZ:Upload] Dispatching to Runware API...');
-            const upstream = await fetch('https://api.runware.ai/v1', {
+            const upstream = await withRetry(() => fetchChecked('https://api.runware.ai/v1', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apiKey}`
                 },
                 body: JSON.stringify([task])
-            });
+            }), 'RunwareUpload');
 
-            if (!upstream.ok) {
-                const text = await upstream.text();
-                return res.status(upstream.status).json({ error: text });
+            const data = await upstream.json();
+
+            if (data.errors?.length) {
+                const err = data.errors[0];
+                return res.status(400).json({ error: err.message, responseDocument: data });
             }
 
-            // Stream Runware's response through to the client line by line
-            res.setHeader('Content-Type', 'application/x-ndjson');
-            res.setHeader('Cache-Control', 'no-cache');
+            const taskResult = data.data?.[0];
             res.setHeader('X-Task-UUID', taskUUID);
-
-            const reader = upstream.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            let chunkCount = 0;
-
-            try {
-                while (true) {
-                    const { done, value } = await reader.read();
-                    console.log(`[PLZ:Upload] Chunk #${++chunkCount} done=${done} bytes=${value?.length ?? 0}`);
-                    if (done) break;
-                    const text = decoder.decode(value, { stream: true });
-                    console.log(`[PLZ:Upload] Raw chunk: ${text}`);
-                    buffer += text;
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() ?? '';
-                    for (const line of lines) {
-                        if (line.trim()) {
-                            console.log(`[PLZ:Upload] Writing line: ${line}`);
-                            res.write(line + '\n');
-                        }
-                    }
-                }
-                if (buffer.trim()) {
-                    console.log(`[PLZ:Upload] Writing final buffer: ${buffer}`);
-                    res.write(buffer + '\n');
-                }
-                console.log(`[PLZ:Upload] Stream complete after ${chunkCount} chunks.`);
-            } finally {
-                res.end();
-            }
+            return res.json({ ok: true, result: taskResult, responseDocument: data });
 
         } catch (err) {
-            console.error(`[PLZ:Upload] CAUGHT ERROR: ${err.message}`, err);
             if (!res.headersSent) {
                 res.status(500).json({ error: err.message });
             }
