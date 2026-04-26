@@ -96,7 +96,13 @@ export function logJobResponse(taskUUID, { result, error, responseDocument }) {
     _patch(taskUUID, e => {
         e.uploadResponse = responseDocument ?? result ?? null;
         e.uploadError    = error ?? null;
-        if (error) e.finalStatus = 'error';
+        if (error) {
+            e.finalStatus = 'error';
+        } else {
+            // Reflect whatever Runware reported (e.g. "validated", "accepted", "ready")
+            const rwStatus = result?.status ?? responseDocument?.data?.[0]?.status;
+            if (rwStatus) e.finalStatus = rwStatus;
+        }
     });
 }
 
@@ -109,7 +115,7 @@ export function logJobResponse(taskUUID, { result, error, responseDocument }) {
 export function logJobPollTick(taskUUID, attempt, found) {
     _patch(taskUUID, e => {
         e.pollAttempts.push({ attempt, at: new Date().toISOString(), found });
-        if (found) e.finalStatus = 'polling'; // intermediate — will be overwritten by logJobResolved
+        e.finalStatus = 'polling'; // overwritten by logJobResolved on completion
     });
 }
 
@@ -207,11 +213,13 @@ function _renderEntries($overlay) {
 
 function _statusBadge(status) {
     const map = {
-        uploading: ['⏳', 'inherit'],
-        polling:   ['⏳', 'inherit'],
-        ready:     ['✓',  'var(--SmartThemeQuoteColor,#28a745)'],
-        error:     ['✗',  'var(--SmartThemeErrorColor,#e05555)'],
-        timeout:   ['⚠',  'var(--SmartThemeWarnColor,#e0a040)'],
+        uploading:  ['⏳', 'inherit'],
+        validated:  ['⏳', 'inherit'],
+        accepted:   ['⏳', 'inherit'],
+        polling:    ['⏳', 'inherit'],
+        ready:      ['✓',  'var(--SmartThemeQuoteColor,#28a745)'],
+        error:      ['✗',  'var(--SmartThemeErrorColor,#e05555)'],
+        timeout:    ['⚠',  'var(--SmartThemeWarnColor,#e0a040)'],
     };
     const [icon, color] = map[status] ?? ['?', 'inherit'];
     return `<span style="color:${color}; font-weight:bold; margin-right:5px;">${icon} ${status}</span>`;
