@@ -21,8 +21,12 @@
 
 import { escapeHtml } from './history.js';
 
-/** Tracks teardown functions for open modals, topmost last. */
-const _modalStack = [];
+/**
+ * Shared stack of teardown functions for all open overlays (modal + text modal).
+ * Topmost entry is last. Exported so textModal.js participates in the same
+ * Escape-key routing without a separate document-level handler.
+ */
+export const _modalStack = [];
 
 /**
  * Opens a self-contained modal overlay.

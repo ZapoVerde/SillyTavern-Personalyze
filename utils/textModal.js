@@ -1,11 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/utils/textModal.js
- * @stamp {"utc":"2026-04-15T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-28T00:00:00.000Z"}
  * @architectural-role Utility / Overlay UI
  * @description
- * Provides a fullscreen-capable text editing overlay that bypasses SillyTavern's
- * callPopup entirely. Appends directly to document.body. Scroll is self-contained
- * within the modal body. All click events are captured to prevent bleed-through.
+ * Fullscreen-capable text editing overlay. Appends directly to document.body.
+ * Participates in the shared _modalStack from modal.js so that Escape key
+ * routing is correct when stacked on top of other overlays — only the topmost
+ * modal responds to Escape at any given time.
  *
  * @api-declaration
  * openTextModal(config) -> Promise<string|null>
@@ -13,25 +14,38 @@
  * @contract
  *   assertions:
  *     purity: IO / Side-effect (DOM Mutation)
- *     state_ownership: []
- *     external_io: [document.body, smartResize, escapeHtml]
+ *     state_ownership: [_modalStack (shared)]
+ *     external_io: [document.body, smartResize, escapeHtml, _modalStack]
  */
 
 import { smartResize } from './dom.js';
 import { escapeHtml } from './history.js';
+import { _modalStack } from './modal.js';
 
 /**
  * Opens a self-contained text editing overlay.
  *
  * @param {object}   config
- * @param {string}   config.title         - Modal heading
- * @param {string}   [config.initialValue=''] - Pre-filled textarea content
- * @param {Array}    [config.variables=[]]    - [{v, d}] variable reference rows
- * @param {Array}    [config.extraButtons=[]] - [{label, id, onClick($ta)}] extra action buttons
+ * @param {string}   config.title                - Modal heading
+ * @param {string}   [config.initialValue='']    - Pre-filled textarea content
+ * @param {Array}    [config.variables=[]]        - [{v, d}] variable reference rows
+ * @param {Array}    [config.extraButtons=[]]     - [{label, id, onClick($ta)}] extra action buttons
  * @returns {Promise<string|null>} Resolves with textarea value on Done, null on cancel/escape
  */
 export function openTextModal({ title, initialValue = '', variables = [], extraButtons = [] }) {
     return new Promise((resolve) => {
+        let settled = false;
+
+        const teardown = (value) => {
+            if (settled) return;
+            settled = true;
+            const idx = _modalStack.indexOf(teardown);
+            if (idx !== -1) _modalStack.splice(idx, 1);
+            $(document).off('keydown', escHandler);
+            $overlay.remove();
+            resolve(value);
+        };
+
         const varsHtml = variables.length ? `
             <div class="plz-var-list">
                 ${variables.map(e => `
@@ -66,12 +80,6 @@ export function openTextModal({ title, initialValue = '', variables = [], extraB
 
         const $ta = $overlay.find('.plz-text-modal-ta');
 
-        const teardown = (value) => {
-            $(document).off('.plzTextModal');
-            $overlay.remove();
-            resolve(value);
-        };
-
         // Auto-resize on input
         $ta.on('input', () => smartResize($ta[0]));
 
@@ -97,12 +105,16 @@ export function openTextModal({ title, initialValue = '', variables = [], extraB
         });
         $overlay.find('.plz-modal').on('mousedown touchstart', (e) => e.stopPropagation());
 
-        // Escape to cancel
-        $(document).on('keydown.plzTextModal', (e) => {
-            if (e.key === 'Escape') teardown(null);
-        });
+        // Escape — only fires if this is the topmost stacked overlay
+        const escHandler = (e) => {
+            if (e.key === 'Escape' && _modalStack[_modalStack.length - 1] === teardown) {
+                teardown(null);
+            }
+        };
+        $(document).on('keydown', escHandler);
 
         $('body').append($overlay);
+        _modalStack.push(teardown);
 
         // Init textarea size and focus after render
         requestAnimationFrame(() => {
