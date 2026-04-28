@@ -81,7 +81,9 @@ export async function runArchivistPipeline(messageId, detectedName) {
 
         // 3. User Resolution Modal
         // Pass the raw structured identity object — the modal renders it as a grid.
-        const resolution = await showArchivistModal(detectedName, scanResult.identity, state.activeRoster);
+        // Pass all known chat characters as alias candidates, not just the active
+        // roster — the roster is often empty when a new character is first detected.
+        const resolution = await showArchivistModal(detectedName, scanResult.identity, Object.keys(state.chatCharacters));
 
         if (!resolution) {
             log('Archivist', 'Resolution cancelled by user.');

@@ -128,7 +128,6 @@ export async function showHeuristicApprovalModal(detectedIds) {
             {
                 label: 'Skip All',
                 value: null,
-                style: 'muted',
             },
         ],
         onReady: ($m) => {
