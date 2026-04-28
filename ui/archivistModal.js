@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/archivistModal.js
- * @stamp {"utc":"2026-04-19T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-28T00:00:00.000Z"}
  * @architectural-role UI (Archivist Modal)
  * @description
  * Renders the 3-way resolution modal for unknown subjects.
@@ -12,6 +12,8 @@
  * 2. Renders each trait as a labeled input row (mirrors Workshop Studio grid).
  * 3. Returns a scraped, validated identity map on Create — no 'base' fallback.
  *
+ * Migrated from callPopup to self-owned openModal overlay.
+ *
  * @api-declaration
  * showArchivistModal(name, identityMap, activeRoster) -> Promise<object|null>
  *
@@ -19,21 +21,15 @@
  *   assertions:
  *     purity: IO Executor
  *     state_ownership: []
- *     external_io: [callPopup, jQuery]
+ *     external_io: [openModal, jQuery]
  */
 
-import { callPopup } from '../../../../../script.js';
+import { openModal } from '../utils/modal.js';
 import { escapeHtml, slugify } from '../utils/history.js';
 import { BASE_IDENTITY_SLOTS, RESERVED_SLOT_KEYS } from '../defaults.js';
 
 /**
  * Builds the HTML for a single identity trait row.
- *
- * @param {string}  label      - The human-readable label shown above the input.
- * @param {string}  key        - The technical data-key used for scraping.
- * @param {string}  val        - The pre-filled value.
- * @param {boolean} isDeletable - Whether a trash-can button is rendered.
- * @returns {string} HTML string.
  */
 function buildTraitRowHTML(label, key, val, isDeletable) {
     const deleteBtn = isDeletable
@@ -57,9 +53,6 @@ function buildTraitRowHTML(label, key, val, isDeletable) {
 
 /**
  * Renders all rows in the identity grid from the merged identity map.
- *
- * @param {Object} identityMap
- * @returns {string} HTML string.
  */
 function buildIdentityGridHTML(identityMap) {
     return Object.entries(identityMap).map(([key, val]) => {
@@ -67,6 +60,26 @@ function buildIdentityGridHTML(identityMap) {
         const isDeletable = !BASE_IDENTITY_SLOTS.includes(key) && key !== 'base';
         return buildTraitRowHTML(label, key, val, isDeletable);
     }).join('');
+}
+
+/**
+ * Scrapes every trait row and returns a validated identity map.
+ * @param {jQuery} $m - The modal overlay jQuery object
+ * @returns {Object}
+ */
+function scrapeGrid($m) {
+    const identity = {};
+    $m.find('#plz-arch-identity-grid .plz-arch-identity-item').each(function() {
+        const key = $(this).data('key');
+        const val = $(this).val().trim();
+        if (RESERVED_SLOT_KEYS.includes(key)) return;
+        if (BASE_IDENTITY_SLOTS.includes(key) || key === 'base') {
+            identity[key] = val;
+        } else if (val !== '') {
+            identity[key] = val;
+        }
+    });
+    return identity;
 }
 
 /**
@@ -78,23 +91,19 @@ function buildIdentityGridHTML(identityMap) {
  * @returns {Promise<object|null>} The user's decision or null if closed.
  */
 export async function showArchivistModal(name, identityMap, activeRoster) {
-    // Merge BASE_IDENTITY_SLOTS with LLM-discovered traits.
-    // Base slots always appear first, even if the LLM missed them.
     const mergedMap = {};
     for (const slot of BASE_IDENTITY_SLOTS) {
         mergedMap[slot] = identityMap[slot] || '';
     }
     for (const [key, val] of Object.entries(identityMap)) {
-        if (!(key in mergedMap)) {
-            mergedMap[key] = val;
-        }
+        if (!(key in mergedMap)) mergedMap[key] = val;
     }
 
     const aliasOptions = activeRoster
         .map(id => `<option value="${escapeHtml(id)}">${escapeHtml(id.replace(/_/g, ' '))}</option>`)
         .join('');
 
-    const html = `
+    const content = `
     <div id="plz-archivist-modal" style="display:flex; flex-direction:column; gap:12px;">
         <h3 style="margin:0;">Unrecognized Subject: <span style="color:var(--SmartThemeQuoteColor);">${escapeHtml(name)}</span></h3>
         <p style="font-size:0.9em; opacity:0.8; margin:0;">PersonaLyze detected a character not in your roster. How should they be handled?</p>
@@ -114,119 +123,83 @@ export async function showArchivistModal(name, identityMap, activeRoster) {
         </div>
 
         <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
-            <!-- Option 1: Create -->
-            <button id="plz-arch-create" class="menu_button" style="text-align:left; white-space:nowrap;" title="Register them in the DNA and generate a portrait.">
-                <i class="fa-solid fa-user-plus"></i> Create New Character
-            </button>
-
-            <!-- Option 2: Alias -->
             <div style="display:flex; gap:6px; align-items:center;">
                 <i class="fa-solid fa-link" style="opacity:0.6; flex-shrink:0;"></i>
                 <select id="plz-arch-alias-target" class="text_pole" style="flex:1;" title="This is a nickname for an existing character.">
                     <option value="">— Link as Alias to existing character —</option>
                     ${aliasOptions}
                 </select>
-                <button id="plz-arch-alias-submit" class="menu_button" style="flex-shrink:0;">Link</button>
             </div>
-
-            <!-- Option 3: Ignore -->
-            <button id="plz-arch-ignore" class="menu_button" style="text-align:left; white-space:nowrap;" title="Skip this person until the next scene change.">
-                <i class="fa-solid fa-eye-slash"></i> Ignore for now
-            </button>
         </div>
     </div>`;
 
-    return new Promise((resolve) => {
-        callPopup(html, 'text').catch(() => {
-            $(document).off('.plzArch');
-            resolve(null);
-        });
-        $('#dialogue_popup_ok').hide();
+    return openModal({
+        content,
+        width: 'min(560px, 95vw)',
+        buttons: [
+            {
+                label: '<i class="fa-solid fa-user-plus"></i> Create New Character',
+                id: 'plz-arch-create',
+                onClick: ($m, resolve) => {
+                    resolve({ action: 'create', identity: scrapeGrid($m) });
+                },
+            },
+            {
+                label: 'Link Alias',
+                id: 'plz-arch-alias-submit',
+                onClick: ($m, resolve) => {
+                    const targetId = $m.find('#plz-arch-alias-target').val();
+                    if (!targetId) return;
+                    resolve({ action: 'alias', targetId });
+                },
+            },
+            {
+                label: '<i class="fa-solid fa-eye-slash"></i> Ignore for now',
+                id: 'plz-arch-ignore',
+                onClick: ($m, resolve) => resolve({ action: 'ignore' }),
+                style: 'muted',
+            },
+        ],
+        onReady: ($m) => {
+            // Clear button empties sibling input
+            $m.on('click', '#plz-arch-identity-grid .plz-input-clear', function() {
+                $(this).siblings('.plz-arch-identity-item').val('');
+            });
 
-        const cleanup = () => {
-            $(document).off('.plzArch');
-            $('#dialogue_popup_ok').trigger('click');
-        };
-
-        /** Scrapes every trait row and returns a validated identity map. */
-        function scrapeGrid() {
-            const identity = {};
-            $('#plz-arch-identity-grid .plz-arch-identity-item').each(function() {
+            // Delete button removes a custom trait row
+            $m.on('click', '.plz-arch-delete-trait', function() {
                 const key = $(this).data('key');
-                const val = $(this).val().trim();
-                if (RESERVED_SLOT_KEYS.includes(key)) return; // Protect system namespace
-                if (BASE_IDENTITY_SLOTS.includes(key) || key === 'base') {
-                    identity[key] = val; // Preserve base slots even when empty
-                } else if (val !== '') {
-                    identity[key] = val; // Prune blank custom traits
+                if (BASE_IDENTITY_SLOTS.includes(key) || key === 'base') return;
+                $(this).closest('.plz-arch-trait-row').remove();
+            });
+
+            // Add feature row
+            $m.on('click', '#plz-arch-add-feature', function() {
+                const nameRaw = $m.find('#plz-arch-new-feature-name').val().trim();
+                if (!nameRaw) return;
+
+                const key = slugify(nameRaw);
+                if (RESERVED_SLOT_KEYS.includes(key)) {
+                    if (window.toastr) window.toastr.warning(`"${nameRaw}" is a reserved system key.`);
+                    return;
+                }
+                if ($m.find(`#plz-arch-identity-grid .plz-arch-identity-item[data-key="${key}"]`).length) {
+                    if (window.toastr) window.toastr.warning(`Feature "${nameRaw}" already exists.`);
+                    return;
+                }
+
+                const label = nameRaw.charAt(0).toUpperCase() + nameRaw.slice(1);
+                $m.find('#plz-arch-identity-grid').append(buildTraitRowHTML(label, key, '', true));
+                $m.find('#plz-arch-new-feature-name').val('');
+            });
+
+            // Enter key submits new feature
+            $m.on('keydown', '#plz-arch-new-feature-name', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    $m.find('#plz-arch-add-feature').trigger('click');
                 }
             });
-            return identity;
-        }
-
-        $(document).on('click.plzArch', '#plz-arch-create', () => {
-            const identity = scrapeGrid();
-            cleanup();
-            resolve({ action: 'create', identity });
-        });
-
-        $(document).on('click.plzArch', '#plz-arch-alias-submit', () => {
-            const targetId = $('#plz-arch-alias-target').val();
-            if (!targetId) return;
-            cleanup();
-            resolve({ action: 'alias', targetId });
-        });
-
-        $(document).on('click.plzArch', '#plz-arch-ignore', () => {
-            cleanup();
-            resolve({ action: 'ignore' });
-        });
-
-        // Clear button: empties the sibling input without removing the row
-        $(document).on('click.plzArch', '#plz-arch-identity-grid .plz-input-clear', function() {
-            $(this).siblings('.plz-arch-identity-item').val('');
-        });
-
-        // Delete button: removes the entire row (custom traits only)
-        $(document).on('click.plzArch', '.plz-arch-delete-trait', function() {
-            const key = $(this).data('key');
-            if (BASE_IDENTITY_SLOTS.includes(key) || key === 'base') return;
-            $(this).closest('.plz-arch-trait-row').remove();
-        });
-
-        // Add Physical Feature: reads the inline name input, appends a new row
-        $(document).on('click.plzArch', '#plz-arch-add-feature', function() {
-            const nameRaw = $('#plz-arch-new-feature-name').val().trim();
-            if (!nameRaw) return;
-
-            const key = slugify(nameRaw);
-
-            if (RESERVED_SLOT_KEYS.includes(key)) {
-                if (window.toastr) window.toastr.warning(`"${nameRaw}" is a reserved system key.`);
-                return;
-            }
-            if ($(`#plz-arch-identity-grid .plz-arch-identity-item[data-key="${key}"]`).length) {
-                if (window.toastr) window.toastr.warning(`Feature "${nameRaw}" already exists.`);
-                return;
-            }
-
-            const rowHTML = buildTraitRowHTML(nameRaw, key, '', true);
-            $('#plz-arch-identity-grid').append(rowHTML);
-            $('#plz-arch-new-feature-name').val('');
-        });
-
-        // Allow Enter key to submit a new feature from the name input
-        $(document).on('keydown.plzArch', '#plz-arch-new-feature-name', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                $('#plz-arch-add-feature').trigger('click');
-            }
-        });
-
-        // Handle user closing the modal without making a choice
-        $(document).on('click.plzArch', '#dialogue_popup_ok, #dialogue_popup_cancel', () => {
-            $(document).off('.plzArch');
-            resolve(null);
-        });
+        },
     });
 }

@@ -1,11 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/heuristicModal.js
- * @stamp {"utc":"2026-04-18T00:00:00.000Z"}
+ * @stamp {"utc":"2026-04-28T00:00:00.000Z"}
  * @architectural-role UI Orchestrator
  * @description
  * Renders the Heuristic Approval Modal for newly detected characters.
  * Allows users to triage each detected character: Load to scene, Snooze for N
  * turns, or Archive permanently.
+ *
+ * Migrated from callPopup to self-owned openModal overlay.
  *
  * @api-declaration
  * showHeuristicApprovalModal(detectedIds) -> Promise<{
@@ -18,17 +20,17 @@
  *   assertions:
  *     purity: IO Executor
  *     state_ownership: []
- *     external_io: [callPopup, jQuery]
+ *     external_io: [openModal, jQuery]
  */
 
-import { callPopup } from '../../../../../script.js';
+import { openModal } from '../utils/modal.js';
 import { state } from '../state.js';
 import { escapeHtml } from '../utils/history.js';
 
+const EMPTY = { load: [], snooze: [], archive: [] };
+
 /**
  * Builds a short identity preview string from the granular identity map.
- * @param {object} identity
- * @returns {string}
  */
 function buildIdentityPreview(identity) {
     if (!identity || typeof identity !== 'object') return '—';
@@ -39,16 +41,34 @@ function buildIdentityPreview(identity) {
 }
 
 /**
+ * Scrapes the triage rows and returns categorised character lists.
+ * @param {jQuery} $m
+ */
+function scrapeDecisions($m) {
+    const load = [], snooze = [], archive = [];
+    $m.find('.plz-heuristic-row').each(function() {
+        const id = $(this).data('id');
+        const action = $(this).find('.plz-heuristic-action:checked').val();
+        if (action === 'load') {
+            load.push(id);
+        } else if (action === 'snooze') {
+            const duration = parseInt($(this).find('.plz-snooze-turns').val(), 10) || 3;
+            snooze.push({ id, duration });
+        } else if (action === 'archive') {
+            archive.push(id);
+        }
+    });
+    return { load, snooze, archive };
+}
+
+/**
  * Displays a modal for the user to triage newly detected characters.
- * Each character can be Loaded into the scene, Snoozed for N turns, or Archived.
  *
- * @param {string[]} detectedIds - List of character IDs found by the heuristic.
+ * @param {string[]} detectedIds
  * @returns {Promise<{ load: string[], snooze: { id: string, duration: number }[], archive: string[] }>}
  */
 export async function showHeuristicApprovalModal(detectedIds) {
-    if (!detectedIds || detectedIds.length === 0) {
-        return { load: [], snooze: [], archive: [] };
-    }
+    if (!detectedIds || detectedIds.length === 0) return EMPTY;
 
     const rows = detectedIds.map(id => {
         const char = state.chatCharacters[id];
@@ -87,7 +107,7 @@ export async function showHeuristicApprovalModal(detectedIds) {
         </div>`;
     }).join('');
 
-    const html = `
+    const content = `
     <div id="plz-heuristic-modal">
         <h3 style="margin-top:0;"><i class="fa-solid fa-users-viewfinder"></i> Characters Detected</h3>
         <p style="font-size:0.85em; opacity:0.8; margin-bottom:12px;">
@@ -98,47 +118,26 @@ export async function showHeuristicApprovalModal(detectedIds) {
         </div>
     </div>`;
 
-    const popupPromise = callPopup(html, 'confirm');
-
-    // Bind real-time interaction: enable/disable the snooze turns input
-    // Also rename the generic Yes/Cancel buttons to context-appropriate labels
-    setTimeout(() => {
-        $(document).on('change.plz-heuristic', '.plz-heuristic-action', function() {
-            const $row = $(this).closest('.plz-heuristic-row');
-            $row.find('.plz-snooze-turns').prop('disabled', $(this).val() !== 'snooze');
-        });
-        $('#dialogue_popup_ok').text('Accept');
-        $('#dialogue_popup_cancel').text('Skip All');
-    }, 0);
-
-    return new Promise((resolve) => {
-        popupPromise.then(ok => {
-            $(document).off('change.plz-heuristic');
-
-            if (!ok) {
-                resolve({ load: [], snooze: [], archive: [] });
-                return;
-            }
-
-            const load = [], snooze = [], archive = [];
-
-            $('.plz-heuristic-row').each(function() {
-                const id = $(this).data('id');
-                const action = $(this).find('.plz-heuristic-action:checked').val();
-                if (action === 'load') {
-                    load.push(id);
-                } else if (action === 'snooze') {
-                    const duration = parseInt($(this).find('.plz-snooze-turns').val(), 10) || 3;
-                    snooze.push({ id, duration });
-                } else if (action === 'archive') {
-                    archive.push(id);
-                }
+    const result = await openModal({
+        content,
+        buttons: [
+            {
+                label: 'Accept',
+                onClick: ($m, resolve) => resolve(scrapeDecisions($m)),
+            },
+            {
+                label: 'Skip All',
+                value: null,
+                style: 'muted',
+            },
+        ],
+        onReady: ($m) => {
+            $m.on('change', '.plz-heuristic-action', function() {
+                const $row = $(this).closest('.plz-heuristic-row');
+                $row.find('.plz-snooze-turns').prop('disabled', $(this).val() !== 'snooze');
             });
-
-            resolve({ load, snooze, archive });
-        }).catch(() => {
-            $(document).off('change.plz-heuristic');
-            resolve({ load: [], snooze: [], archive: [] });
-        });
+        },
     });
+
+    return result ?? EMPTY;
 }

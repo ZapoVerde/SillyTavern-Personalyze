@@ -27,7 +27,7 @@ import { log, setVerbose } from '../../utils/logger.js';
 import { getLogs, getWorkshopLogs, getSystemLogs } from '../../utils/callLog.js';
 import { flushAllImages, flushChatImages } from '../../imageCache.js';
 import { smartResize } from '../../utils/dom.js';
-import { callPopup } from '../../../../../../script.js';
+import { confirmModal, openModal } from '../../utils/modal.js';
 
 // Sub-system imports
 import { buildPanelHTML, buildLogModalHTML } from './templates.js';
@@ -98,7 +98,7 @@ function bindHandlers() {
     $panel.on('click', '#plz-purge-chat', async function() {
         const roster = state.activeRoster;
         if (!roster.length) return window.toastr?.info('Roster is empty.');
-        if (await callPopup('Delete portraits for characters currently on screen?', 'confirm')) {
+        if (await confirmModal('Delete portraits for characters currently on screen?')) {
             const deleted = await flushChatImages(roster);
             removeFromFileIndex(deleted);
             document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
@@ -106,7 +106,7 @@ function bindHandlers() {
     });
 
     $panel.on('click', '#plz-purge-all', async function() {
-        if (await callPopup('Delete EVERY generated portrait across all chats?', 'confirm')) {
+        if (await confirmModal('Delete EVERY generated portrait across all chats?')) {
             const deleted = await flushAllImages();
             removeFromFileIndex(deleted);
             document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
@@ -135,7 +135,11 @@ function bindHandlers() {
 
     $panel.on('click', '#plz-view-logs', async function () {
         const html = buildLogModalHTML(getLogs(), getWorkshopLogs(), getSystemLogs());
-        await callPopup(html, 'text');
+        await openModal({
+            content: html,
+            width: 'min(680px, 95vw)',
+            buttons: [{ label: 'Close', value: null, style: 'muted' }],
+        });
     });
 }
 

@@ -23,7 +23,8 @@
  */
 
 import { getSettings, getMetaSettings, updateSetting } from '../../settings.js';
-import { saveSettingsDebounced, callPopup } from '../../../../../../script.js';
+import { saveSettingsDebounced } from '../../../../../../script.js';
+import { confirmModal, promptModal, openModal } from '../../utils/modal.js';
 import { fetchPreviewBlob } from '../../imageCache.js';
 import { fetchRunwareModels } from '../panel/models.js';
 import { smartResize } from '../../utils/dom.js';
@@ -168,7 +169,7 @@ export function bindStyleHandlers() {
         const meta = getMetaSettings();
         const activeName = getSettings().currentStyleName;
 
-        const ok = await callPopup(`Discard all uncommitted changes for "${activeName}"?`, 'confirm');
+        const ok = await confirmModal(`Discard all uncommitted changes for "${activeName}"?`);
         if (!ok) return;
 
         meta.styleWorkspaces[activeName] = structuredClone(meta.styleLibrary[activeName]);
@@ -185,7 +186,7 @@ export function bindStyleHandlers() {
 
     // NEW: Create both entries
     $overlay.on('click', '#plz-style-new', async () => {
-        const raw = await callPopup('<h3>New Style Name</h3>', 'input', '');
+        const raw = await promptModal('New Style Name');
         const name = (raw ?? '').trim();
         if (!name) return;
         
@@ -209,7 +210,7 @@ export function bindStyleHandlers() {
         const name = $('#plz-style-selector').val();
         if (Object.keys(meta.styleLibrary).length <= 1) return window.toastr?.warning('Cannot delete the last style.');
         
-        const ok = await callPopup(`Delete style "${name}"?`, 'confirm');
+        const ok = await confirmModal(`Delete style "${name}"?`);
         if (!ok) return;
 
         delete meta.styleLibrary[name];
@@ -248,7 +249,10 @@ export function bindStyleHandlers() {
                 style.useLayerDiffuse,
                 style.engineParams
             );
-            await callPopup(`<h3>Test OK</h3><img src="${url}" style="width:100%; border-radius:6px;" />`, 'text');
+            await openModal({
+                content: `<h3 style="margin-top:0;">Test OK</h3><img src="${url}" style="width:100%; border-radius:6px;" />`,
+                buttons: [{ label: 'Close', value: null, style: 'muted' }],
+            });
         } catch (err) {
             if (window.toastr) window.toastr.error('Test failed: ' + err.message);
         } finally { $btn.prop('disabled', false).html(originalHtml); }

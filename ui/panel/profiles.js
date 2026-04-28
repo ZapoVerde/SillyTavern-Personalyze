@@ -19,7 +19,8 @@
  *     external_io: [saveSettingsDebounced, callPopup, DOM (.plz-profile-select)]
  */
 
-import { callPopup, saveSettingsDebounced } from '../../../../../../script.js';
+import { saveSettingsDebounced } from '../../../../../../script.js';
+import { confirmModal, promptModal } from '../../utils/modal.js';
 import { getSettings, getMetaSettings } from '../../settings.js';
 
 /**
@@ -90,7 +91,7 @@ export function bindProfileHandlers($panel, refreshUI) {
 
     // 3. Add Profile (Clones existing Working Table)
     $panel.on('click', '#plz-profile-add', async function () {
-        const rawName = await callPopup('<h3>New profile name</h3>', 'input', '');
+        const rawName = await promptModal('New profile name');
         const name = (rawName ?? '').trim();
         if (!name) return;
 
@@ -109,7 +110,7 @@ export function bindProfileHandlers($panel, refreshUI) {
 
     // 4. Rename Profile
     $panel.on('click', '#plz-profile-rename', async function () {
-        const rawName = await callPopup('<h3>Rename profile</h3>', 'input', meta.currentProfileName);
+        const rawName = await promptModal('Rename profile', meta.currentProfileName);
         const newName = (rawName ?? '').trim();
         if (!newName || newName === meta.currentProfileName) return;
 
@@ -133,9 +134,8 @@ export function bindProfileHandlers($panel, refreshUI) {
             return;
         }
 
-        const confirmed = await callPopup(
-            `<h3>Delete profile "${meta.currentProfileName}"?</h3>This cannot be undone.`,
-            'confirm'
+        const confirmed = await confirmModal(
+            `<b>Delete profile "${meta.currentProfileName}"?</b><br>This cannot be undone.`
         );
         if (!confirmed) return;
 

@@ -28,7 +28,7 @@ import { error } from '../../../utils/logger.js';
 import { pingPollinations, pingFal, pingPiAPI, pingRunware } from '../../../utils/ping.js';
 import { fetchPreviewBlob } from '../../../imageCache.js';
 import { writeSecret } from '../../../../../../secrets.js';
-import { callPopup } from '../../../../../../../script.js';
+import { openModal } from '../../../utils/modal.js';
 import { updateEngineKeyStatuses } from './keyStatus.js';
 
 /**
@@ -99,7 +99,10 @@ async function _runEngineTest($btn, statusSelector, providerId) {
             : false;
         const objectUrl = await fetchPreviewBlob(providerId, model, prompt, '', 256, 384, 1, [], useLayerDiffuse);
         $status.text('✓ Image generated');
-        await callPopup(`<h3>Test OK</h3><img src="${objectUrl}" style="width:100%;border-radius:6px;margin-top:8px;" />`, 'text');
+        await openModal({
+            content: `<h3 style="margin-top:0;">Test OK</h3><img src="${objectUrl}" style="width:100%;border-radius:6px;margin-top:8px;" />`,
+            buttons: [{ label: 'Close', value: null, style: 'muted' }],
+        });
     } catch (err) {
         $status.html(`<span style="color:var(--SmartThemeErrorColor);">✗ ${err.message.slice(0, 80)}</span>`);
         error('EnginesModal', 'Test failed:', err);

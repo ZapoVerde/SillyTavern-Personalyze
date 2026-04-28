@@ -20,7 +20,7 @@
  */
 
 import { getContext } from '../../../../../extensions.js';
-import { callPopup } from '../../../../../../script.js';
+import { confirmModal, promptModal } from '../../utils/modal.js';
 import { state, upsertChatSlots } from '../../state.js';
 import { lockedWriteSlots } from '../../io/dnaWriter.js';
 import { BASE_SLOTS, RESERVED_SLOT_KEYS } from '../../defaults.js';
@@ -38,7 +38,7 @@ export function bindSlotHandlers($overlay) {
         const id = state._workshopCharacterId;
         if (!id) return;
 
-        const nameRaw = await callPopup('<h3>New Category Name</h3>', 'input', '');
+        const nameRaw = await promptModal('New Category Name');
         const label = (nameRaw ?? '').trim();
         if (!label) return;
 
@@ -85,7 +85,7 @@ export function bindSlotHandlers($overlay) {
         if (BASE_SLOTS.includes(key)) return;
 
         const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
-        const confirmed = await callPopup(`Delete category "<b>${escapeHtml(label)}</b>"?`, 'confirm');
+        const confirmed = await confirmModal(`Delete category "<b>${escapeHtml(label)}</b>"?`);
         if (!confirmed) return;
 
         const char = state.chatCharacters[id];

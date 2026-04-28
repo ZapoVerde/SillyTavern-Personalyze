@@ -37,7 +37,7 @@ import { deleteFiles, fetchFileIndex } from '../../imageCache.js';
 import { clearPortrait } from '../../portrait.js';
 import { smartResize } from '../../utils/dom.js';
 import { updateSetting } from '../../settings.js';
-import { callPopup } from '../../../../../../script.js';
+import { confirmModal, promptModal } from '../../utils/modal.js';
 import { slugify, escapeHtml } from '../../utils/history.js';
 import { error } from '../../utils/logger.js';
 import { syncCharacterToLorebook } from '../../logic/pipeline/lorebookSync.js';
@@ -95,7 +95,7 @@ export function bindIdentityHandlers($overlay) {
         const id = state._workshopCharacterId;
         if (!id) return;
 
-        const nameRaw = await callPopup('<h3>New Physical Feature</h3>', 'input', '');
+        const nameRaw = await promptModal('New Physical Feature');
         const label = (nameRaw ?? '').trim();
         if (!label) return;
 
@@ -121,7 +121,7 @@ export function bindIdentityHandlers($overlay) {
         if (BASE_IDENTITY_SLOTS.includes(key) || key === 'base') return;
 
         const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
-        const confirmed = await callPopup(`Delete physical feature "<b>${escapeHtml(label)}</b>"?`, 'confirm');
+        const confirmed = await confirmModal(`Delete physical feature "<b>${escapeHtml(label)}</b>"?`);
         if (!confirmed) return;
 
         const char = state.chatCharacters[id];
@@ -260,9 +260,8 @@ export function bindIdentityHandlers($overlay) {
         if (!id || id === '__new__') return; 
         
         const displayName = state.chatCharacters[id]?.label || id.replace(/_/g, ' ');
-        const confirmed = await callPopup(
-            `Delete all generated portraits for <b>${escapeHtml(displayName)}</b>?<br><br><small>This will free up disk space but requires re-generating images for all visual states.</small>`,
-            `confirm`
+        const confirmed = await confirmModal(
+            `Delete all generated portraits for <b>${escapeHtml(displayName)}</b>?<br><br><small>This will free up disk space but requires re-generating images for all visual states.</small>`
         );
         if (!confirmed) return;
 

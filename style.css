@@ -1237,6 +1237,54 @@ textarea.plz-fullscreen-input {
     pointer-events: none !important;
 }
 
+/* ─── Generic Modal Utility ──────────────────────────────────────────────── */
+
+.plz-modal--compact {
+    min-height: unset;
+    width: min(520px, 92vw);
+}
+
+.plz-modal-header {
+    padding: 14px 20px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    flex-shrink: 0;
+}
+
+.plz-modal-header h3 {
+    margin: 0;
+    font-size: 1em;
+    font-weight: 600;
+}
+
+.plz-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+}
+
+.plz-modal-footer {
+    padding: 10px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    flex-shrink: 0;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.plz-modal-btn--danger {
+    color: var(--SmartThemeErrorColor) !important;
+}
+
+.plz-modal-btn--muted {
+    opacity: 0.6;
+}
+
+.plz-modal-confirm-msg {
+    font-size: 0.95em;
+    line-height: 1.5;
+}
+
 /* ─── Text Modal Overlay ──────────────────────────────────────────────────── */
 
 .plz-text-modal-fab {

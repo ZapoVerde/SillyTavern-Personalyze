@@ -166,6 +166,20 @@ export function openUploadLogModal() {
         _renderEntries($overlay);
     });
 
+    // Copy full job log to clipboard
+    $overlay.on('click', '.plz-log-copy', async function (e) {
+        e.stopPropagation(); // don't toggle the <details>
+        const taskUUID = $(this).data('task-uuid');
+        const entry = _read().find(en => en.taskUUID === taskUUID);
+        if (!entry) return;
+        try {
+            await navigator.clipboard.writeText(_serialiseJob(entry));
+            if (window.toastr) window.toastr.info('Job log copied to clipboard.');
+        } catch {
+            if (window.toastr) window.toastr.warning('Copy failed — try selecting manually.');
+        }
+    });
+
     // Resume polling for a timed-out job
     $overlay.on('click', '.plz-log-resume', function () {
         const taskUUID = $(this).data('task-uuid');
@@ -236,6 +250,30 @@ function _json(obj) {
     return `<pre style="margin:0; white-space:pre-wrap; word-break:break-all; font-size:0.78em; background:var(--SmartThemeBlurTintColor,#1a1a1a); padding:6px 8px; border-radius:4px;">${JSON.stringify(obj, null, 2)}</pre>`;
 }
 
+function _serialiseJob(e) {
+    const lines = [
+        `=== Runware Upload Job ===`,
+        `Name:       ${e.name}`,
+        `AIR:        ${e.air}`,
+        `Task UUID:  ${e.taskUUID ?? '—'}`,
+        `Category:   ${e.category} / ${e.architecture} / ${e.format}`,
+        `Status:     ${e.finalStatus}`,
+        `Submitted:  ${_fmt(e.submittedAt)}`,
+        `Resolved:   ${_fmt(e.resolvedAt)}`,
+        ``,
+        `--- Request Bundle ---`,
+        JSON.stringify(e.reqBundle, null, 2),
+        ``,
+        `--- Upload Response ---`,
+        e.uploadError ? `Error: ${e.uploadError}` : '',
+        JSON.stringify(e.uploadResponse, null, 2),
+        ``,
+        `--- Poll History (${e.pollAttempts.length} attempts) ---`,
+        ...e.pollAttempts.map(p => `${_fmt(p.at)}  attempt ${p.attempt}  ${p.found ? '✓ found' : '○ not found'}`),
+    ];
+    return lines.join('\n').trim();
+}
+
 function _renderJob(entry) {
     const {
         taskUUID, air, name, category, architecture, format,
@@ -261,7 +299,12 @@ function _renderJob(entry) {
                     <strong style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${name}</strong>
                     <span style="opacity:0.5; font-size:0.8em; white-space:nowrap;">${air}</span>
                 </span>
-                <span style="opacity:0.45; font-size:0.75em; white-space:nowrap; flex-shrink:0;">${_fmt(submittedAt)}</span>
+                <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                    <span style="opacity:0.45; font-size:0.75em; white-space:nowrap;">${_fmt(submittedAt)}</span>
+                    <button class="plz-log-copy menu_button" data-task-uuid="${taskUUID}" style="font-size:0.72em; padding:1px 7px;" title="Copy full job log">
+                        <i class="fa-regular fa-copy"></i>
+                    </button>
+                </span>
             </summary>
             <div style="padding:8px 4px 4px; display:flex; flex-direction:column; gap:10px;">
 

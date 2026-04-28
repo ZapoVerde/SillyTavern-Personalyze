@@ -1,36 +1,35 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/models/modelManagerModal.js
- * @stamp {"utc":"2026-04-19T10:00:00.000Z"}
+ * @stamp {"utc":"2026-04-28T00:00:00.000Z"}
  * @architectural-role UI Executor (Technical Registry Manager)
  * @description
  * Manages the global list of registered models and their technical blueprints.
  * Provides a UI for adding new models via templates, deleting existing ones,
  * and navigating to the JSON Blueprint Editor.
- * 
+ *
+ * Migrated from callPopup to self-owned openModal overlay.
+ *
  * @api-declaration
  * openModelManager() -> Promise<void>
- * 
+ *
  * @contract
  *   assertions:
  *     purity: IO Executor / Stateful UI
  *     state_ownership: []
- *     external_io: [callPopup, modelRegistry.js, blueprintEditor.js, jQuery]
+ *     external_io: [openModal, confirmModal, modelRegistry.js, blueprintEditor.js, jQuery]
  */
 
-import { callPopup } from '../../../../../../script.js';
-import { 
-    getAllRegisteredModels, 
-    deleteModelBlueprint, 
-    saveModelBlueprint, 
-    getBaseTemplates 
+import { openModal, confirmModal } from '../../utils/modal.js';
+import {
+    getAllRegisteredModels,
+    deleteModelBlueprint,
+    saveModelBlueprint,
+    getBaseTemplates
 } from '../../modelRegistry.js';
 import { openBlueprintEditor } from './blueprintEditor.js';
 import { escapeHtml } from '../../utils/history.js';
 import { saveManualModel } from '../panel/models.js';
 
-/**
- * Renders the list of registered models into the modal container.
- */
 function _renderModelRows() {
     const models = getAllRegisteredModels();
     if (models.length === 0) {
@@ -54,20 +53,16 @@ function _renderModelRows() {
     `).join('');
 }
 
-/**
- * Opens the Global Model Manager modal.
- */
 export async function openModelManager() {
     const baseTemplates = getBaseTemplates();
-    const templateOptions = Object.keys(baseTemplates).map(t => 
+    const templateOptions = Object.keys(baseTemplates).map(t =>
         `<option value="${escapeHtml(t)}">${escapeHtml(t.toUpperCase())} Template</option>`
     ).join('');
 
-    const html = `
-    <div id="plz-model-manager-modal" style="display:flex; flex-direction:column; gap:15px; min-width:min(500px, 95vw);">
+    const content = `
+    <div id="plz-model-manager-modal" style="display:flex; flex-direction:column; gap:15px;">
         <h3 style="margin:0;"><i class="fa-solid fa-microchip"></i> Model & Blueprint Manager</h3>
-        
-        <!-- Registration Section -->
+
         <div style="background:rgba(0,0,0,0.2); border-radius:8px; padding:12px; border:1px solid var(--SmartThemeBorderColor);">
             <div style="font-size:0.75em; opacity:0.6; margin-bottom:8px; font-weight:bold; text-transform:uppercase;">Register New Model</div>
             <div style="display:flex; flex-direction:column; gap:8px;">
@@ -82,7 +77,6 @@ export async function openModelManager() {
             </div>
         </div>
 
-        <!-- Registry List -->
         <div style="display:flex; flex-direction:column;">
             <div style="font-size:0.75em; opacity:0.6; margin-bottom:5px; font-weight:bold; text-transform:uppercase;">Registered Blueprints</div>
             <div id="plz-mgr-list" style="max-height:300px; overflow-y:auto; background:rgba(255,255,255,0.02); border-radius:6px; border:1px solid rgba(255,255,255,0.05);">
@@ -95,50 +89,44 @@ export async function openModelManager() {
         </p>
     </div>`;
 
-    return new Promise((resolve) => {
-        callPopup(html, 'confirm').then(() => {
-            $(document).off('.plzMgr');
-            resolve();
-        });
+    await openModal({
+        content,
+        width: 'min(560px, 95vw)',
+        buttons: [
+            { label: 'Close', value: null, style: 'muted' },
+        ],
+        onReady: ($m) => {
+            $m.on('click', '#plz-mgr-add-btn', async function() {
+                const label = $m.find('#plz-mgr-new-label').val().trim();
+                const id = $m.find('#plz-mgr-new-id').val().trim();
+                const templateKey = $m.find('#plz-mgr-new-template').val();
 
-        const $list = $('#plz-mgr-list');
+                if (!id || !label) {
+                    if (window.toastr) window.toastr.warning('Please enter both a friendly Name and a technical Model ID.');
+                    return;
+                }
 
-        // 1. Add Model Logic
-        $(document).on('click.plzMgr', '#plz-mgr-add-btn', async function() {
-            const label = $('#plz-mgr-new-label').val().trim();
-            const id = $('#plz-mgr-new-id').val().trim();
-            const templateKey = $('#plz-mgr-new-template').val();
+                const blueprint = structuredClone(baseTemplates[templateKey]);
+                saveModelBlueprint(id, blueprint);
+                saveManualModel(label, id);
+                $m.find('#plz-mgr-new-label, #plz-mgr-new-id').val('');
+                $m.find('#plz-mgr-list').html(_renderModelRows());
+                if (window.toastr) window.toastr.success(`Model "${label}" registered.`);
+            });
 
-            if (!id || !label) {
-                if (window.toastr) window.toastr.warning('Please enter both a friendly Name and a technical Model ID.');
-                return;
-            }
+            $m.on('click', '.plz-mgr-edit', async function() {
+                const id = $(this).data('id');
+                const saved = await openBlueprintEditor(id);
+                if (saved) $m.find('#plz-mgr-list').html(_renderModelRows());
+            });
 
-            const blueprint = structuredClone(baseTemplates[templateKey]);
-            saveModelBlueprint(id, blueprint);
-            saveManualModel(label, id);
-
-            $('#plz-mgr-new-label, #plz-mgr-new-id').val('');
-            $list.html(_renderModelRows());
-
-            if (window.toastr) window.toastr.success(`Model "${label}" registered.`);
-        });
-
-        // 2. Edit JSON Blueprint Logic
-        $(document).on('click.plzMgr', '.plz-mgr-edit', async function() {
-            const id = $(this).data('id');
-            const saved = await openBlueprintEditor(id);
-            if (saved) $list.html(_renderModelRows());
-        });
-
-        // 3. Delete Model Logic
-        $(document).on('click.plzMgr', '.plz-mgr-delete', async function() {
-            const id = $(this).data('id');
-            const confirmed = await callPopup(`Delete technical blueprint for <b>${escapeHtml(id)}</b>?`, 'confirm');
-            if (!confirmed) return;
-
-            deleteModelBlueprint(id);
-            $list.html(_renderModelRows());
-        });
+            $m.on('click', '.plz-mgr-delete', async function() {
+                const id = $(this).data('id');
+                const confirmed = await confirmModal(`Delete technical blueprint for <b>${escapeHtml(id)}</b>?`);
+                if (!confirmed) return;
+                deleteModelBlueprint(id);
+                $m.find('#plz-mgr-list').html(_renderModelRows());
+            });
+        },
     });
 }

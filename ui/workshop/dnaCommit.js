@@ -21,7 +21,7 @@
  */
 
 import { getContext } from '../../../../../extensions.js';
-import { callPopup } from '../../../../../../script.js';
+import { confirmModal } from '../../utils/modal.js';
 import {
     state, setWorkshopCharacter, updateActiveCharacter, updateActiveLayers,
     updateActiveImage, addToFileIndex, updateChainLayers, setActiveRoster,
@@ -92,11 +92,10 @@ export function bindCommitHandlers($overlay) {
         // Bracket Guard: Check for LLM placeholders
         const fullSerializedState = JSON.stringify(layers) + labelInput + anchorInput;
         if (fullSerializedState.includes('[') || fullSerializedState.includes(']')) {
-            const confirmed = await callPopup(
-                '<h3>Potential Placeholder Detected</h3>' +
+            const confirmed = await confirmModal(
+                '<h3 style="margin-top:0;">Potential Placeholder Detected</h3>' +
                 'Brackets <b style="color:var(--SmartThemeErrorColor);">[ ]</b> were found in your character details. ' +
-                'Are you sure you want to save this state?',
-                'confirm'
+                'Are you sure you want to save this state?'
             );
             if (!confirmed) {
                 if (window.toastr) window.toastr.warning('Registration Aborted: Content Review Required — You chose not to save because potential placeholders (brackets) were detected. Remove any square brackets from your descriptions, or click \'Save Anyway\' if they are intentional.', 'PersonaLyze');

@@ -26,7 +26,7 @@
  */
 
 import { getContext } from '../../../../../extensions.js';
-import { callPopup } from '../../../../../../script.js';
+import { promptModal } from '../../utils/modal.js';
 
 import {
     state,
@@ -119,11 +119,7 @@ export function bindMenuHandlers() {
 
         // Show an editable confirmation modal so the user can adjust the name
         // before the scan runs — critical on mobile where selection is often lost.
-        const confirmed = await callPopup(
-            '<h3>Scan for character</h3><p>Confirm or edit the name to scan for:</p>',
-            'input',
-            captured
-        );
+        const confirmed = await promptModal('Scan for character', captured);
 
         const text = (confirmed ?? '').trim();
         if (!text) return;

@@ -19,7 +19,7 @@
  */
 
 import { getContext } from '../../../../../extensions.js';
-import { callPopup } from '../../../../../../script.js';
+import { promptModal } from '../../utils/modal.js';
 import { 
     state, upsertChatEnsemble, deleteChatEnsemble, upsertChatDefaultEnsemble 
 } from '../../state.js';
@@ -41,7 +41,7 @@ export function bindEnsembleHandlers($overlay) {
         const id = state._workshopCharacterId;
         if (!id || id === '__new__') return; // Ghost Guard
 
-        const name = await callPopup('Save current layers as Ensemble:', 'input', '');
+        const name = await promptModal('Save as Ensemble');
         if (!name) return;
 
         const layers = getGridLayers();
