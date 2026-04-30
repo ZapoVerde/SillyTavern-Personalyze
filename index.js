@@ -137,6 +137,7 @@ async function init() {
 
         // Vistalyze Integration
         document.addEventListener('vistalyze:location-changed', async (e) => {
+            if (!getSettings().enabled) return;
             const context = getContext();
             if (!context?.chatId) return;
             const messageId = e.detail?.messageId ?? context.chat.length - 1;
