@@ -1,11 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleLogicListeners.js
- * @stamp {"utc":"2026-05-01T08:25:00.000Z"}
+ * @stamp {"utc":"2026-05-01T13:00:00.000Z"}
  * @architectural-role UI Controller (Global Style Logic)
  * @description
  * Manages event listeners and state synchronization for the Logic Probes drawer.
  * Handles CRUD operations on the Style's logicProbes dictionary and enforces
  * circular dependency guards.
+ * 
+ * Updated for Computational Logic:
+ * 1. Instant local testing for computational probes.
+ * 2. Inclusion of comparison chips in the Fullscreen Editor variables.
  * 
  * @api-declaration
  * bindStyleLogicHandlers($overlay) -> void
@@ -15,7 +19,7 @@
  *   assertions:
  *     purity: IO / Stateful UI
  *     state_ownership: [_activeProbeKey, _isProbeDirty]
- *     external_io: [settings.js, styleLogicTemplates.js, logicExecutor.js, ConnectionManagerRequestService, DOM]
+ *     external_io: [settings.js, styleLogicTemplates.js, logicExecutor.js, computationalParser.js, ConnectionManagerRequestService, DOM]
  */
 
 import { ConnectionManagerRequestService } from '../../../../shared.js';
@@ -24,6 +28,7 @@ import { saveSettingsDebounced } from '../../../../../../script.js';
 import { confirmModal, promptModal } from '../../utils/modal.js';
 import { openTextModal } from '../../utils/textModal.js';
 import { executeLogicProbe } from '../../io/llm/logicExecutor.js';
+import { evaluateComputationalLogic, extractTokens } from '../../logic/computationalParser.js';
 import { getLogicDrawerHTML, getProbeSelectorHTML, getProbeEditorHTML } from './styleLogicTemplates.js';
 import { state } from '../../state.js';
 import { log, warn } from '../../utils/logger.js';
@@ -33,15 +38,6 @@ import { buildHistoryText } from '../../utils/history.js';
 // --- Module State (Session Ephemeral) ---
 let _activeProbeKey = '';
 let _isProbeDirty   = false;
-
-/**
- * Extracts tokens from a string.
- */
-function extractTokens(text) {
-    if (!text) return [];
-    const matches = text.match(/\{\{([a-zA-Z0-9_]+)\}\}/g);
-    return matches ? matches.map(m => m.slice(2, -2).toLowerCase()) : [];
-}
 
 /**
  * Checks for circular dependencies in the logic graph.
@@ -153,6 +149,30 @@ export function bindStyleLogicHandlers($overlay) {
         renderLogicDrawer();
     });
 
+    $overlay.on('click', '#plz-logic-clone', async () => {
+        const meta = getMetaSettings();
+        const style = meta.styleWorkspaces[getSettings().currentStyleName];
+        const source = style.logicProbes[_activeProbeKey];
+        if (!source) return;
+
+        const nameRaw = await promptModal(`Clone "${_activeProbeKey}" as...`);
+        if (!nameRaw) return;
+
+        const key = nameRaw.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+        if (!key) return;
+
+        if (style.logicProbes[key]) {
+            if (window.toastr) window.toastr.warning('Token name already exists.');
+            return;
+        }
+
+        style.logicProbes[key] = structuredClone(source);
+        _activeProbeKey = key;
+        _isProbeDirty = true;
+        saveSettingsDebounced();
+        renderLogicDrawer();
+    });
+
     // 2. Editor Inputs
     $overlay.on('click', '.plz-logic-type-btn', function() {
         const type = $(this).data('type');
@@ -187,10 +207,26 @@ export function bindStyleLogicHandlers($overlay) {
             { v: '{{current_turn}}', d: 'Latest message' },
             { v: '{{character_name}}', d: 'Active ID' }
         ];
+
+        // Add dynamic tokens
+        const workshopChar = state.chatCharacters[state._workshopCharacterId];
+        const slots = workshopChar?.slots || [];
+        const identity = Object.keys(workshopChar?.identity || {});
+        slots.forEach(s => vars.push({ v: `{{${s}}}`, d: 'Clothing Slot' }));
+        identity.forEach(i => vars.push({ v: `{{${i}}}`, d: 'Identity Trait' }));
+        
         Object.keys(probes).forEach(k => { if (k !== _activeProbeKey) vars.push({ v: `{{${k}}}`, d: 'Other Logic' }); });
 
+        // Add comparison chips if computational
+        if (probe.type === 'computational') {
+            vars.push({ v: 'is', d: 'Strict Whole-Word Equality' });
+            vars.push({ v: 'in', d: 'List Membership (a, b)' });
+            vars.push({ v: 'contains', d: 'Partial Fuzzy Match' });
+            vars.push({ v: '!', d: 'Negation' });
+        }
+
         const result = await openTextModal({
-            title: `Logic Query: ${_activeProbeKey}`,
+            title: probe.type === 'computational' ? `Logic Expression: ${_activeProbeKey}` : `Logic Query: ${_activeProbeKey}`,
             initialValue: probe.prompt,
             variables: vars
         });
@@ -222,13 +258,42 @@ export function bindStyleLogicHandlers($overlay) {
             const text = context.chat[lastIdx]?.mes || '';
             const history = buildHistoryText(context.chat, lastIdx, getSettings().detectionHistory);
             
-            const result = await executeLogicProbe(_activeProbeKey, probe, { 
+            const workshopChar = state.chatCharacters[state._workshopCharacterId];
+            const chain = state.characterChain[state._workshopCharacterId];
+            const layers = chain?.layers || {};
+
+            // Build full context including wardrobe for the test
+            const contextData = { 
                 current_turn: text, 
                 history, 
-                character_name: 'test_subject' 
+                character_name: state._workshopCharacterId || 'test_subject' 
+            };
+
+            // Inject identity
+            if (workshopChar?.identity) {
+                Object.assign(contextData, workshopChar.identity);
+            }
+
+            // Inject serialized wardrobe
+            Object.entries(layers).forEach(([k, v]) => {
+                if (k === 'logic') return;
+                if (!v) contextData[k] = 'none';
+                else if (typeof v === 'string') contextData[k] = v;
+                else contextData[k] = `${v.item} (${v.modifier || 'none'})`;
             });
 
-            if (window.toastr) window.toastr.info(`Result: ${result || '(empty)'}`, `Probe: ${_activeProbeKey}`);
+            let finalOutput = '';
+
+            if (probe.type === 'computational') {
+                // Instant Local Evaluation
+                const isTrue = evaluateComputationalLogic(probe.prompt, contextData);
+                finalOutput = isTrue ? (probe.trueTemplate ?? '') : (probe.falseTemplate ?? '');
+                if (window.toastr) window.toastr.info(`Result: ${isTrue ? 'TRUE' : 'FALSE'}${finalOutput ? `\nInjected: "${finalOutput}"` : ''}`, `Instant Evaluation: ${_activeProbeKey}`);
+            } else {
+                // LLM Evaluation
+                finalOutput = await executeLogicProbe(_activeProbeKey, probe, contextData);
+                if (window.toastr) window.toastr.info(`Result: ${finalOutput || '(empty)'}`, `Probe: ${_activeProbeKey}`);
+            }
         } catch (err) {
             warn('LogicUI', 'Test failed:', err.message);
         } finally {

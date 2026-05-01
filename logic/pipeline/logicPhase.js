@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/logicPhase.js
- * @stamp {"utc":"2026-05-01T07:10:00.000Z"}
+ * @stamp {"utc":"2026-05-01T11:00:00.000Z"}
  * @architectural-role Orchestrator (Phase 3.5)
  * @description
  * Evaluates dynamic logic probes attached to a Style.
@@ -8,7 +8,8 @@
  * 1. Scans Style templates for {{tokens}} to identify required probes.
  * 2. Recursively resolves dependencies between probes with cycle protection.
  * 3. Determines "Dirtiness" based on narrative context or changed wardrobe layers.
- * 4. Merges resolved strings into nextLayers.logic for downstream prompt synthesis.
+ * 4. Routes to LLM (Boolean/Text) or Fast-Path (Computational) based on probe type.
+ * 5. Merges resolved strings into nextLayers.logic for downstream prompt synthesis.
  * 
  * @api-declaration
  * evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal, identity) -> Promise<void>
@@ -17,25 +18,16 @@
  *   assertions:
  *     purity: Orchestrator
  *     state_ownership: []
- *     external_io: [logicExecutor.js, logger.js]
+ *     external_io: [logicExecutor.js, computationalParser.js, callLog.js, logger.js]
  */
 
 import { executeLogicProbe } from '../../io/llm/logicExecutor.js';
+import { evaluateComputationalLogic, extractTokens } from '../computationalParser.js';
+import { logCall, logPatchLast } from '../../utils/callLog.js';
 import { log, warn } from '../../utils/logger.js';
 
 /**
- * Scans a string for tokens in double curly braces.
- * @param {string} text 
- * @returns {string[]} Lowercased keys.
- */
-function extractTokens(text) {
-    if (!text || typeof text !== 'string') return [];
-    const matches = text.match(/\{\{([a-zA-Z0-9_]+)\}\}/g);
-    return matches ? matches.map(m => m.slice(2, -2).toLowerCase()) : [];
-}
-
-/**
- * Helper to serialize a wardrobe slot for LLM context.
+ * Helper to serialize a wardrobe slot for logic context.
  */
 function serializeSlot(val) {
     if (!val) return 'none';
@@ -140,7 +132,21 @@ export async function evaluateLogic(characterId, nextLayers, currentLayers, styl
         // 2. We have no cached value from previous DNA (cachedValue === undefined)
         if (isDirty || cachedValue === undefined) {
             try {
-                finalValue = await executeLogicProbe(key, probe, contextData, signal);
+                if (probe.type === 'computational') {
+                    // FAST-PATH: Local string comparison
+                    const isTrue = evaluateComputationalLogic(probe.prompt, contextData);
+                    finalValue = isTrue ? (probe.trueTemplate ?? '') : (probe.falseTemplate ?? '');
+                    
+                    // Forensic Total Mirror Protocol
+                    const label = `LogicProbe:${key} [COMPUTATIONAL]`;
+                    logCall(label, probe.prompt, null, null, { context: contextData });
+                    logPatchLast(finalValue, null, { evaluated: isTrue }, `Result: ${isTrue ? 'TRUE' : 'FALSE'}`);
+                    
+                    log('LogicPhase', `Computational ${key} evaluated: ${isTrue}`);
+                } else {
+                    // SLOW-PATH: LLM execution
+                    finalValue = await executeLogicProbe(key, probe, contextData, signal);
+                }
             } catch (err) {
                 warn('LogicPhase', `Execution failed for probe "${key}":`, err.message);
                 finalValue = cachedValue || ''; 

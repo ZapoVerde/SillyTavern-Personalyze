@@ -1,10 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleLogicTemplates.js
- * @stamp {"utc":"2026-05-01T08:15:00.000Z"}
+ * @stamp {"utc":"2026-05-01T12:00:00.000Z"}
  * @architectural-role Pure UI Template (Global Style Logic)
  * @description
  * Generates the HTML for the Reactive Logic Engine configuration drawer.
  * Implements a CRUD-row interface for surgical editing of narrative probes.
+ * 
+ * Updated for Computational Logic:
+ * 1. Added "Computational" output type button.
+ * 2. Added Comparison Chip legend for the DSL syntax.
+ * 3. Updated conditional visibility for True/False templates.
  * 
  * @api-declaration
  * getLogicDrawerHTML(styleObj, activeProbeKey, isProbeDirty, identitySlots) -> string
@@ -75,7 +80,9 @@ export function getProbeSelectorHTML(probes, activeKey = '', isDirty = false) {
  * Renders the detailed configuration fields for an active probe.
  */
 export function getProbeEditorHTML(probeKey, probeObj, identitySlots = BASE_IDENTITY_SLOTS) {
-    const isBoolean = probeObj.type === 'boolean';
+    const isComputational = probeObj.type === 'computational';
+    const isBoolean       = probeObj.type === 'boolean';
+    const isConditional   = isBoolean || isComputational;
 
     return `
     <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:10px;">
@@ -84,9 +91,14 @@ export function getProbeEditorHTML(probeKey, probeObj, identitySlots = BASE_IDEN
         <div style="padding-bottom:5px; border-bottom:1px solid rgba(255,255,255,0.05);">
             <div style="font-size:0.7em; font-weight:bold; text-transform:uppercase; opacity:0.5; margin-bottom:5px;">Available Tokens</div>
             ${getLogicVariableLegendHTML(identitySlots)}
+            
+            ${isComputational ? `
+                <div style="font-size:0.7em; font-weight:bold; text-transform:uppercase; opacity:0.5; margin: 8px 0 5px;">Comparison Syntax</div>
+                ${getLogicOperatorLegendHTML()}
+            ` : ''}
         </div>
 
-        <div>
+        <div class="${isComputational ? 'plz-hidden' : ''}">
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:4px;">Evaluation Engine</label>
             <select id="plz-logic-profile" class="text_pole" style="width:100%;"></select>
         </div>
@@ -94,22 +106,23 @@ export function getProbeEditorHTML(probeKey, probeObj, identitySlots = BASE_IDEN
             <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:4px;">Output Type</label>
             <div class="plz-logic-output-type">
                 <button class="plz-logic-type-btn ${isBoolean ? 'plz-active' : ''}" data-type="boolean">Boolean</button>
-                <button class="plz-logic-type-btn ${!isBoolean ? 'plz-active' : ''}" data-type="text">Text</button>
+                <button class="plz-logic-type-btn ${probeObj.type === 'text' ? 'plz-active' : ''}" data-type="text">Text</button>
+                <button class="plz-logic-type-btn ${isComputational ? 'plz-active' : ''}" data-type="computational">Computational</button>
             </div>
         </div>
 
         <div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                <label style="font-size:0.75em; opacity:0.6;">LLM Logic Query</label>
+                <label style="font-size:0.75em; opacity:0.6;">${isComputational ? 'Logic Expression' : 'LLM Logic Query'}</label>
                 <button id="plz-logic-edit-prompt" class="menu_button" style="font-size:0.72em; padding:1px 8px;">
-                    <i class="fa-solid fa-expand"></i> Fullscreen Prompt
+                    <i class="fa-solid fa-expand"></i> Fullscreen Editor
                 </button>
             </div>
             <textarea id="plz-logic-prompt-preview" class="text_pole" readonly rows="2" 
                       style="width:100%; font-family:monospace; font-size:0.85em; opacity:0.7; cursor:default; resize:none;">${escapeHtml(probeObj.prompt || '')}</textarea>
         </div>
 
-        <div id="plz-logic-boolean-templates" class="${isBoolean ? '' : 'plz-hidden'}" style="display:flex; flex-direction:column; gap:8px; padding-top:5px; border-top:1px solid rgba(255,255,255,0.05);">
+        <div id="plz-logic-boolean-templates" class="${isConditional ? '' : 'plz-hidden'}" style="display:flex; flex-direction:column; gap:8px; padding-top:5px; border-top:1px solid rgba(255,255,255,0.05);">
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                 <div>
                     <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:4px; color:var(--SmartThemeQuoteColor);">If True (Yes)</label>
@@ -122,7 +135,7 @@ export function getProbeEditorHTML(probeKey, probeObj, identitySlots = BASE_IDEN
             </div>
         </div>
 
-        <div id="plz-logic-text-info" class="${!isBoolean ? '' : 'plz-hidden'}" style="font-size:0.8em; opacity:0.5; font-style:italic; text-align:center; padding:5px;">
+        <div id="plz-logic-text-info" class="${probeObj.type === 'text' ? '' : 'plz-hidden'}" style="font-size:0.8em; opacity:0.5; font-style:italic; text-align:center; padding:5px;">
             The raw response from the AI will be injected into {{${probeKey}}}.
         </div>
 
@@ -148,5 +161,22 @@ function getLogicVariableLegendHTML(identitySlots = BASE_IDENTITY_SLOTS) {
     return `
     <div class="plz-logic-token-legend">
         ${tokens.map(item => `<div class="plz-token-chip" title="${item.d}" onclick="navigator.clipboard.writeText('${item.t}')">${item.t}</div>`).join('')}
+    </div>`;
+}
+
+/**
+ * Builds the click-to-copy comparison chips for Computational logic.
+ */
+function getLogicOperatorLegendHTML() {
+    const ops = [
+        { t: 'is',       d: 'Strict whole-word equality' },
+        { t: 'in',       d: 'List membership. Format: (a, b, c)' },
+        { t: 'contains', d: 'Partial fuzzy match' },
+        { t: '!',        d: 'Negation' }
+    ];
+
+    return `
+    <div class="plz-logic-token-legend">
+        ${ops.map(item => `<div class="plz-token-chip" title="${item.d}" onclick="navigator.clipboard.writeText('${item.t}')">${item.t}</div>`).join('')}
     </div>`;
 }
