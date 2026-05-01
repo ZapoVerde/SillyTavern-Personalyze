@@ -1,12 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/scene.js
- * @stamp {"utc":"2026-04-17T16:40:00.000Z"}
+ * @stamp {"utc":"2026-05-01T08:05:00.000Z"}
  * @architectural-role Orchestrator (Scene Logic)
  * @description
  * Manages the wardrobe "Redress" flow triggered by location changes.
  * 
- * Updated for Dynamic Variable Architecture:
- * 1. Removed compilePrompt usage; generate() now handles iterative prompt synthesis.
+ * Updated for Reactive Logic Engine:
+ * 1. Integrated evaluateLogic (Phase 3.5) into the redress loop.
  *
  * @api-declaration
  * runScenePipeline(messageId) -> Promise<void>
@@ -15,7 +15,7 @@
  *   assertions:
  *     purity: Stateful Orchestrator
  *     state_ownership: [state (via setters)]
- *     external_io: [LLM, dnaWriter.js, ensembleEngine.js, imageCache.js, state.js]
+ *     external_io: [LLM, dnaWriter.js, ensembleEngine.js, imageCache.js, state.js, logicPhase.js]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -40,7 +40,7 @@ import {
     generateEnsembleKey,
     parseSceneRoster
 } from '../parsers.js';
-import { generate, deleteFiles } from '../../imageCache.js';
+import { generate, deleteFiles, resolveStyle } from '../../imageCache.js';
 import { 
     lockedWriteVisualState, 
     lockedPatchVisualStateImage,
@@ -50,6 +50,7 @@ import {
 import { detectNamesInText } from '../heuristics.js';
 import { isIgnored, isPending } from '../blacklist.js';
 import { runArchivistPipeline } from './archivist.js';
+import { evaluateLogic } from './logicPhase.js';
 
 /**
  * Executes proactive wardrobe management for the entire active roster.
@@ -65,7 +66,6 @@ export async function runScenePipeline(messageId, signal) {
 
     // ─── Phase 1: Roster Discovery ──────────────────────────────────────────
 
-    // discoveredEntities holds character IDs (heuristics) or raw Names (LLM)
     let discoveredEntities = detectNamesInText(message.mes, state.chatCharacters);
     
     if (discoveredEntities.length === 0) {
@@ -81,15 +81,12 @@ export async function runScenePipeline(messageId, signal) {
             discoveredEntities = parseSceneRoster(raw);
         } catch (err) {
             error('Scene', 'Roster discovery failed:', err.message);
-            // On failure, we stick with the current roster to avoid accidental wipes
             discoveredEntities = state.activeRoster;
         }
     }
 
-    // Resolve Entities to canonical IDs and handle unknowns
     const resolvedIds = [];
     for (const entity of discoveredEntities) {
-        // If it's already a known canonical ID (heuristic path), use it directly
         if (state.chatCharacters[entity]) {
             resolvedIds.push(entity);
             continue;
@@ -105,7 +102,6 @@ export async function runScenePipeline(messageId, signal) {
         }
     }
 
-    // Sync Roster
     const nextRoster = [...new Set(resolvedIds)];
     if (JSON.stringify(nextRoster.sort()) !== JSON.stringify(state.activeRoster.sort())) {
         log('Scene', `Roster updated via discovery: ${nextRoster.join(', ')}`);
@@ -167,6 +163,10 @@ export async function runScenePipeline(messageId, signal) {
                 nextLayers = mergeLayeredUpdate(item.layers, parsed);
             }
 
+            // ─── Phase 3.5: Logic Evaluation ───
+            const styleObj = resolveStyle(item.id);
+            await evaluateLogic(item.id, nextLayers, item.layers, styleObj, message.mes, history, signal);
+
             const ensembleLabel = generateEnsembleLabel(nextLayers);
             const ensembleKey   = generateEnsembleKey(nextLayers);
             
@@ -187,7 +187,6 @@ export async function runScenePipeline(messageId, signal) {
 
 /**
  * Handles image generation for a scene redress.
- * @param {AbortSignal} [signal]
  */
 async function processSceneGeneration(messageId, item, layers, s, recordId, signal) {
     try {
@@ -211,7 +210,6 @@ async function processSceneGeneration(messageId, item, layers, s, recordId, sign
         updateChainLayers(item.id, layers, filename);
         await lockedPatchVisualStateImage(messageId, item.id, filename, recordId);
 
-        // Ephemeral Cleanup: delete previous active images for this character (regardless of tag/emotion)
         if (!s.keepCache) {
             const charPrefix = `plz_${item.id}_`;
             const staleFiles = Array.from(state.fileIndex).filter(f => 
@@ -224,7 +222,6 @@ async function processSceneGeneration(messageId, item, layers, s, recordId, sign
             }
         }
 
-        // Notify UI to redraw cards
         document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
 
         log('Scene', `Redress portrait complete for ${item.id}: ${filename}`);

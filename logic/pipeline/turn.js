@@ -1,12 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/turn.js
- * @stamp {"utc":"2026-04-17T16:50:00.000Z"}
+ * @stamp {"utc":"2026-05-01T07:50:00.000Z"}
  * @architectural-role Orchestrator (Turn Logic)
  * @description
  * Implements the Hybrid Multi-Character Turn pipeline.
  * 
- * Updated for Dynamic Variable Architecture:
- * 1. Removed compilePrompt usage; generate() now handles iterative prompt synthesis.
+ * Updated for Reactive Logic Engine:
+ * 1. Integrated evaluateLogic (Phase 3.5) into processKnownSubject.
  *
  * @api-declaration
  * runTurnPipeline(messageId) -> Promise<void>
@@ -16,7 +16,7 @@
  *   assertions:
  *     purity: Stateful Orchestrator
  *     state_ownership: [state (via setters)]
- *     external_io: [LLM, heuristics.js, heuristicModal.js, TaskQueue, dnaWriter.js, imageCache.js]
+ *     external_io: [LLM, heuristics.js, heuristicModal.js, TaskQueue, dnaWriter.js, imageCache.js, logicPhase.js]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -44,7 +44,7 @@ import {
     generateEnsembleLabel,
     generateEnsembleKey
 } from '../parsers.js';
-import { generate, deleteFiles } from '../../imageCache.js';
+import { generate, deleteFiles, resolveStyle } from '../../imageCache.js';
 import {
     lockedWriteVisualState,
     lockedPatchVisualStateImage,
@@ -57,6 +57,7 @@ import { runArchivistPipeline } from './archivist.js';
 import { detectNamesInText } from '../heuristics.js';
 import { showHeuristicApprovalModal } from '../../ui/heuristicModal.js';
 import { TaskQueue } from '../../utils/queue.js';
+import { evaluateLogic } from './logicPhase.js';
 
 /** Singleton queue for pipeline concurrency control. */
 const pipelineQueue = new TaskQueue(2);
@@ -83,7 +84,6 @@ export async function runTurnPipeline(messageId, signal) {
         const alreadyActive = heuristicIds.filter(id => state.activeRoster.includes(id));
         const newlyDetected = heuristicIds.filter(id => !state.activeRoster.includes(id));
 
-        // Filter out characters currently snoozed before showing the modal
         const notSnoozed = newlyDetected.filter(id => !isIgnored(id, messageId));
 
         let modalResult = { load: [], snooze: [], archive: [] };
@@ -91,13 +91,10 @@ export async function runTurnPipeline(messageId, signal) {
             modalResult = await showHeuristicApprovalModal(notSnoozed);
         }
 
-        // Handle Snooze actions: register expiry in session blacklist
         for (const { id, duration } of modalResult.snooze) {
             snooze(id, messageId + duration);
-            log('Turn', `Snoozed ${id} for ${duration} turns (expires at message ${messageId + duration}).`);
         }
 
-        // Handle Archive actions: write to DNA and remove from active roster
         for (const id of modalResult.archive) {
             setCharacterArchived(id, true);
             await lockedWriteArchiveUpdate(messageId, id, true);
@@ -107,7 +104,6 @@ export async function runTurnPipeline(messageId, signal) {
                 await lockedWriteRoster(messageId, newRoster);
                 document.dispatchEvent(new CustomEvent('plz:roster-changed'));
             }
-            log('Turn', `Archived ${id} permanently.`);
         }
 
         targetSubjects = [...alreadyActive, ...modalResult.load];
@@ -136,8 +132,6 @@ export async function runTurnPipeline(messageId, signal) {
             if (resolvedId) {
                 targetSubjects = [resolvedId];
             } else {
-                // Route to Archivist for unknown subject
-                log('Turn', `Unknown subject: "${detectedString}". Checking resolution guards...`);
                 if (!isIgnored(detectedString, messageId) && !isPending(detectedString)) {
                     await runArchivistPipeline(messageId, detectedString);
                 }
@@ -146,10 +140,7 @@ export async function runTurnPipeline(messageId, signal) {
         }
     }
 
-    if (targetSubjects.length === 0) {
-        log('Turn', 'No subjects identified. Skipping turn extraction.');
-        return;
-    }
+    if (targetSubjects.length === 0) return;
 
     // ─── Phase 1c: Roster Sync ───
     const currentRoster = new Set(state.activeRoster);
@@ -170,8 +161,6 @@ export async function runTurnPipeline(messageId, signal) {
     }
 
     // ─── Phases 2-4: Parallel Execution ───
-    log('Turn', `Enqueuing ${targetSubjects.length} character updates.`);
-
     const tasks = targetSubjects.map(id => {
         return pipelineQueue.enqueue(() =>
             processKnownSubject(messageId, id, message.mes, history, s, signal)
@@ -183,13 +172,11 @@ export async function runTurnPipeline(messageId, signal) {
 
 /**
  * Executes Phases 2 & 3 for a subject already present in the DNA/Roster.
- * @param {AbortSignal} [signal]
  */
 export async function processKnownSubject(messageId, characterId, text, history, s, signal) {
     const character = state.chatCharacters[characterId];
     if (!character) return;
 
-    // Track last active for breadcrumb/badge logic
     updateActiveCharacter(characterId);
 
     // ─── Phase 2: Change Gate ───
@@ -197,54 +184,39 @@ export async function processKnownSubject(messageId, characterId, text, history,
     const currentLayers = chainEntry?.layers || state.activeLayers;
     const charName = character.label || characterId.replace(/_/g, ' ');
 
-    // Check if character is stuck with a spinner (null or missing image)
     const needsHealing = chainEntry && (!chainEntry.image || !state.fileIndex.has(chainEntry.image));
 
     let hasChanged;
     try {
-        hasChanged = await detectChange(
-            text,
-            history,
-            charName,
-            currentLayers,
-            s.fastProfileId
-        );
+        hasChanged = await detectChange(text, history, charName, currentLayers, s.fastProfileId);
     } catch (err) {
         error('Turn', `Phase 2 failed for ${characterId}:`, err.message);
         return;
     }
 
-    if (!hasChanged && !needsHealing) {
-        log('Turn', `${characterId}: No visual change detected.`);
-        return;
-    }
+    if (!hasChanged && !needsHealing) return;
 
     let nextLayers = currentLayers;
 
-    // ─── Phase 3: Extraction (only if text changed) ───
+    // ─── Phase 3: Extraction ───
     if (hasChanged) {
         let rawUpdate;
         try {
-            rawUpdate = await detectLayers(
-                text,
-                history,
-                charName,
-                character.identity,
-                currentLayers,
-                character.slots,
-                s.smartProfileId
-            );
+            rawUpdate = await detectLayers(text, history, charName, character.identity, currentLayers, character.slots, s.smartProfileId);
         } catch (err) {
             error('Turn', `Phase 3 failed for ${characterId}:`, err.message);
             return;
         }
-
         nextLayers = mergeLayeredUpdate(currentLayers, parsePhase3(rawUpdate));
+    }
 
-        // ─── Phase 3.5: Ensemble Autosave ───
+    // ─── Phase 3.5: Logic Evaluation ───
+    const styleObj = resolveStyle(characterId);
+    await evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal);
+
+    if (hasChanged) {
         const ensembleLabel = generateEnsembleLabel(nextLayers);
         const ensembleKey   = generateEnsembleKey(nextLayers);
-
         await lockedWriteEnsemble(messageId, characterId, ensembleKey, ensembleLabel, nextLayers);
         upsertChatEnsemble(characterId, ensembleKey, ensembleLabel, nextLayers);
     }
@@ -258,40 +230,22 @@ export async function processKnownSubject(messageId, characterId, text, history,
     try {
         if (signal?.aborted) return;
         const emotionSlug = slugify(nextLayers.emotion);
-        const file = await generate(
-            characterId,
-            'layered',
-            emotionSlug,
-            nextLayers,
-            nextLayers.emotion,
-            nextLayers.pose,
-            character.identity,
-            character.seed,
-            false,
-            signal
-        );
+        const file = await generate(characterId, 'layered', emotionSlug, nextLayers, nextLayers.emotion, nextLayers.pose, character.identity, character.seed, false, signal);
 
         addToFileIndex(file);
         updateActiveImage(file);
         updateChainLayers(characterId, nextLayers, file);
         await lockedPatchVisualStateImage(messageId, characterId, file, recordId);
         
-        // Ephemeral Cleanup: delete previous active images for this character (regardless of tag/emotion)
         if (!s.keepCache) {
             const charPrefix = `plz_${characterId}_`;
-            const staleFiles = Array.from(state.fileIndex).filter(f => 
-                f.startsWith(charPrefix) && f !== file
-            );
-            
+            const staleFiles = Array.from(state.fileIndex).filter(f => f.startsWith(charPrefix) && f !== file);
             if (staleFiles.length > 0) {
                 await deleteFiles(staleFiles);
                 removeFromFileIndex(staleFiles);
             }
         }
-
-        // Notify UI to redraw cards
         document.dispatchEvent(new CustomEvent('plz:roster-render-req'));
-        
     } catch (err) {
         error('Turn', `Generation failed for ${characterId}:`, err.message);
     }

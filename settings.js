@@ -1,13 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/settings.js
- * @stamp {"utc":"2026-04-19T21:10:00.000Z"}
+ * @stamp {"utc":"2026-05-01T07:00:00.000Z"}
  * @architectural-role Stateful Owner (Extension Settings)
  * @description
  * Manages the Personalyze profile-based settings lifecycle.
  * Implements the "Working Table" (Sandbox vs. Checkpoint) architecture.
  * 
- * Updated for Explicit Seed Architecture:
- * 1. Added autoIncrementSeed to SETTINGS_DEFAULTS.
+ * Updated for Reactive Logic Engine:
+ * 1. Added migration logic to ensureSchema to safely retrofit existing 
+ *    styles with the logicProbes object.
  *
  * @api-declaration
  * getSettings()             — Returns the activeState (working copy).
@@ -18,7 +19,7 @@
  * @contract
  *   assertions:
  *     purity: Stateful Owner
- *     state_ownership: [extension_settings.personalyze]
+ *     state_ownership:[extension_settings.personalyze]
  *     external_io: [saveSettingsDebounced]
  */
 
@@ -115,8 +116,8 @@ export const SETTINGS_DEFAULTS = Object.freeze({
     runwareUseLayerDiffuse:   DEFAULT_RUNWARE_USE_LAYER_DIFFUSE,
     runwareRemoveBackground:  DEFAULT_RUNWARE_REMOVE_BG,
     runwareRmbgModel:         DEFAULT_RUNWARE_RMBG_MODEL,
-    runwareModels:            [], // Persistent storage for manual checkpoints
-    runwareLoras:             [], // Persistent storage for fetched/manual LoRAs
+    runwareModels:[], // Persistent storage for manual checkpoints
+    runwareLoras:[], // Persistent storage for fetched/manual LoRAs
 
     // Generation Economy
     maxResolution:            DEFAULT_MAX_RESOLUTION,
@@ -209,6 +210,10 @@ export function initSettings() {
         }
         if (val.engineParams === undefined) {
             val.engineParams = {};
+            changed = true;
+        }
+        if (val.logicProbes === undefined) {
+            val.logicProbes = {};
             changed = true;
         }
         if (changed) val._migrated = true;

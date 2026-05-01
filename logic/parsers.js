@@ -1,15 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/parsers.js
- * @stamp {"utc":"2026-04-17T17:40:00.000Z"}
+ * @stamp {"utc":"2026-05-01T07:30:00.000Z"}
  * @architectural-role State Derivation (Pure)
  * @description
  * Pure functions to parse structured text responses from the Layered State Pipeline.
  * Implements the logic for handling "KEEP" (persistence) and "None" (removal) instructions.
  * 
- * Updated for Dynamic Variable Architecture:
- * 1. generateEnsembleLabel is now slot-agnostic (iterates all non-meta slots).
- * 2. generateEnsembleKey is now slot-agnostic (iterates all slots except pose).
- * 3. Both use alphabetical key sorting to ensure deterministic output.
+ * Updated for Reactive Logic Engine:
+ * 1. mergeLayeredUpdate now initializes and preserves the logic dictionary.
+ * 2. generateEnsembleLabel and generateEnsembleKey now exclude the logic key.
  *
  * @api-declaration
  * parsePhase1(raw) -> string|null
@@ -124,7 +123,7 @@ export function parseSceneRoster(raw) {
  * @returns {object} The new consolidated state.
  */
 export function mergeLayeredUpdate(current, update) {
-    // 1. Initialize next state with full standard slot template
+    // 1. Initialize next state with full standard slot template and logic container
     const next = Object.assign({
         outerwear:   null,
         top:         null,
@@ -132,6 +131,7 @@ export function mergeLayeredUpdate(current, update) {
         accessories: null,
         emotion:     'neutral',
         pose:        'upright',
+        logic:       {},
     }, structuredClone(current ?? {}));
 
     // 2. Iterate through the LLM-derived updates
@@ -183,7 +183,7 @@ export function generateEnsembleLabel(layers) {
     const keys = Object.keys(layers || {}).sort();
     
     for (const key of keys) {
-        if (META_SLOTS.includes(key)) continue;
+        if (META_SLOTS.includes(key) || key === 'logic') continue;
         const text = limitToThreeWords(layers[key]);
         if (text) clothingParts.push(text);
     }
@@ -235,7 +235,7 @@ export function compileIdentityString(identityMap) {
 
 /**
  * Generates a stable unique key for an ensemble.
- * Iterates through all slots except pose.
+ * Iterates through all slots except pose and logic.
  * 
  * @param {object} layers 
  * @returns {string}
@@ -245,7 +245,7 @@ export function generateEnsembleKey(layers) {
     const keys = Object.keys(layers || {}).sort();
     
     for (const key of keys) {
-        if (key === 'pose') continue;
+        if (key === 'pose' || key === 'logic') continue;
         const text = limitToThreeWords(layers[key]);
         if (text) components.push(text);
     }

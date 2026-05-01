@@ -1,22 +1,19 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/compiler.js
- * @stamp {"utc":"2026-04-17T16:10:00.000Z"}
+ * @stamp {"utc":"2026-05-01T07:40:00.000Z"}
  * @architectural-role State Derivation (Visual Requirements)
  * @description
  * Handles resolution measurement and prompt synthesis.
  * Determines the target dimensions based on UI footprint or style overrides,
  * and compiles template variables into a final prompt string.
  * 
- * Updated for Dynamic Iterator Pattern:
- * 1. finalizePrompt now accepts raw layers object.
- * 2. Implemented dynamic {{slot}} variable replacement.
- * 3. Implemented smart overflow logic via {{layers_description}}.
- * 4. Added stale placeholder cleanup pass.
+ * Updated for Reactive Logic Engine:
+ * 1. Added Phase 3.5 to finalizePrompt to inject resolved logic probe values.
  * 
  * @api-declaration
  * resolveDimensions(characterId, styleObj) -> { width: number, height: number }
  * resolveStyle(characterId) -> Object (The expanded Style Package)
- * finalizePrompt(layers, anchor, emotion, pose, template) -> string
+ * finalizePrompt(layers, identityMap, emotion, pose, template) -> string
  * 
  * @contract
  *   assertions:
@@ -114,7 +111,8 @@ export function resolveStyle(characterId) {
             model:              style.model              || DEFAULT_STYLE_PACKAGE.model,
             engineParams:       style.engineParams       || {},
             useLayerDiffuse:    !!style.useLayerDiffuse,
-            resolutionOverride: style.resolutionOverride || null
+            resolutionOverride: style.resolutionOverride || null,
+            logicProbes:        style.logicProbes        || {}
         };
     }
     
@@ -141,6 +139,7 @@ function _serialize(val) {
  *   {{emotion}}, {{pose}}                     — core meta
  *   {{hair}}, {{eyes}}, {{face}}, etc.        — individual identity fields (just the value)
  *   {{top}}, {{bottom}}, {{outerwear}}, etc.  — individual wardrobe slots ("item (modifier)")
+ *   {{is_wet}}, {{holding_weapon}}, etc.      — reactive logic probes (resolved strings)
  *   {{identity_anchor}}                        — overflow of unconsumed identity fields ("Label: value, ...")
  *   {{layers_description}}                     — overflow of unconsumed wardrobe slots ("Label: item (modifier), ...")
  *
@@ -171,11 +170,21 @@ export function finalizePrompt(layers, identityMap, emotion = '', pose = '', tem
 
     // Phase 3: Individual wardrobe slot replacement  (e.g. {{top}}, {{bottom}})
     for (const [key, val] of Object.entries(layers || {})) {
-        if (key === 'emotion' || key === 'pose' || key === 'identity_anchor' || key === 'layers_description') continue;
+        if (key === 'emotion' || key === 'pose' || key === 'identity_anchor' || key === 'layers_description' || key === 'logic') continue;
         const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'gi');
         if (regex.test(result)) {
             result = result.replace(regex, _serialize(val));
             usedLayerKeys.add(key);
+        }
+    }
+
+    // Phase 3.5: Reactive Logic Probes
+    // Injects resolved probe results (strings) into the template.
+    const logicMap = layers?.logic || {};
+    for (const [key, val] of Object.entries(logicMap)) {
+        const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'gi');
+        if (regex.test(result)) {
+            result = result.replace(regex, String(val ?? '').trim());
         }
     }
 
@@ -194,7 +203,7 @@ export function finalizePrompt(layers, identityMap, emotion = '', pose = '', tem
     // Format: "Label: item (modifier), ..."
     const layerParts = [];
     for (const [key, val] of Object.entries(layers || {})) {
-        if (key === 'emotion' || key === 'pose' || key === 'identity_anchor' || key === 'layers_description') continue;
+        if (key === 'emotion' || key === 'pose' || key === 'identity_anchor' || key === 'layers_description' || key === 'logic') continue;
         if (usedLayerKeys.has(key) || !val) continue;
         const item = val.item;
         const mod  = val.modifier;

@@ -1,12 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/defaults.js
- * @stamp {"utc":"2026-04-17T08:02:00.000Z"}
+ * @stamp {"utc":"2026-05-01T06:58:00.000Z"}
  * @architectural-role Default Configuration
  * @description
  * Default constants for the Layered State Pipeline.
  * 
- * Updated for Dynamic Variable Architecture:
- * 1. Added RESERVED_SLOT_KEYS to protect the system namespace from custom category collisions.
+ * Updated for Reactive Logic Engine:
+ * 1. Added logicProbes to DEFAULT_STYLE_PACKAGE schema.
  * 
  * @api-declaration
  * POLLINATIONS_BASE_URL
@@ -25,6 +25,12 @@
  * DEFAULT_RUNWARE_RMBG_MODEL
  * DEFAULT_BLUEPRINTS
  * RESERVED_SLOT_KEYS
+ * 
+ * @contract
+ *   assertions:
+ *     purity: Pure Data
+ *     state_ownership: []
+ *     external_io:[]
  */
 
 /** Primary API gateway for Pollinations. */
@@ -151,14 +157,14 @@ export const DEFAULT_RUNWARE_RMBG_MODEL = 'runware:112@9';
  */
 export const META_SLOT_EMOTION = 'emotion';
 export const META_SLOT_POSE    = 'pose';
-export const META_SLOTS        = [META_SLOT_EMOTION, META_SLOT_POSE];
+export const META_SLOTS        =[META_SLOT_EMOTION, META_SLOT_POSE];
 
 /**
  * Base Physical Identity Slots.
  * Non-deletable fields initialized for every character's granular identity map.
  * Mirrors the fixed fields in ANCHOR_SCAN_PROMPT.
  */
-export const BASE_IDENTITY_SLOTS = [
+export const BASE_IDENTITY_SLOTS =[
     'hair',
     'eyes',
     'face',
@@ -256,7 +262,8 @@ export const DEFAULT_STYLE_PACKAGE = {
     resolutionOverride: null,
     template: DEFAULT_VN_STYLE_SUFFIX,
     negativePrompt: '',
-    loras:[]
+    loras:[],
+    logicProbes: {}
 };
 
 /** Default Dynamic Blueprints for Model Parameters */

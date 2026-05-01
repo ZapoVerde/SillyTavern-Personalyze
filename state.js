@@ -1,13 +1,12 @@
 /**
  * @file data/default-user/extensions/personalyze/state.js
- * @stamp {"utc":"2026-04-17T13:10:00.000Z"}
+ * @stamp {"utc":"2026-05-01T08:50:00.000Z"}
  * @architectural-role Stateful Owner (Runtime State)
  * @description
  * Single source of truth for all PersonaLyze in-memory runtime state.
  * 
- * Updated for Granular Identity Architecture:
- * 1. Replaced identityAnchor (string) with identity (map of strings).
- * 2. Updated ensurers and setters to handle structured physical traits.
+ * Updated for Reactive Logic Engine:
+ * 1. Added `logic: {}` to all baseline activeLayers templates.
  * 
  * @api-declaration
  * state                                    — Read-only access to runtime data.
@@ -54,7 +53,8 @@ export const state = {
         bottom:      null,
         accessories: null,
         emotion:     'neutral',
-        pose:        'upright'
+        pose:        'upright',
+        logic:       {}
     },
     
     activeImageFile: null,
@@ -64,7 +64,7 @@ export const state = {
     chatCharacters: {}, // { [id]: { label, identity: {}, seed, ensembles, aka, defaultEnsemble, slots: string[], styleName } }
 
     // Per-chat roster
-    activeRoster: [],
+    activeRoster:[],
 
     // Last-known visual state per character.
     characterChain: {},
@@ -106,11 +106,11 @@ export function setWorkshopCharacter(characterId) {
 export function resetState() {
     state.activeCharacterId    = null;
     state.activeLayers = {
-        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral', pose: 'upright'
+        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral', pose: 'upright', logic: {}
     };
     state.activeImageFile      = null;
     state.chatCharacters       = {};
-    state.activeRoster         = [];
+    state.activeRoster         =[];
     state.characterChain       = {};
     state.fileIndex            = new Set();
     state._workshopCharacterId = null;
@@ -150,17 +150,17 @@ export function getChainEntry(characterId) {
 export function bulkInitState({ chatCharacters, characterChain, activeRoster, activeCharacterId, activeLayers, activeImageFile }) {
     state.chatCharacters      = structuredClone(chatCharacters ?? {});
     state.characterChain      = structuredClone(characterChain ?? {});
-    state.activeRoster        = Array.isArray(activeRoster) ? [...activeRoster] : [];
+    state.activeRoster        = Array.isArray(activeRoster) ? [...activeRoster] :[];
     state.activeCharacterId   = activeCharacterId   ?? null;
     state.activeLayers        = structuredClone(activeLayers ?? {
-        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral', pose: 'upright'
+        outerwear: null, top: null, bottom: null, accessories: null, emotion: 'neutral', pose: 'upright', logic: {}
     });
     state.activeImageFile     = activeImageFile     ?? null;
 }
 
 /** Replaces the active character roster for this chat. */
 export function setActiveRoster(roster) {
-    state.activeRoster = Array.isArray(roster) ? [...roster] : [];
+    state.activeRoster = Array.isArray(roster) ?[...roster] :[];
 }
 
 /** Overwrites the file index. */
@@ -187,7 +187,8 @@ export function removeFromFileIndex(filenames) {
 export function getCleanLayers(slots) {
     const layers = {
         emotion: 'neutral',
-        pose:    'upright'
+        pose:    'upright',
+        logic:   {}
     };
     (slots || BASE_SLOTS).forEach(s => {
         layers[s] = null;
@@ -208,7 +209,7 @@ export function ensureChatChar(id) {
             identity: {}, 
             seed: defaultSeed, 
             ensembles: {}, 
-            aka: [], 
+            aka:[], 
             defaultEnsemble: null, 
             styleName: null,
             slots: [...BASE_SLOTS],
@@ -260,7 +261,7 @@ export function deleteChatEnsemble(id, key) {
 /** Updates a character's AKA aliases. */
 export function upsertChatCharacterAka(id, akaList) {
     const char = ensureChatChar(id);
-    char.aka = Array.isArray(akaList) ? [...akaList] : [];
+    char.aka = Array.isArray(akaList) ? [...akaList] :[];
 }
 
 /** Updates a character's designated default ensemble key. */
@@ -278,7 +279,7 @@ export function upsertChatCharacterStyle(id, styleName) {
 /** Updates a character's custom wardrobe slot list. */
 export function upsertChatSlots(id, slots) {
     const char = ensureChatChar(id);
-    char.slots = Array.isArray(slots) ? [...slots] : [...BASE_SLOTS];
+    char.slots = Array.isArray(slots) ? [...slots] :[...BASE_SLOTS];
 }
 
 /** Updates a character's archived status in local DNA. */

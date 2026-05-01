@@ -1,19 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/forceUpdate.js
- * @stamp {"utc":"2026-04-19T00:00:00.000Z"}
+ * @stamp {"utc":"2026-05-01T09:00:00.000Z"}
  * @architectural-role Stateful Orchestrator
  * @description
  * Implements the Force Apparel Update pipeline triggered by the "Update Apparel"
  * gear menu button. Bypasses the Phase 2 "Change Gate" and runs Phase 3 layered
  * extraction directly against the most recent AI message.
  *
- * Behaviour:
- *   1. Dispatches plz:portrait-status 'generating' to show the spinner immediately.
- *   2. Opens a Workshop forensic log entry via startWorkshopTurn.
- *   3. Calls detectLayers (Phase 3) against the latest AI message.
- *   4. If the merge produces no change (LLM returned all KEEP), halts silently.
- *   5. Executes the Two-Write Pattern: lockedWriteVisualState → generate → lockedPatchVisualStateImage.
- *   6. On generation error: toastr.error, wardrobe DNA record remains valid with null image.
+ * Updated for Reactive Logic Engine:
+ * 1. Now calls evaluateLogic (Phase 3.5) after manual extraction.
  *
  * @api-declaration
  * forceApparelUpdate(characterId) -> Promise<void>
@@ -22,7 +17,7 @@
  *   assertions:
  *     purity: Stateful Orchestrator
  *     state_ownership: [state (via setters)]
- *     external_io: [LLM, imageCache.js, dnaWriter.js, callLog.js]
+ *     external_io:[LLM, imageCache.js, dnaWriter.js, callLog.js, logicPhase.js]
  */
 
 import { getContext } from '../../../../../extensions.js';
@@ -37,11 +32,12 @@ import {
 import { buildHistoryText, slugify } from '../../utils/history.js';
 import { detectLayers } from '../../io/llm/subject.js';
 import { parsePhase3, mergeLayeredUpdate } from '../parsers.js';
-import { generate, deleteFiles } from '../../imageCache.js';
+import { generate, deleteFiles, resolveStyle } from '../../imageCache.js';
 import { lockedWriteVisualState, lockedPatchVisualStateImage } from '../../io/dnaWriter.js';
 import { startWorkshopTurn } from '../../utils/callLog.js';
 import { TaskQueue } from '../../utils/queue.js';
 import { error } from '../../utils/logger.js';
+import { evaluateLogic } from './logicPhase.js';
 
 /** Dedicated queue for manual force-update requests (max 1 concurrent). */
 const forceQueue = new TaskQueue(1);
@@ -108,6 +104,10 @@ async function _runForceUpdate(characterId) {
     }
 
     const nextLayers = mergeLayeredUpdate(currentLayers, parsePhase3(rawUpdate));
+
+    // ── Phase 3.5: Reactive Logic Evaluation ──────────────────────────────────
+    const styleObj = resolveStyle(characterId);
+    await evaluateLogic(characterId, nextLayers, currentLayers, styleObj, message.mes, history, undefined);
 
     // ── KEEP Guard: abort if LLM returned all-KEEP (no actual change) ─────────
     if (JSON.stringify(nextLayers) === JSON.stringify(currentLayers)) {

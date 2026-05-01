@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleListeners.js
- * @stamp {"utc":"2026-04-19T16:20:00.000Z"}
+ * @stamp {"utc":"2026-05-01T09:10:00.000Z"}
  * @architectural-role UI Controller (Global Styles)
  * @description
  * Orchestrates the management and editing of Global Style Render Pipelines.
@@ -8,8 +8,9 @@
  * Edits are applied directly to persistent styleWorkspaces for live testing
  * and multi-device persistence before being committed to the styleLibrary.
  * 
- * Updated for Forensic Observability:
- * 1. Added startWorkshopTurn call to the Test Render handler.
+ * Updated for Reactive Logic Engine:
+ * 1. Integrated renderLogicDrawer into the style render lifecycle.
+ * 2. Integrated bindStyleLogicHandlers into the global workshop binding phase.
  * 
  * @api-declaration
  * renderStylesView() -> void
@@ -19,7 +20,7 @@
  *   assertions:
  *     purity: IO / Stateful UI
  *     state_ownership: [styleWorkspaces]
- *     external_io: [settings.js, styleModals.js, imageCache.js, models.js, DOM, callLog.js]
+ *     external_io: [settings.js, styleModals.js, imageCache.js, models.js, DOM, callLog.js, styleLogicListeners.js]
  */
 
 import { getSettings, getMetaSettings, updateSetting } from '../../settings.js';
@@ -31,6 +32,7 @@ import { smartResize } from '../../utils/dom.js';
 import { getStylesTabHTML } from './styleTemplates.js';
 import { openPipelineModal, openLoraModal } from './styleModals.js';
 import { startWorkshopTurn } from '../../utils/callLog.js';
+import { bindStyleLogicHandlers, renderLogicDrawer } from './styleLogicListeners.js';
 
 /**
  * Checks if the workspace version of a style differs from its checkpoint in the library.
@@ -95,6 +97,9 @@ export function renderStylesView() {
     const html = getStylesTabHTML(lib, meta.defaultStyleName, activeName, styleObj, _isStyleDirty(activeName));
     const $panel = $('#plz-tab-styles').html(html);
 
+    // Reactive Logic Engine mount
+    renderLogicDrawer();
+
     $panel.find('.plz-auto-textarea').each(function() { smartResize(this); });
 }
 
@@ -103,6 +108,9 @@ export function renderStylesView() {
  */
 export function bindStyleHandlers() {
     const $overlay = $('#plz-workshop-overlay');
+
+    // ─── Reactive Logic Engine ────────────────────────────────────────────────
+    bindStyleLogicHandlers($overlay);
 
     // 1. Style Selection
     $overlay.on('change', '#plz-style-selector', function() {
@@ -228,7 +236,6 @@ export function bindStyleHandlers() {
         const activeName = getSettings().currentStyleName;
         const style = meta.styleWorkspaces[activeName];
 
-        // Forensic Logging: Open a Workshop turn so the test generation is filed correctly
         startWorkshopTurn(`Style Test Render: ${activeName}`);
 
         const $btn = $(this);
