@@ -1369,13 +1369,19 @@ textarea.plz-fullscreen-input {
 /* --- Token Chips (Cloud Layout) --- */
 .plz-var-list {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    flex-wrap: wrap; /* Critical: allows them to sit side-by-side */
+    gap: 8px;
     margin-bottom: 15px;
-    padding: 2px;
+    background: rgba(0, 0, 0, 0.1);
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .plz-token-chip {
+    flex: 0 1 auto !important; /* Prevents them from growing to fill the row */
+    min-width: 0;
+    max-width: fit-content;
     background: rgba(0, 0, 0, 0.25);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 5px;
@@ -1399,4 +1405,36 @@ textarea.plz-fullscreen-input {
     transform: translateY(0);
     background: var(--SmartThemeQuoteColor);
     color: #000;
+}
+
+/* --- Fix Logic Probe Output Type Toggles --- */
+.plz-modal [data-id="output_type"], 
+.plz-modal .segmented_control {
+    background: rgba(0, 0, 0, 0.2) !important;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 5px;
+    padding: 2px;
+}
+
+.plz-modal .segmented_control > div {
+    color: var(--SmartThemeBodyColor) !important;
+    opacity: 0.6;
+    transition: all 0.2s;
+}
+
+.plz-modal .segmented_control > div.selected {
+    background: var(--SmartThemeQuoteColor) !important;
+    color: #000 !important; /* High contrast for the active state */
+    opacity: 1;
+    border-radius: 4px;
+}
+
+.plz-modal label {
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.8;
+    color: var(--SmartThemeQuoteColor);
+    margin-bottom: 5px;
+    display: block;
 }
