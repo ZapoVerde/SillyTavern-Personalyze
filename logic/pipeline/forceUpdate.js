@@ -107,7 +107,7 @@ async function _runForceUpdate(characterId) {
 
     // ── Phase 3.5: Reactive Logic Evaluation ──────────────────────────────────
     const styleObj = resolveStyle(characterId);
-    await evaluateLogic(characterId, nextLayers, currentLayers, styleObj, message.mes, history, undefined);
+    await evaluateLogic(characterId, nextLayers, currentLayers, styleObj, message.mes, history, undefined, character.identity);
 
     // ── KEEP Guard: abort if LLM returned all-KEEP (no actual change) ─────────
     if (JSON.stringify(nextLayers) === JSON.stringify(currentLayers)) {

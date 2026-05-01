@@ -11,7 +11,7 @@
  * 4. Merges resolved strings into nextLayers.logic for downstream prompt synthesis.
  * 
  * @api-declaration
- * evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal) -> Promise<void>
+ * evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal, identity) -> Promise<void>
  * 
  * @contract
  *   assertions:
@@ -54,8 +54,9 @@ function serializeSlot(val) {
  * @param {string} text - The current message text.
  * @param {string} history - Preceding turns.
  * @param {AbortSignal} [signal]
+ * @param {object} [identity] - Character identity fields (hair, eyes, etc.). Static; never contributes dirtiness.
  */
-export async function evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal) {
+export async function evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal, identity = {}) {
     const probes = styleObj?.logicProbes || {};
     const probeKeys = Object.keys(probes);
     if (probeKeys.length === 0) return;
@@ -94,11 +95,16 @@ export async function evaluateLogic(characterId, nextLayers, currentLayers, styl
         let isDirty = false;
 
         // B. Build context and evaluate dirtiness
-        const contextData = { 
-            current_turn: text, 
-            history, 
-            character_name: characterId 
+        const contextData = {
+            current_turn: text,
+            history,
+            character_name: characterId
         };
+
+        // Identity fields are static — inject upfront, never dirty
+        for (const [k, v] of Object.entries(identity)) {
+            contextData[k] = v || 'unspecified';
+        }
         
         for (const dep of promptDeps) {
             // Case 1: Narrative Triggers (Always Dirty)

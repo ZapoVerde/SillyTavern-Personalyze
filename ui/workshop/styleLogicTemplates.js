@@ -7,9 +7,9 @@
  * Implements a CRUD-row interface for surgical editing of narrative probes.
  * 
  * @api-declaration
- * getLogicDrawerHTML(styleObj, activeProbeKey, isProbeDirty) -> string
+ * getLogicDrawerHTML(styleObj, activeProbeKey, isProbeDirty, identitySlots) -> string
  * getProbeSelectorHTML(probes, activeKey, isDirty) -> string
- * getProbeEditorHTML(probeKey, probeObj) -> string
+ * getProbeEditorHTML(probeKey, probeObj, identitySlots) -> string
  * 
  * @contract
  *   assertions:
@@ -19,12 +19,12 @@
  */
 
 import { escapeHtml } from '../../utils/history.js';
-import { BASE_SLOTS } from '../../defaults.js';
+import { BASE_SLOTS, BASE_IDENTITY_SLOTS } from '../../defaults.js';
 
 /**
  * Main drawer shell for the Logic Probes section.
  */
-export function getLogicDrawerHTML(styleObj, activeProbeKey = '', isProbeDirty = false) {
+export function getLogicDrawerHTML(styleObj, activeProbeKey = '', isProbeDirty = false, identitySlots = BASE_IDENTITY_SLOTS) {
     const probes = styleObj?.logicProbes || {};
     const probeObj = probes[activeProbeKey] || null;
 
@@ -33,7 +33,7 @@ export function getLogicDrawerHTML(styleObj, activeProbeKey = '', isProbeDirty =
         <summary style="cursor:pointer; font-weight:bold; opacity:0.8;">
             <i class="fa-solid fa-brain" style="margin-right:5px; font-size:0.9em;"></i> Logic Probes
         </summary>
-        
+
         <div id="plz-logic-config-container" style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
             <!-- CRUD Row -->
             <div id="plz-logic-selector-container">
@@ -42,7 +42,7 @@ export function getLogicDrawerHTML(styleObj, activeProbeKey = '', isProbeDirty =
 
             <!-- Active Editor Area -->
             <div id="plz-logic-editor-container">
-                ${probeObj ? getProbeEditorHTML(activeProbeKey, probeObj) : '<div style="text-align:center; opacity:0.4; font-size:0.85em; padding:20px;">Select or create a probe to begin.</div>'}
+                ${probeObj ? getProbeEditorHTML(activeProbeKey, probeObj, identitySlots) : '<div style="text-align:center; opacity:0.4; font-size:0.85em; padding:20px;">Select or create a probe to begin.</div>'}
             </div>
         </div>
     </details>`;
@@ -74,16 +74,16 @@ export function getProbeSelectorHTML(probes, activeKey = '', isDirty = false) {
 /**
  * Renders the detailed configuration fields for an active probe.
  */
-export function getProbeEditorHTML(probeKey, probeObj) {
+export function getProbeEditorHTML(probeKey, probeObj, identitySlots = BASE_IDENTITY_SLOTS) {
     const isBoolean = probeObj.type === 'boolean';
 
     return `
     <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:10px;">
-        
+
         <!-- Legend (Click to Copy) -->
         <div style="padding-bottom:5px; border-bottom:1px solid rgba(255,255,255,0.05);">
             <div style="font-size:0.7em; font-weight:bold; text-transform:uppercase; opacity:0.5; margin-bottom:5px;">Available Tokens</div>
-            ${getLogicVariableLegendHTML()}
+            ${getLogicVariableLegendHTML(identitySlots)}
         </div>
 
         <div>
@@ -135,15 +135,15 @@ export function getProbeEditorHTML(probeKey, probeObj) {
 /**
  * Builds the click-to-copy token legend for the logic prompt.
  */
-function getLogicVariableLegendHTML() {
+function getLogicVariableLegendHTML(identitySlots = BASE_IDENTITY_SLOTS) {
     const tokens = [
         { t: '{{history}}', d: 'Chat context' },
         { t: '{{current_turn}}', d: 'Latest message' },
         { t: '{{character_name}}', d: 'Active ID' }
     ];
 
-    // Add Wardrobe slots
     BASE_SLOTS.forEach(s => tokens.push({ t: `{{${s}}}`, d: 'Clothing' }));
+    identitySlots.forEach(s => tokens.push({ t: `{{${s}}}`, d: 'Identity' }));
 
     return `
     <div class="plz-logic-token-legend">

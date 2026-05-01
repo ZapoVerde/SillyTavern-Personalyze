@@ -25,6 +25,7 @@ import { confirmModal, promptModal } from '../../utils/modal.js';
 import { openTextModal } from '../../utils/textModal.js';
 import { executeLogicProbe } from '../../io/llm/logicExecutor.js';
 import { getLogicDrawerHTML, getProbeSelectorHTML, getProbeEditorHTML } from './styleLogicTemplates.js';
+import { state } from '../../state.js';
 import { log, warn } from '../../utils/logger.js';
 import { getContext } from '../../../../../extensions.js';
 import { buildHistoryText } from '../../utils/history.js';
@@ -67,7 +68,11 @@ export function renderLogicDrawer() {
     const style = meta.styleWorkspaces[s.currentStyleName];
     if (!style) return;
 
-    $('#plz-logic-drawer-mount').html(getLogicDrawerHTML(style, _activeProbeKey, _isProbeDirty));
+    const wasOpen = $('#plz-logic-details').prop('open');
+    const workshopChar = state.chatCharacters[state._workshopCharacterId];
+    const identitySlots = Object.keys(workshopChar?.identity || {});
+    $('#plz-logic-drawer-mount').html(getLogicDrawerHTML(style, _activeProbeKey, _isProbeDirty, identitySlots));
+    if (wasOpen) $('#plz-logic-details').prop('open', true);
     
     // Bind Connection Dropdown if editor is open
     if (_activeProbeKey && style.logicProbes[_activeProbeKey]) {

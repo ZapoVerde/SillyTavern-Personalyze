@@ -212,7 +212,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
 
     // ─── Phase 3.5: Logic Evaluation ───
     const styleObj = resolveStyle(characterId);
-    await evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal);
+    await evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal, character.identity);
 
     if (hasChanged) {
         const ensembleLabel = generateEnsembleLabel(nextLayers);

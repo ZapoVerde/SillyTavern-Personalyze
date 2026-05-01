@@ -165,7 +165,7 @@ export async function runScenePipeline(messageId, signal) {
 
             // ─── Phase 3.5: Logic Evaluation ───
             const styleObj = resolveStyle(item.id);
-            await evaluateLogic(item.id, nextLayers, item.layers, styleObj, message.mes, history, signal);
+            await evaluateLogic(item.id, nextLayers, item.layers, styleObj, message.mes, history, signal, item.anchor);
 
             const ensembleLabel = generateEnsembleLabel(nextLayers);
             const ensembleKey   = generateEnsembleKey(nextLayers);
