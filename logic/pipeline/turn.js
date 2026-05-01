@@ -198,8 +198,9 @@ export async function processKnownSubject(messageId, characterId, text, history,
 
     let nextLayers = currentLayers;
 
-    // ─── Phase 3: Extraction ───
+    // ─── The Master Trigger Gate ───
     if (hasChanged) {
+        // Phase 3: Extraction
         let rawUpdate;
         try {
             rawUpdate = await detectLayers(text, history, charName, character.identity, currentLayers, character.slots, s.smartProfileId);
@@ -208,13 +209,13 @@ export async function processKnownSubject(messageId, characterId, text, history,
             return;
         }
         nextLayers = mergeLayeredUpdate(currentLayers, parsePhase3(rawUpdate));
-    }
 
-    // ─── Phase 3.5: Logic Evaluation ───
-    const styleObj = resolveStyle(characterId);
-    await evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal, character.identity);
+        // Phase 3.5: Logic Evaluation (Strict Responder)
+        // Only fires because the Fast Model confirmed a change.
+        const styleObj = resolveStyle(characterId);
+        await evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal, character.identity);
 
-    if (hasChanged) {
+        // Save new state
         const ensembleLabel = generateEnsembleLabel(nextLayers);
         const ensembleKey   = generateEnsembleKey(nextLayers);
         await lockedWriteEnsemble(messageId, characterId, ensembleKey, ensembleLabel, nextLayers);
