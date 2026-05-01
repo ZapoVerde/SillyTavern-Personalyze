@@ -1416,26 +1416,36 @@ textarea.plz-fullscreen-input {
     padding: 2px;
 }
 
-/* --- Fix Logic Probe Output Type Toggles --- */
-.plz-modal [data-id="output_type"], 
-.plz-modal .segmented_control {
-    background: rgba(0, 0, 0, 0.2) !important;
-    border: 1px solid var(--SmartThemeBorderColor);
+/* --- Logic Probe Output Type Toggle --- */
+.plz-logic-output-type {
+    display: flex;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 5px;
-    padding: 2px;
+    overflow: hidden;
 }
 
-.plz-modal .segmented_control > div {
-    color: var(--SmartThemeBodyColor) !important;
-    opacity: 0.6;
-    transition: all 0.2s;
+.plz-logic-type-btn {
+    flex: 1;
+    padding: 5px 8px;
+    border: none;
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    font-size: 0.8em;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: background 0.15s ease, opacity 0.15s ease, color 0.15s ease;
 }
 
-.plz-modal .segmented_control > div.selected {
-    background: var(--SmartThemeQuoteColor) !important;
-    color: #000 !important; /* High contrast for the active state */
+.plz-logic-type-btn:hover:not(.plz-active) {
+    opacity: 0.8;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.plz-logic-type-btn.plz-active {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--SmartThemeQuoteColor);
     opacity: 1;
-    border-radius: 4px;
 }
 
 .plz-modal label {

@@ -86,17 +86,15 @@ export function getProbeEditorHTML(probeKey, probeObj) {
             ${getLogicVariableLegendHTML()}
         </div>
 
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; align-items:end;">
-            <div>
-                <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:4px;">Evaluation Engine</label>
-                <select id="plz-logic-profile" class="text_pole" style="width:100%;"></select>
-            </div>
-            <div>
-                <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:4px;">Output Type</label>
-                <div style="display:flex; border:1px solid var(--SmartThemeBorderColor); border-radius:4px; overflow:hidden;">
-                    <button class="plz-logic-type-btn ${isBoolean ? 'plz-active' : ''}" data-type="boolean" style="flex:1; padding:4px; border:none; font-size:0.8em; cursor:pointer;">Boolean</button>
-                    <button class="plz-logic-type-btn ${!isBoolean ? 'plz-active' : ''}" data-type="text" style="flex:1; padding:4px; border:none; font-size:0.8em; cursor:pointer;">Text</button>
-                </div>
+        <div>
+            <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:4px;">Evaluation Engine</label>
+            <select id="plz-logic-profile" class="text_pole" style="width:100%;"></select>
+        </div>
+        <div>
+            <label style="display:block; font-size:0.75em; opacity:0.6; margin-bottom:4px;">Output Type</label>
+            <div class="plz-logic-output-type">
+                <button class="plz-logic-type-btn ${isBoolean ? 'plz-active' : ''}" data-type="boolean">Boolean</button>
+                <button class="plz-logic-type-btn ${!isBoolean ? 'plz-active' : ''}" data-type="text">Text</button>
             </div>
         </div>
 
