@@ -148,13 +148,7 @@ function getLogicVariableLegendHTML() {
     BASE_SLOTS.forEach(s => tokens.push({ t: `{{${s}}}`, d: 'Clothing' }));
 
     return `
-    <div style="display:flex; flex-wrap:wrap; gap:4px; max-height: 60px; overflow-y: auto; padding:2px;">
-        ${tokens.map(item => `
-            <code class="plz-logic-token-chip" 
-                  title="Click to copy: ${item.d}"
-                  style="cursor:pointer; font-size:0.8em; background:rgba(0,0,0,0.3); padding:1px 5px; border-radius:3px; color:var(--SmartThemeEmColor);">
-                ${item.t}
-            </code>
-        `).join('')}
+    <div class="plz-logic-token-legend">
+        ${tokens.map(item => `<div class="plz-token-chip plz-logic-token-chip" title="${item.d}">${item.t}</div>`).join('')}
     </div>`;
 }
