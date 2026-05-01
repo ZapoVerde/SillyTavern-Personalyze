@@ -49,12 +49,10 @@ export function openTextModal({ title, initialValue = '', variables = [], extraB
         const varsHtml = variables.length ? `
             <div class="plz-var-list">
                 ${variables.map(e => `
-                    <div class="plz-var-row">
-                        <button class="menu_button plz-var-copy-btn" data-copy="${escapeHtml(e.v)}">
-                            <i class="fa-regular fa-copy"></i>
-                        </button>
-                        <code class="plz-var-code">${escapeHtml(e.v)}</code>
-                        <span class="plz-var-desc">— ${escapeHtml(e.d)}</span>
+                    <div class="plz-token-chip" 
+                         title="${escapeHtml(e.d)}" 
+                         data-copy="${escapeHtml(e.v)}">
+                        ${escapeHtml(e.v)}
                     </div>`).join('')}
             </div>` : '';
 
@@ -92,9 +90,16 @@ export function openTextModal({ title, initialValue = '', variables = [], extraB
         });
 
         // Copy buttons
-        $overlay.on('click', '.plz-var-copy-btn', function(e) {
+        $overlay.on('click', '.plz-token-chip', function(e) {
             e.stopPropagation();
-            navigator.clipboard.writeText($(this).data('copy'));
+            const text = $(this).data('copy');
+            navigator.clipboard.writeText(text);
+            
+            // Visual feedback
+            const $this = $(this);
+            const originalColor = $this.css('color');
+            $this.css('color', '#fff');
+            setTimeout(() => $this.css('color', originalColor), 200);
         });
 
         // Backdrop absorbs all clicks — modal stops propagation so only true backdrop clicks reach here

@@ -113,14 +113,14 @@ export function getVariableLegendHTML(styleObj) {
     const wardrobeKeys = char?.slots || [...BASE_SLOTS];
     const logicKeys    = Object.keys(styleObj?.logicProbes || {});
 
-    function chip(token) {
-        return `<code style="background:rgba(0,0,0,0.35); padding:1px 5px; border-radius:3px; color:var(--SmartThemeQuoteColor); cursor:pointer; white-space:nowrap;" title="Click to copy" onclick="navigator.clipboard.writeText('${token}')">${token}</code>`;
+    function chip(token, desc) {
+        return `<div class="plz-token-chip" title="${escapeHtml(desc)}" onclick="navigator.clipboard.writeText('${token}')">${token}</div>`;
     }
 
     function row(token, desc) {
-        return `<div style="display:flex; align-items:baseline; gap:8px; padding:2px 0;">
-            ${chip(token)}
-            <span style="opacity:0.7; font-size:0.9em;">${desc}</span>
+        return `<div style="display:flex; align-items:center; gap:8px; padding:2px 0;">
+            ${chip(token, desc)}
+            <span style="opacity:0.6; font-size:0.9em; overflow:hidden; text-overflow:ellipsis;">${desc}</span>
         </div>`;
     }
 

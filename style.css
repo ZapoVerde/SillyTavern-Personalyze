@@ -1365,3 +1365,38 @@ textarea.plz-fullscreen-input {
         border-top: none;
     }
 }
+
+/* --- Token Chips (Cloud Layout) --- */
+.plz-var-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 15px;
+    padding: 2px;
+}
+
+.plz-token-chip {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    padding: 3px 8px;
+    font-family: var(--mono-font, monospace);
+    font-size: 0.82em;
+    color: var(--SmartThemeQuoteColor);
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s ease-in-out;
+    white-space: nowrap;
+}
+
+.plz-token-chip:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--SmartThemeQuoteColor);
+    transform: translateY(-1px);
+}
+
+.plz-token-chip:active {
+    transform: translateY(0);
+    background: var(--SmartThemeQuoteColor);
+    color: #000;
+}
