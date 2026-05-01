@@ -1,10 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/io/llm/logicExecutor.js
- * @stamp {"utc":"2026-05-01T07:20:00.000Z"}
+ * @stamp {"utc":"2026-05-01T08:00:00.000Z"}
  * @architectural-role IO Executor (LLM)
  * @description
  * Executes dynamic logic probes via the AI connection.
  * Implements robust boolean parsing and forensic logging protocols.
+ * 
+ * Updated for Forensic Reality:
+ * 1. logCall now captures the literal compiled string (fullPrompt) as the 
+ *    primary log entry, removing "interpreted" blind spots.
  * 
  * @api-declaration
  * executeLogicProbe(key, probe, contextData, signal) -> Promise<string>
@@ -22,14 +26,12 @@ import { logCall, logPatchLast } from '../../utils/callLog.js';
 
 /**
  * Robustly parses an AI response into a boolean state.
- * Accepts various affirmative signals across different models.
  */
 function parseAffirmative(text) {
     if (!text) return false;
     const clean = text.trim().toLowerCase();
-    // Match common affirmative responses: yes, true, 1, affirmative, correct, indeed.
-    // Also captures "Result: Yes" or "Answer: True" patterns.
-    const regex = /\b(yes|true|1|affirmative|correct|indeed)\b/i;
+    // Match common affirmative responses: yes, true, 1, affirmative, indeed.
+    const regex = /\b(yes|true|1|affirmative|indeed)\b/i;
     return regex.test(clean);
 }
 
@@ -63,18 +65,21 @@ export async function executeLogicProbe(key, probe, contextData, signal) {
         return '';
     }
 
+    // 1. Compile the literal string that will be sent to the wire
     const fullPrompt = compileProbePrompt(probe.prompt, contextData);
     
-    // Forensic Protocol: Open the mirrored call log entry
+    // 2. Forensic Protocol: Mirror the literal reality, not the interpretation.
+    // The second argument (prompt) is what displays in the flight recorder.
     logCall(label, fullPrompt, null, null, { 
         probeKey: key, 
-        type: probe.type, 
-        context: contextData 
+        type: probe.type,
+        rawPromptSent: fullPrompt,
+        contextVariables: contextData 
     });
 
     try {
         const result = await ConnectionManagerRequestService.sendRequest(profileId, fullPrompt, null, { 
-            temperature: 0.1, // Fixed low temp for logic reliability
+            temperature: 0.1, 
             signal 
         });
 
@@ -86,12 +91,11 @@ export async function executeLogicProbe(key, probe, contextData, signal) {
             finalOutput = isTrue ? (probe.trueTemplate ?? '') : (probe.falseTemplate ?? '');
             log('LogicExecutor', `${key} evaluated: ${isTrue ? 'TRUE' : 'FALSE'}`);
         } else {
-            // Extraction/Text mode: use raw AI response
             finalOutput = rawText;
             log('LogicExecutor', `${key} extracted: "${finalOutput}"`);
         }
 
-        // Forensic Protocol: Patch the response and final parsed reality into logs
+        // 3. Forensic Protocol: Patch the response and final parsed reality into logs
         logPatchLast(finalOutput, null, { rawResponse: rawText }, rawText);
 
         return finalOutput;
