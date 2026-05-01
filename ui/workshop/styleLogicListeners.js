@@ -202,13 +202,7 @@ export function bindStyleLogicHandlers($overlay) {
         }
     });
 
-    // 4. Token Legend Copy
-    $overlay.on('click', '.plz-logic-token-chip', function() {
-        navigator.clipboard.writeText($(this).text().trim());
-        if (window.toastr) window.toastr.info('Token copied');
-    });
-
-    // 5. Live Test
+    // 4. Live Test
     $overlay.on('click', '#plz-logic-test-probe', async function() {
         const meta = getMetaSettings();
         const probe = meta.styleWorkspaces[getSettings().currentStyleName].logicProbes[_activeProbeKey];

@@ -149,6 +149,6 @@ function getLogicVariableLegendHTML() {
 
     return `
     <div class="plz-logic-token-legend">
-        ${tokens.map(item => `<div class="plz-token-chip plz-logic-token-chip" title="${item.d}">${item.t}</div>`).join('')}
+        ${tokens.map(item => `<div class="plz-token-chip" title="${item.d}" onclick="navigator.clipboard.writeText('${item.t}')">${item.t}</div>`).join('')}
     </div>`;
 }
