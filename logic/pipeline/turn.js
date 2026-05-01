@@ -1,12 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/turn.js
- * @stamp {"utc":"2026-05-01T07:50:00.000Z"}
+ * @stamp {"utc":"2026-05-01T15:00:00.000Z"}
  * @architectural-role Orchestrator (Turn Logic)
  * @description
  * Implements the Hybrid Multi-Character Turn pipeline.
  * 
- * Updated for Reactive Logic Engine:
- * 1. Integrated evaluateLogic (Phase 3.5) into processKnownSubject.
+ * Updated for Responder Workflow:
+ * 1. Logic evaluation (Phase 3.5) is now strictly nested inside the Master Trigger Gate.
+ * 2. Probes only fire when a visual change is confirmed, preventing logic leaks during 
+ *    asset healing cycles.
  *
  * @api-declaration
  * runTurnPipeline(messageId) -> Promise<void>
@@ -194,11 +196,14 @@ export async function processKnownSubject(messageId, characterId, text, history,
         return;
     }
 
+    // Exit early if no change and asset is intact.
     if (!hasChanged && !needsHealing) return;
 
     let nextLayers = currentLayers;
 
     // ─── The Master Trigger Gate ───
+    // Logic Probes (Phase 3.5) and Extraction (Phase 3) are RESPONDERS.
+    // They only fire if a visual change is narratively confirmed.
     if (hasChanged) {
         // Phase 3: Extraction
         let rawUpdate;
@@ -210,12 +215,12 @@ export async function processKnownSubject(messageId, characterId, text, history,
         }
         nextLayers = mergeLayeredUpdate(currentLayers, parsePhase3(rawUpdate));
 
-        // Phase 3.5: Logic Evaluation (Strict Responder)
-        // Only fires because the Fast Model confirmed a change.
+        // Phase 3.5: Logic Evaluation
+        // Locked behind the trigger; does not fire for simple "healing" cycles.
         const styleObj = resolveStyle(characterId);
         await evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal, character.identity);
 
-        // Save new state
+        // Commit resulting ensemble to DNA
         const ensembleLabel = generateEnsembleLabel(nextLayers);
         const ensembleKey   = generateEnsembleKey(nextLayers);
         await lockedWriteEnsemble(messageId, characterId, ensembleKey, ensembleLabel, nextLayers);
@@ -223,6 +228,7 @@ export async function processKnownSubject(messageId, characterId, text, history,
     }
 
     // ─── Phase 4: Compile & Commit ───
+    // If we reach here, it means hasChanged is true OR we are simply healing a missing image.
     updateActiveLayers(nextLayers);
     updateChainLayers(characterId, nextLayers, null);
 

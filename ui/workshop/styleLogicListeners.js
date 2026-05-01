@@ -1,15 +1,11 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleLogicListeners.js
- * @stamp {"utc":"2026-05-01T13:00:00.000Z"}
+ * @stamp {"utc":"2026-05-01T18:00:00.000Z"}
  * @architectural-role UI Controller (Global Style Logic)
  * @description
  * Manages event listeners and state synchronization for the Logic Probes drawer.
- * Handles CRUD operations on the Style's logicProbes dictionary and enforces
- * circular dependency guards.
- * 
- * Updated for Computational Logic:
- * 1. Instant local testing for computational probes.
- * 2. Inclusion of comparison chips in the Fullscreen Editor variables.
+ * Features cursor-aware variable injection for the logic prompt preview,
+ * enabling seamless DSL and query construction without clipboard usage.
  * 
  * @api-declaration
  * bindStyleLogicHandlers($overlay) -> void
@@ -194,6 +190,52 @@ export function bindStyleLogicHandlers($overlay) {
         _isProbeDirty = true;
         _syncSelector();
         saveSettingsDebounced();
+    });
+
+    // Manual Edit Support for Inline Prompt Preview
+    $overlay.on('input', '#plz-logic-prompt-preview', function() {
+        const meta = getMetaSettings();
+        const style = meta.styleWorkspaces[getSettings().currentStyleName];
+        const probe = style.logicProbes[_activeProbeKey];
+        const newVal = $(this).val();
+
+        if (isCircular(style.logicProbes, _activeProbeKey, newVal)) {
+            if (window.toastr) window.toastr.error('Circular logic detected.');
+            $(this).val(probe.prompt);
+            return;
+        }
+
+        probe.prompt = newVal;
+        _isProbeDirty = true;
+        _syncSelector();
+        saveSettingsDebounced();
+    });
+
+    // Cursor-Based Token Injection (Inline Legend)
+    $overlay.on('click', '.plz-token-inject', function(e) {
+        e.stopPropagation();
+        const token = $(this).data('token');
+        const $ta   = $('#plz-logic-prompt-preview');
+        const el    = $ta[0];
+        if (!el) return;
+
+        const start = el.selectionStart;
+        const end   = el.selectionEnd;
+        const val   = el.value;
+
+        const isOp = ['!', 'is', 'in', 'contains'].includes(token);
+        const textToInsert = isOp ? `${token} ` : token;
+
+        el.value = val.substring(0, start) + textToInsert + val.substring(end);
+        el.selectionStart = el.selectionEnd = start + textToInsert.length;
+
+        $ta.trigger('input');
+        el.focus();
+
+        const $this = $(this);
+        const originalColor = $this.css('color');
+        $this.css('color', '#fff');
+        setTimeout(() => $this.css('color', originalColor), 200);
     });
 
     // 3. Prompt Modal Integration

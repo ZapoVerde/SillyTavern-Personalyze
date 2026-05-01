@@ -1,15 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleLogicTemplates.js
- * @stamp {"utc":"2026-05-01T12:00:00.000Z"}
+ * @stamp {"utc":"2026-05-01T17:00:00.000Z"}
  * @architectural-role Pure UI Template (Global Style Logic)
  * @description
  * Generates the HTML for the Reactive Logic Engine configuration drawer.
  * Implements a CRUD-row interface for surgical editing of narrative probes.
  * 
- * Updated for Computational Logic:
- * 1. Added "Computational" output type button.
- * 2. Added Comparison Chip legend for the DSL syntax.
- * 3. Updated conditional visibility for True/False templates.
+ * Updated for Cursor-Based Injection:
+ * 1. Removed hardcoded onclick clipboard logic from chips.
+ * 2. Added plz-token-inject class and data-token attribute for event delegation.
  * 
  * @api-declaration
  * getLogicDrawerHTML(styleObj, activeProbeKey, isProbeDirty, identitySlots) -> string
@@ -87,7 +86,7 @@ export function getProbeEditorHTML(probeKey, probeObj, identitySlots = BASE_IDEN
     return `
     <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:10px;">
 
-        <!-- Legend (Click to Copy) -->
+        <!-- Legend (Click to Inject) -->
         <div style="padding-bottom:5px; border-bottom:1px solid rgba(255,255,255,0.05);">
             <div style="font-size:0.7em; font-weight:bold; text-transform:uppercase; opacity:0.5; margin-bottom:5px;">Available Tokens</div>
             ${getLogicVariableLegendHTML(identitySlots)}
@@ -118,8 +117,8 @@ export function getProbeEditorHTML(probeKey, probeObj, identitySlots = BASE_IDEN
                     <i class="fa-solid fa-expand"></i> Fullscreen Editor
                 </button>
             </div>
-            <textarea id="plz-logic-prompt-preview" class="text_pole" readonly rows="2" 
-                      style="width:100%; font-family:monospace; font-size:0.85em; opacity:0.7; cursor:default; resize:none;">${escapeHtml(probeObj.prompt || '')}</textarea>
+            <textarea id="plz-logic-prompt-preview" class="text_pole" rows="2" 
+                      style="width:100%; font-family:monospace; font-size:0.85em; resize:none;">${escapeHtml(probeObj.prompt || '')}</textarea>
         </div>
 
         <div id="plz-logic-boolean-templates" class="${isConditional ? '' : 'plz-hidden'}" style="display:flex; flex-direction:column; gap:8px; padding-top:5px; border-top:1px solid rgba(255,255,255,0.05);">
@@ -146,7 +145,7 @@ export function getProbeEditorHTML(probeKey, probeObj, identitySlots = BASE_IDEN
 }
 
 /**
- * Builds the click-to-copy token legend for the logic prompt.
+ * Builds the click-to-inject token legend for the logic prompt.
  */
 function getLogicVariableLegendHTML(identitySlots = BASE_IDENTITY_SLOTS) {
     const tokens = [
@@ -160,12 +159,12 @@ function getLogicVariableLegendHTML(identitySlots = BASE_IDENTITY_SLOTS) {
 
     return `
     <div class="plz-logic-token-legend">
-        ${tokens.map(item => `<div class="plz-token-chip" title="${item.d}" onclick="navigator.clipboard.writeText('${item.t}')">${item.t}</div>`).join('')}
+        ${tokens.map(item => `<div class="plz-token-chip plz-token-inject" title="${escapeHtml(item.d)}" data-token="${escapeHtml(item.t)}">${escapeHtml(item.t)}</div>`).join('')}
     </div>`;
 }
 
 /**
- * Builds the click-to-copy comparison chips for Computational logic.
+ * Builds the click-to-inject comparison chips for Computational logic.
  */
 function getLogicOperatorLegendHTML() {
     const ops = [
@@ -177,6 +176,6 @@ function getLogicOperatorLegendHTML() {
 
     return `
     <div class="plz-logic-token-legend">
-        ${ops.map(item => `<div class="plz-token-chip" title="${item.d}" onclick="navigator.clipboard.writeText('${item.t}')">${item.t}</div>`).join('')}
+        ${ops.map(item => `<div class="plz-token-chip plz-token-inject" title="${escapeHtml(item.d)}" data-token="${escapeHtml(item.t)}">${escapeHtml(item.t)}</div>`).join('')}
     </div>`;
 }

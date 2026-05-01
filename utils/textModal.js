@@ -1,12 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/utils/textModal.js
- * @stamp {"utc":"2026-04-28T00:00:00.000Z"}
+ * @stamp {"utc":"2026-05-01T16:00:00.000Z"}
  * @architectural-role Utility / Overlay UI
  * @description
  * Fullscreen-capable text editing overlay. Appends directly to document.body.
- * Participates in the shared _modalStack from modal.js so that Escape key
- * routing is correct when stacked on top of other overlays — only the topmost
- * modal responds to Escape at any given time.
+ * Features cursor-aware variable injection for logic probes and style templates,
+ * allowing users to click chips to insert tokens at their active selection point.
+ * 
+ * Participates in the shared _modalStack from modal.js for Escape-key routing.
  *
  * @api-declaration
  * openTextModal(config) -> Promise<string|null>
@@ -89,13 +90,32 @@ export function openTextModal({ title, initialValue = '', variables = [], extraB
             $overlay.find(`#${b.id}`).on('click', () => b.onClick($ta));
         });
 
-        // Copy buttons
+        // Token Injection (Cursor-based)
         $overlay.on('click', '.plz-token-chip', function(e) {
             e.stopPropagation();
-            const text = $(this).data('copy');
-            navigator.clipboard.writeText(text);
+            const token = $(this).data('copy');
+            const el = $ta[0];
             
-            // Visual feedback
+            const start = el.selectionStart;
+            const end   = el.selectionEnd;
+            const val   = el.value;
+
+            // Logic syntax refinement: add trailing space for operators/modifiers 
+            // to prevent text concatenation (e.g. "{{hair}}is" -> "{{hair}} is ")
+            const isOp = ['!', 'is', 'in', 'contains'].includes(token);
+            const textToInsert = isOp ? `${token} ` : token;
+
+            // Splice the token into the text at the selection
+            el.value = val.substring(0, start) + textToInsert + val.substring(end);
+
+            // Move cursor to the end of the newly injected text
+            const nextPos = start + textToInsert.length;
+            el.selectionStart = el.selectionEnd = nextPos;
+
+            // Visual feedback and UX cleanup
+            $ta.trigger('input');
+            el.focus();
+            
             const $this = $(this);
             const originalColor = $this.css('color');
             $this.css('color', '#fff');

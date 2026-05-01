@@ -1,15 +1,15 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/logicPhase.js
- * @stamp {"utc":"2026-05-01T11:00:00.000Z"}
+ * @stamp {"utc":"2026-05-01T14:00:00.000Z"}
  * @architectural-role Orchestrator (Phase 3.5)
  * @description
  * Evaluates dynamic logic probes attached to a Style.
  * Implements a Reactive Dependency Graph:
- * 1. Scans Style templates for {{tokens}} to identify required probes.
- * 2. Recursively resolves dependencies between probes with cycle protection.
- * 3. Determines "Dirtiness" based on narrative context or changed wardrobe layers.
- * 4. Routes to LLM (Boolean/Text) or Fast-Path (Computational) based on probe type.
- * 5. Merges resolved strings into nextLayers.logic for downstream prompt synthesis.
+ * 1. Scans Style templates and Probe output templates for {{tokens}} to identify dependencies.
+ * 2. Recursively resolves dependencies with cycle protection.
+ * 3. Determines "Dirtiness" based on narrative context, changed wardrobe, or template dependencies.
+ * 4. Merges resolved strings into nextLayers.logic, performing a hydration pass to resolve
+ *    nested variables within True/False output templates.
  * 
  * @api-declaration
  * evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal, identity) -> Promise<void>
@@ -82,8 +82,14 @@ export async function evaluateLogic(characterId, nextLayers, currentLayers, styl
 
         path.add(key);
 
-        // A. Analyze dependencies in the probe's prompt
-        const promptDeps = extractTokens(probe.prompt);
+        // A. Analyze dependencies in the probe's prompt AND its output templates
+        // This ensures {{variable}} in the YES box triggers the dependency.
+        const allDeps = new Set([
+            ...extractTokens(probe.prompt),
+            ...extractTokens(probe.trueTemplate),
+            ...extractTokens(probe.falseTemplate)
+        ]);
+
         let isDirty = false;
 
         // B. Build context and evaluate dirtiness
@@ -98,7 +104,7 @@ export async function evaluateLogic(characterId, nextLayers, currentLayers, styl
             contextData[k] = v || 'unspecified';
         }
         
-        for (const dep of promptDeps) {
+        for (const dep of allDeps) {
             // Case 1: Narrative Triggers (Always Dirty)
             if (dep === 'current_turn' || dep === 'history' || dep === 'character_name') {
                 isDirty = true;
@@ -153,6 +159,17 @@ export async function evaluateLogic(characterId, nextLayers, currentLayers, styl
             }
         } else {
             finalValue = cachedValue;
+        }
+
+        // D. Hydration Pass
+        // If the resulting string contains {{tokens}}, resolve them from contextData
+        // (This handles use-cases like "{{hair_color}} armpit hair" in the YES box)
+        const resultTokens = extractTokens(finalValue);
+        for (const rt of resultTokens) {
+            if (contextData[rt] !== undefined) {
+                const regex = new RegExp(`\\{\\{${rt}\\}\\}`, 'gi');
+                finalValue = finalValue.replace(regex, String(contextData[rt]));
+            }
         }
 
         path.delete(key);
