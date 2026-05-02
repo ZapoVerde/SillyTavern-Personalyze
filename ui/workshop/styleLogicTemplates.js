@@ -1,14 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/workshop/styleLogicTemplates.js
- * @stamp {"utc":"2026-05-01T17:00:00.000Z"}
+ * @stamp {"utc":"2026-05-01T11:20:00.000Z"}
  * @architectural-role Pure UI Template (Global Style Logic)
  * @description
  * Generates the HTML for the Reactive Logic Engine configuration drawer.
  * Implements a CRUD-row interface for surgical editing of narrative probes.
  * 
- * Updated for Cursor-Based Injection:
- * 1. Removed hardcoded onclick clipboard logic from chips.
- * 2. Added plz-token-inject class and data-token attribute for event delegation.
+ * Updated for Advanced Logic Syntax:
+ * 1. Added help icon next to Computational Expression label.
+ * 2. Expanded Operator Legend to include Boolean operators (AND, OR, !, groups).
  * 
  * @api-declaration
  * getLogicDrawerHTML(styleObj, activeProbeKey, isProbeDirty, identitySlots) -> string
@@ -92,7 +92,7 @@ export function getProbeEditorHTML(probeKey, probeObj, identitySlots = BASE_IDEN
             ${getLogicVariableLegendHTML(identitySlots)}
             
             ${isComputational ? `
-                <div style="font-size:0.7em; font-weight:bold; text-transform:uppercase; opacity:0.5; margin: 8px 0 5px;">Comparison Syntax</div>
+                <div style="font-size:0.7em; font-weight:bold; text-transform:uppercase; opacity:0.5; margin: 8px 0 5px;">Logic & Syntax</div>
                 ${getLogicOperatorLegendHTML()}
             ` : ''}
         </div>
@@ -112,7 +112,10 @@ export function getProbeEditorHTML(probeKey, probeObj, identitySlots = BASE_IDEN
 
         <div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                <label style="font-size:0.75em; opacity:0.6;">${isComputational ? 'Logic Expression' : 'LLM Logic Query'}</label>
+                <label style="font-size:0.75em; opacity:0.6; display:flex; align-items:center;">
+                    ${isComputational ? 'Logic Expression' : 'LLM Logic Query'}
+                    ${isComputational ? `<i class="fa-solid fa-circle-question plz-logic-help" title="View Syntax Guide" style="cursor:pointer; opacity:0.6; margin-left:6px; font-size:0.9em;"></i>` : ''}
+                </label>
                 <button id="plz-logic-edit-prompt" class="menu_button" style="font-size:0.72em; padding:1px 8px;">
                     <i class="fa-solid fa-expand"></i> Fullscreen Editor
                 </button>
@@ -171,7 +174,12 @@ function getLogicOperatorLegendHTML() {
         { t: 'is',       d: 'Strict whole-word equality' },
         { t: 'in',       d: 'List membership. Format: (a, b, c)' },
         { t: 'contains', d: 'Partial fuzzy match' },
-        { t: '!',        d: 'Negation' }
+        { t: 'empty',    d: 'Checks for missing, null, or none values' },
+        { t: '!',        d: 'Negation' },
+        { t: 'AND',      d: 'Logical AND' },
+        { t: 'OR',       d: 'Logical OR' },
+        { t: '(',        d: 'Open group' },
+        { t: ')',        d: 'Close group' }
     ];
 
     return `

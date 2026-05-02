@@ -21,7 +21,7 @@
 import { ConnectionManagerRequestService } from '../../../../shared.js';
 import { getMetaSettings, getSettings, updateSetting } from '../../settings.js';
 import { saveSettingsDebounced } from '../../../../../../script.js';
-import { confirmModal, promptModal } from '../../utils/modal.js';
+import { confirmModal, promptModal, openModal } from '../../utils/modal.js';
 import { openTextModal } from '../../utils/textModal.js';
 import { executeLogicProbe } from '../../io/llm/logicExecutor.js';
 import { evaluateComputationalLogic, extractTokens } from '../../logic/computationalParser.js';
@@ -223,8 +223,8 @@ export function bindStyleLogicHandlers($overlay) {
         const end   = el.selectionEnd;
         const val   = el.value;
 
-        const isOp = ['!', 'is', 'in', 'contains'].includes(token);
-        const textToInsert = isOp ? `${token} ` : token;
+        const isOp = ['!', 'is', 'in', 'contains', 'empty', 'AND', 'OR'].includes(token);
+        const textToInsert = isOp ? ` ${token} ` : token;
 
         el.value = val.substring(0, start) + textToInsert + val.substring(end);
         el.selectionStart = el.selectionEnd = start + textToInsert.length;
@@ -236,6 +236,49 @@ export function bindStyleLogicHandlers($overlay) {
         const originalColor = $this.css('color');
         $this.css('color', '#fff');
         setTimeout(() => $this.css('color', originalColor), 200);
+    });
+
+    // Syntax Guide / Help Modal
+    $overlay.on('click', '.plz-logic-help', async function(e) {
+        e.stopPropagation();
+        const content = `
+        <div style="font-size:0.9em; line-height:1.5; display:flex; flex-direction:column; gap:12px;">
+            <p style="margin:0;">Computational probes evaluate instantly (zero cost) by directly checking the character's current state and traits.</p>
+            
+            <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; border:1px solid var(--SmartThemeBorderColor);">
+                <strong style="color:var(--SmartThemeQuoteColor);">Atomic Operators</strong>
+                <ul style="margin:5px 0 0 20px; padding:0;">
+                    <li style="margin-bottom:4px;"><code style="color:var(--SmartThemeEmColor);">is</code> : Strict whole-word match.</li>
+                    <li style="margin-bottom:4px;"><code style="color:var(--SmartThemeEmColor);">in</code> : List membership. Items should be comma-separated. Parentheses are required.</li>
+                    <li style="margin-bottom:4px;"><code style="color:var(--SmartThemeEmColor);">contains</code> : Loose partial string match.</li>
+                    <li><code style="color:var(--SmartThemeEmColor);">empty</code> : True if the value is missing, "none", or "unspecified".</li>
+                </ul>
+            </div>
+
+            <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; border:1px solid var(--SmartThemeBorderColor);">
+                <strong style="color:var(--SmartThemeQuoteColor);">Boolean Logic</strong>
+                <p style="margin:5px 0 0 0;">You can chain conditions using <code style="color:var(--SmartThemeEmColor);">AND</code>, <code style="color:var(--SmartThemeEmColor);">OR</code>, and <code style="color:var(--SmartThemeEmColor);">!</code> (NOT). Use parentheses <code style="color:var(--SmartThemeEmColor);">()</code> to control the order of operations.</p>
+            </div>
+
+            <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; border:1px solid var(--SmartThemeBorderColor);">
+                <strong style="color:var(--SmartThemeQuoteColor);">Examples</strong>
+                <ul style="margin:5px 0 0 0; padding:0; list-style-type:none;">
+                    <li style="margin-bottom:6px;"><code style="background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;">{{top}} is t-shirt</code></li>
+                    <li style="margin-bottom:6px;"><code style="background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;">{{gender}} in (female, girl)</code></li>
+                    <li style="margin-bottom:6px;"><code style="background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;">{{eyes}} contains blue</code></li>
+                    <li style="margin-bottom:6px;"><code style="background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;">{{outerwear}} empty</code></li>
+                    <li style="margin-bottom:6px;"><code style="background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;">! {{top}} empty</code></li>
+                    <li><code style="background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px; display:inline-block; line-height:1.4;">(! {{is_wet}} empty AND {{top}} empty) OR ({{pose}} contains sitting)</code></li>
+                </ul>
+            </div>
+        </div>`;
+
+        await openModal({
+            title: 'Computational Logic Syntax',
+            content,
+            width: 'min(600px, 95vw)',
+            buttons: [{ label: 'Close', value: null, style: 'muted' }]
+        });
     });
 
     // 3. Prompt Modal Integration
@@ -261,10 +304,13 @@ export function bindStyleLogicHandlers($overlay) {
 
         // Add comparison chips if computational
         if (probe.type === 'computational') {
-            vars.push({ v: 'is', d: 'Strict Whole-Word Equality' });
-            vars.push({ v: 'in', d: 'List Membership (a, b)' });
+            vars.push({ v: 'is',       d: 'Strict Whole-Word Match' });
+            vars.push({ v: 'in',       d: 'List Membership (a, b)' });
             vars.push({ v: 'contains', d: 'Partial Fuzzy Match' });
-            vars.push({ v: '!', d: 'Negation' });
+            vars.push({ v: 'empty',    d: 'Check Missing Value' });
+            vars.push({ v: '!',        d: 'NOT (Negation)' });
+            vars.push({ v: 'AND',      d: 'Logical AND' });
+            vars.push({ v: 'OR',       d: 'Logical OR' });
         }
 
         const result = await openTextModal({
