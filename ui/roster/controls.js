@@ -1,15 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/roster/controls.js
- * @stamp {"utc":"2026-04-23T00:00:00.000Z"}
+ * @stamp {"utc":"2026-05-01T22:30:00.000Z"}
  * @architectural-role UI Orchestrator
  * @description
  * Manages global event delegation for the character roster UI.
  * Handles card-level interactions including gear menu, removal, and addition.
  *
- * Updated for Surgical Utility UI:
- * 1. Replaced Flip handler with Gear menu system (flip, edit, promote).
- * 2. Added tap-to-toggle control visibility (plz-controls-active class).
- * 3. Promote fires plz:promote-to-focus event; vnPanel.js owns the state update.
+ * Updated for Smart Refresh:
+ * 1. Integrated evaluateLogic into the manual refresh handler.
+ * 2. Manual refresh now re-calculates logic probes before generation.
  *
  * @api-declaration
  * bindRosterControls() -> void
@@ -18,7 +17,7 @@
  *   assertions:
  *     purity: IO Executor
  *     state_ownership: [state.activeRoster]
- *     external_io: [DOM, state.js, dnaWriter.js, charPicker.js, imageCache.js, logger.js, callLog.js]
+ *     external_io: [DOM, state.js, dnaWriter.js, charPicker.js, imageCache.js, logger.js, callLog.js, logicPhase.js]
  */
 
 import { 
@@ -35,20 +34,16 @@ import {
     lockedPatchVisualStateImage,
     lockedWriteCharacterDef
 } from '../../io/dnaWriter.js';
-import { generate, deleteFiles } from '../../imageCache.js';
-import { slugify } from '../../utils/history.js';
+import { generate, deleteFiles, resolveStyle } from '../../imageCache.js';
+import { slugify, buildHistoryText } from '../../utils/history.js';
 import { getSettings } from '../../settings.js';
 import { getContext } from '../../../../../extensions.js';
 import { error } from '../../utils/logger.js';
 import { startWorkshopTurn } from '../../utils/callLog.js';
 import { setWorkshopCharacter } from '../../state.js';
 import { openWorkshop } from '../workshop/core.js';
+import { evaluateLogic } from '../../logic/pipeline/logicPhase.js';
 
-/**
- * Binds delegated click handlers to the document for roster card interactions.
- * Ensures controls work regardless of whether the card is in the floating 
- * overlay or the VN panel.
- */
 /**
  * Clamps the controls bar (and gear menu) to the viewport by setting
  * --plz-controls-dx on the card. Resets before measuring so prior offsets
@@ -297,6 +292,12 @@ export function bindRosterControls() {
 
         // Forensic Logging: Open a Workshop turn so the generation is filed correctly
         startWorkshopTurn(`Manual Refresh: ${char.label || id}`);
+
+        // --- SMART REFRESH: Re-evaluate Logic Probes before generating ---
+        const history = buildHistoryText(getContext().chat, lastAiIdx, s.detectionHistory ?? 4);
+        const message = getContext().chat[lastAiIdx];
+        const styleObj = resolveStyle(id);
+        await evaluateLogic(id, layers, layers, styleObj, message.mes, history, undefined, char.identity);
 
         try {
             // Trigger generation with cache-bust to force fresh image while keeping (or incrementing) seed
