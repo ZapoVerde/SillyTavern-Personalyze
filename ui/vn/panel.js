@@ -1,16 +1,14 @@
 /**
  * @file data/default-user/extensions/personalyze/ui/vn/panel.js
- * @stamp {"utc":"2026-04-19T00:00:00.000Z"}
+ * @stamp {"utc":"2026-05-01T21:00:00.000Z"}
  * @architectural-role UI Orchestrator (Split-Screen Character View)
  * @description
  * PersonaLyze's split-screen character display mode.
- * Decomposed from the original ui/vnPanel.js to respect the 300 LOC limit;
- * DOM diffing and layout math live in layout.js, HTML templates in templates.js,
- * and the hamburger menu in menu.js.
- *
- * Two-zone layout:
- *   LEFT  — non-focus cards, centered, dynamically overlapping so all fit.
- *   RIGHT — focus card, always full width, controls always visible.
+ * 
+ * Updated for State Persistence & Visibility:
+ * 1. Refactored syncVnState to handle toggle button relocation (Top Bar vs Panel).
+ * 2. Ensured the eye icon appears on reload if the extension is disabled.
+ * 3. Cleaned up toggle event delegation.
  *
  * @api-declaration
  * injectVnPanel()            — Builds the DOM (idempotent).
@@ -37,12 +35,11 @@ const BODY_CLASS   = 'plz-vn-active';
 const OVERLAP_CLASS = 'plz-vn-overlap';
 const SPLIT_VAR    = '--plz-vn-split';
 
-/** Preset split sizes (% of viewport height) cycling through 2/3 → 1/2 → 1/3 → 1/4 → 1/5. */
+/** Preset split sizes (% of viewport height) cycling through 2/3 → 1/2 → 1/3 → 1/5. */
 const SPLIT_PRESETS = [
     { pct: 66.67, label: '⅔' },
     { pct: 50,    label: '½' },
     { pct: 33.33, label: '⅓' },
-    { pct: 25,    label: '¼' },
     { pct: 20,    label: '⅕' },
 ];
 
@@ -169,36 +166,19 @@ export function injectVnPanel() {
 
     // Disable/enable toggle button
     $(`#plz-vn-toggle-btn`).on('click', () => {
-        const $btn = $(`#plz-vn-toggle-btn`);
         const isEnabled = getSettings().enabled;
+        const nextState = !isEnabled;
 
-        if (isEnabled) {
-            updateSetting('enabled', false);
-            $('#plz-enabled').prop('checked', false);
-            $btn.find('i').removeClass('fa-eye-slash').addClass('fa-eye');
-            $btn.attr('title', 'Enable PersonaLyze');
-            $btn.addClass('plz-vn-toggle-disabled');
-            $btn.detach().appendTo('body');
+        updateSetting('enabled', nextState);
+        $('#plz-enabled').prop('checked', nextState);
 
-            syncVnState();
-            document.dispatchEvent(new CustomEvent('plz:roster-changed'));
+        syncVnState();
+        document.dispatchEvent(new CustomEvent('plz:roster-changed'));
 
-            import('../badge.js').then(module => {
-                if (module.clearAllBadges) module.clearAllBadges();
-            });
-
-        } else {
-            updateSetting('enabled', true);
-            $('#plz-enabled').prop('checked', true);
-            $btn.find('i').removeClass('fa-eye').addClass('fa-eye-slash');
-            $btn.attr('title', 'Disable PersonaLyze');
-            $btn.removeClass('plz-vn-toggle-disabled');
-            $btn.detach().prependTo(`#${PANEL_ID}`);
-
-            syncVnState();
-            document.dispatchEvent(new CustomEvent('plz:roster-changed'));
-
-            if (window.toastr) window.toastr.success('PersonaLyze enabled.', 'PersonaLyze');
+        if (!nextState) {
+            import('../badge.js').then(m => m.clearAllBadges && m.clearAllBadges());
+        } else if (window.toastr) {
+            window.toastr.success('PersonaLyze enabled.', 'PersonaLyze');
         }
     });
 
@@ -226,6 +206,7 @@ export function injectVnPanel() {
     // Bind hamburger menu interactions
     bindMenuHandlers();
 
+    // Initial sync handles button relocation if disabled on reload
     syncVnState();
 
     log('VnPanel', 'Split-screen shell injected.');
@@ -233,12 +214,32 @@ export function injectVnPanel() {
 
 /**
  * Syncs VN panel activation state with both the master toggle and VN mode preference.
+ * Handles toggle button relocation and icon states.
  */
 export function syncVnState() {
     const s = getSettings();
-    if (s.enabled && s.plzVnMode) {
-        _activate();
+    const $btn = $('#plz-vn-toggle-btn');
+    const $icon = $btn.find('i');
+
+    if (s.enabled) {
+        // App is ON: Put button back inside the VN panel
+        $btn.removeClass('plz-vn-toggle-disabled')
+            .detach().prependTo(`#${PANEL_ID}`);
+        $icon.removeClass('fa-eye').addClass('fa-eye-slash');
+        $btn.attr('title', 'Disable PersonaLyze');
+        
+        if (s.plzVnMode) {
+            _activate();
+        } else {
+            _deactivate();
+        }
     } else {
+        // App is OFF: Move button to the top bar (body level)
+        $btn.addClass('plz-vn-toggle-disabled')
+            .detach().appendTo('body');
+        $icon.removeClass('fa-eye-slash').addClass('fa-eye');
+        $btn.attr('title', 'Enable PersonaLyze');
+        
         _deactivate();
     }
 }

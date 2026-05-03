@@ -1,19 +1,13 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/bootstrapper.js
- * @stamp {"utc":"2026-04-19T00:00:00.000Z"}
+ * @stamp {"utc":"2026-05-02T10:00:00.000Z"}
  * @architectural-role Orchestrator / Boot Sequence
  * @description
  * Manages the initialization of the PersonaLyze environment for the active chat.
  *
- * Updated for Chat UUID / Anchor Architecture:
- * 1. Reads chat_uuid from reconstructed DNA to identify the active chat.
- * 2. Loads a per-character anchor from extension_settings on every boot.
- * 3. When a new chat has no UUID in its DNA:
- *    - If an anchor exists, seeds state.chatCharacters + activeRoster from it.
- *    - Generates a new UUID and batch-writes it + character_def records into
- *      the first AI message so the chat becomes self-documenting.
- * 4. After every boot (new or existing chat), refreshes the anchor with the
- *    latest state snapshot.
+ * Updated for Anchor-to-Chain Bridge:
+ * 1. Seeds characterChain from getDefaultEnsembleLayers when restoring from an anchor.
+ * 2. Ensures the healing loop identifies both missing chain entries and missing disk assets.
  *
  * @api-declaration
  * runBoot() → Promise<void>
@@ -22,7 +16,7 @@
  *   assertions:
  *     purity: Stateful IO
  *     state_ownership: [state (mutates via setters only)]
- *     external_io: [reconstruction, imageCache, state, anchorFile, dnaWriter]
+ *     external_io: [reconstruction, imageCache, state, anchorFile, dnaWriter, ensembleEngine]
  */
 
 import { getContext } from '../../../../extensions.js';
@@ -33,6 +27,7 @@ import { fetchFileIndex, generate } from '../imageCache.js';
 import { lockedPatchVisualStateImage, lockedBatchWrite } from '../io/dnaWriter.js';
 import { readAnchor, writeAnchor } from '../io/anchorFile.js';
 import { slugify } from '../utils/history.js';
+import { getDefaultEnsembleLayers } from './ensembleEngine.js';
 
 /**
  * Heals a specific character's missing portrait if requirements are met.
@@ -136,6 +131,14 @@ export async function runBoot() {
                 if (state.activeRoster.length === 0 && anchor.activeRoster?.length > 0) {
                     state.activeRoster = [...anchor.activeRoster];
                 }
+
+                // Initialize the chain for restored characters so the renderer and healer have a target state.
+                for (const id of state.activeRoster) {
+                    if (!state.characterChain[id]) {
+                        const layers = getDefaultEnsembleLayers(id, state);
+                        updateChainLayers(id, layers, null);
+                    }
+                }
             }
 
             // Write the UUID + character_def records in one batch so we only
@@ -176,7 +179,8 @@ export async function runBoot() {
     const healingTasks = [];
     for (const id of state.activeRoster) {
         const chain = state.characterChain[id];
-        const isImageMissing = chain && (!chain.image || !state.fileIndex.has(chain.image));
+        // Heal if there is no chain entry, or the chain entry exists but points to a missing image
+        const isImageMissing = !chain || !chain.image || !state.fileIndex.has(chain.image);
 
         if (isImageMissing) {
             healingTasks.push(healCharacter(id, lastAiIdx));

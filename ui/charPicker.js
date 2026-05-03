@@ -140,7 +140,6 @@ export async function openCharPicker(initialOverride = null, initialCharId = nul
 
     const result = await openModal({
         content,
-        width: 'min(680px, 92vw)',
         buttons: [
             {
                 label: '<i class="fa-solid fa-rotate-right"></i> Force Gen',
