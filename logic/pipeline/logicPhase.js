@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/logicPhase.js
- * @stamp {"utc":"2026-05-01T21:30:00.000Z"}
+ * @stamp {"utc":"2026-05-01T22:45:00.000Z"}
  * @architectural-role Orchestrator (Phase 3.5)
  * @description
  * Evaluates dynamic logic probes attached to a Style.
@@ -10,6 +10,9 @@
  * 3. Determines "Dirtiness" based on narrative context, changed wardrobe, or template dependencies.
  * 4. Merges resolved strings into nextLayers.logic, performing a hydration pass to resolve
  *    nested variables within True/False output templates.
+ * 
+ * Updated for Clean Serialization:
+ * 1. Fixed serializeSlot to omit "(none)" when modifiers are empty.
  * 
  * Updated with Forensic Tracing:
  * 1. Added console groups for character-level evaluation isolation.
@@ -33,11 +36,21 @@ import { log, warn } from '../../utils/logger.js';
 
 /**
  * Helper to serialize a wardrobe slot for logic context.
+ * Fixed: Now mirrors the main compiler logic to prevent "(none)" injections.
  */
 function serializeSlot(val) {
     if (!val) return 'none';
     if (typeof val === 'string') return val;
-    return `${val.item} (${val.modifier || 'none'})`;
+    
+    const item = val.item;
+    const mod  = val.modifier;
+
+    // Logic: Only add parentheses if a modifier actually exists and isn't "none"
+    if (mod && mod.toLowerCase() !== 'none' && mod.trim() !== '') {
+        return `${item} (${mod})`;
+    }
+    
+    return item || 'none';
 }
 
 /**
@@ -147,9 +160,6 @@ export async function evaluateLogic(characterId, nextLayers, currentLayers, styl
         // TRACE: Logic Input
         console.log(`[Probe:${key}] Input state mapping:`, contextData);
 
-        // We fire if:
-        // 1. Dependencies changed (isDirty)
-        // 2. We have no cached value from previous DNA (cachedValue === undefined)
         if (isDirty || cachedValue === undefined) {
             try {
                 if (probe.type === 'computational') {
