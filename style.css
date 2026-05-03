@@ -292,6 +292,41 @@ body.plz-modal-open #extensions_settings {
     overflow: hidden; /* Prevent internal blowouts from long code strings */
 }
 
+/* --- Optimized Workshop Modal --- */
+#plz-workshop-modal {
+    /* 1. Responsiveness: Take up 96% of the width on narrow screens, 
+          but stop expanding at 1400px on Ultrawides. */
+    width: 96vw !important;
+    max-width: 1400px !important;
+
+    /* 2. Height: Nearly fullscreen on all devices. */
+    height: 94dvh !important;
+    max-height: none !important;
+
+    /* 3. Logic: If the screen is wider than 1400px, keep the modal centered. */
+    margin: auto;
+}
+
+/* --- Content Optimization for Wide Screens --- */
+@media (min-width: 1200px) {
+    /* On wide screens, bump the Studio and Picker grids to 3 columns 
+       so we use the horizontal space for the character details. */
+    #plz-workshop-modal .plz-layered-grid,
+    #plz-cp-grid-container .plz-layered-grid {
+        grid-template-columns: 1fr 1fr 1fr !important;
+    }
+    
+    /* Make the Identity Grid 3 columns as well on wide screens */
+    #plz-identity-grid {
+        grid-template-columns: 1fr 1fr 1fr !important;
+    }
+}
+
+/* --- Internal Polish for the Larger View --- */
+#plz-workshop-modal .plz-workshop-body {
+    padding: 10px 5px; /* Slight adjustment to margins */
+}
+
 /* ─── Blueprint Editor Dialog Shell ───────────────────────────────────────── */
 /* Wraps the editor in a native <dialog> so it renders in the browser top    */
 /* layer above any callPopup() (which also uses <dialog>).                   */
