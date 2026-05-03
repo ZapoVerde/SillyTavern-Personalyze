@@ -292,39 +292,72 @@ body.plz-modal-open #extensions_settings {
     overflow: hidden; /* Prevent internal blowouts from long code strings */
 }
 
-/* --- Optimized Workshop Modal --- */
+/* ─── Workshop Fullscreen Logic ─── */
+
 #plz-workshop-modal {
-    /* 1. Responsiveness: Take up 96% of the width on narrow screens, 
-          but stop expanding at 1400px on Ultrawides. */
-    width: 96vw !important;
-    max-width: 1400px !important;
-
-    /* 2. Height: Nearly fullscreen on all devices. */
-    height: 94dvh !important;
-    max-height: none !important;
-
-    /* 3. Logic: If the screen is wider than 1400px, keep the modal centered. */
-    margin: auto;
+    /* 1. MOBILE DEFAULT: True Fullscreen */
+    width: 100vw !important;
+    height: 100dvh !important; /* Dynamic Viewport Height handles mobile browser bars */
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important; /* Square edges reclaim corner pixels */
+    border: none !important;
+    margin: 0 !important;
+    display: flex;
+    flex-direction: column;
 }
 
-/* --- Content Optimization for Wide Screens --- */
-@media (min-width: 1200px) {
-    /* On wide screens, bump the Studio and Picker grids to 3 columns 
-       so we use the horizontal space for the character details. */
-    #plz-workshop-modal .plz-layered-grid,
-    #plz-cp-grid-container .plz-layered-grid {
-        grid-template-columns: 1fr 1fr 1fr !important;
+/* 2. DESKTOP/ULTRAWIDE: Constrained & Centered */
+@media (min-width: 769px) {
+    #plz-workshop-modal {
+        width: 95vw !important;
+        height: 92dvh !important;
+        max-width: 1400px !important; /* Stops expanding on Ultrawide */
+        max-height: 1000px !important; /* Keeps it from being a vertical abyss */
+        border-radius: 12px !important; /* Bring back the "modal" look */
+        border: 1px solid var(--SmartThemeBorderColor, #444) !important;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+    }
+}
+
+/* ─── Reclaiming Mobile Space ─── */
+
+@media (max-width: 768px) {
+    /* Tighten header padding */
+    .plz-workshop-header {
+        padding: 12px 12px 0 !important;
     }
     
-    /* Make the Identity Grid 3 columns as well on wide screens */
+    /* Reduce tab button size to fit more on one row */
+    .plz-tab-bar .plz-tab-btn.menu_button {
+        padding: 6px 10px !important;
+        font-size: 0.85em !important;
+    }
+
+    /* Tighten the tab panels so content touches the edges more closely */
+    .plz-tab-panel {
+        padding: 15px 12px !important;
+    }
+
+    /* Stack the Layered Grid (Wardrobe) into single columns on mobile 
+       to prevent horizontal squishing */
+    .plz-layered-grid {
+        grid-template-columns: 1fr !important;
+        gap: 8px !important;
+    }
+    
+    /* Make inputs slightly larger for touch targets */
+    .text_pole, .menu_button {
+        min-height: 38px;
+    }
+}
+
+/* ─── Ultrawide Grid Expansion (3-column) ─── */
+@media (min-width: 1200px) {
+    #plz-workshop-modal .plz-layered-grid,
     #plz-identity-grid {
         grid-template-columns: 1fr 1fr 1fr !important;
     }
-}
-
-/* --- Internal Polish for the Larger View --- */
-#plz-workshop-modal .plz-workshop-body {
-    padding: 10px 5px; /* Slight adjustment to margins */
 }
 
 /* ─── Blueprint Editor Dialog Shell ───────────────────────────────────────── */
