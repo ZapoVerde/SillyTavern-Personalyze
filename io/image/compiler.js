@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/compiler.js
- * @stamp {"utc":"2026-05-01T07:40:00.000Z"}
+ * @stamp {"utc":"2026-05-01T22:05:00.000Z"}
  * @architectural-role State Derivation (Visual Requirements)
  * @description
  * Handles resolution measurement and prompt synthesis.
@@ -9,6 +9,10 @@
  * 
  * Updated for Reactive Logic Engine:
  * 1. Added Phase 3.5 to finalizePrompt to inject resolved logic probe values.
+ * 
+ * Updated with Forensic Tracing:
+ * 1. Added console groups for prompt compilation observability.
+ * 2. Added explicit logging for Logic Probe injection and template source.
  * 
  * @api-declaration
  * resolveDimensions(characterId, styleObj) -> { width: number, height: number }
@@ -152,6 +156,10 @@ function _serialize(val) {
  */
 export function finalizePrompt(layers, identityMap, emotion = '', pose = '', template = '') {
     let result = template || getSettings().vnStyleSuffix || '';
+    
+    console.group(`[PLZ:Compiler] Finalizing Prompt`);
+    console.log("Source Template:", result);
+
     const usedIdentityKeys = new Set();
     const usedLayerKeys    = new Set();
 
@@ -181,11 +189,21 @@ export function finalizePrompt(layers, identityMap, emotion = '', pose = '', tem
     // Phase 3.5: Reactive Logic Probes
     // Injects resolved probe results (strings) into the template.
     const logicMap = layers?.logic || {};
+    const logicSummary = [];
     for (const [key, val] of Object.entries(logicMap)) {
         const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'gi');
         if (regex.test(result)) {
-            result = result.replace(regex, String(val ?? '').trim());
+            const replacement = String(val ?? '').trim();
+            result = result.replace(regex, replacement);
+            logicSummary.push({ Token: `{{${key}}}`, Value: replacement });
         }
+    }
+    
+    if (logicSummary.length > 0) {
+        console.log("Logic Probes Injected into Template:");
+        console.table(logicSummary);
+    } else {
+        console.log("No Logic Probes tokens found in template.");
     }
 
     // Phase 4: {{identity_anchor}} — aggregate of unconsumed identity fields
@@ -216,8 +234,13 @@ export function finalizePrompt(layers, identityMap, emotion = '', pose = '', tem
     result = result.replace(/\{\{layers_description\}\}/gi, layerParts.join(', '));
 
     // Phase 6: Stale placeholder cleanup
-    return result
+    const finalPrompt = result
         .replace(/\{\{[a-zA-Z0-9_]+\}\}/g, '')
         .replace(/(,\s*)+/g, ', ')
         .trim();
+
+    console.log("Final Prompt Sent to API:", finalPrompt);
+    console.groupEnd();
+
+    return finalPrompt;
 }

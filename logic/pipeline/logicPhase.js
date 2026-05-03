@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/logic/pipeline/logicPhase.js
- * @stamp {"utc":"2026-05-01T14:00:00.000Z"}
+ * @stamp {"utc":"2026-05-01T21:30:00.000Z"}
  * @architectural-role Orchestrator (Phase 3.5)
  * @description
  * Evaluates dynamic logic probes attached to a Style.
@@ -10,6 +10,11 @@
  * 3. Determines "Dirtiness" based on narrative context, changed wardrobe, or template dependencies.
  * 4. Merges resolved strings into nextLayers.logic, performing a hydration pass to resolve
  *    nested variables within True/False output templates.
+ * 
+ * Updated with Forensic Tracing:
+ * 1. Added console groups for character-level evaluation isolation.
+ * 2. Implemented Input/Output tracing for each probe execution.
+ * 3. Added final state summary table for layers.logic.
  * 
  * @api-declaration
  * evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal, identity) -> Promise<void>
@@ -51,7 +56,14 @@ function serializeSlot(val) {
 export async function evaluateLogic(characterId, nextLayers, currentLayers, styleObj, text, history, signal, identity = {}) {
     const probes = styleObj?.logicProbes || {};
     const probeKeys = Object.keys(probes);
-    if (probeKeys.length === 0) return;
+    
+    console.group(`[PLZ:LogicPhase] Evaluating logic for: ${characterId}`);
+    
+    if (probeKeys.length === 0) {
+        console.log("No probes defined in this style.");
+        console.groupEnd();
+        return;
+    }
 
     // 1. Identify probes directly requested by the Style Template
     const templateTokens = new Set([
@@ -83,7 +95,6 @@ export async function evaluateLogic(characterId, nextLayers, currentLayers, styl
         path.add(key);
 
         // A. Analyze dependencies in the probe's prompt AND its output templates
-        // This ensures {{variable}} in the YES box triggers the dependency.
         const allDeps = new Set([
             ...extractTokens(probe.prompt),
             ...extractTokens(probe.trueTemplate),
@@ -133,6 +144,9 @@ export async function evaluateLogic(characterId, nextLayers, currentLayers, styl
         let finalValue = '';
         const cachedValue = currentLayers?.logic?.[key];
 
+        // TRACE: Logic Input
+        console.log(`[Probe:${key}] Input state mapping:`, contextData);
+
         // We fire if:
         // 1. Dependencies changed (isDirty)
         // 2. We have no cached value from previous DNA (cachedValue === undefined)
@@ -148,9 +162,10 @@ export async function evaluateLogic(characterId, nextLayers, currentLayers, styl
                     logCall(label, probe.prompt, null, null, { context: contextData });
                     logPatchLast(finalValue, null, { evaluated: isTrue }, `Result: ${isTrue ? 'TRUE' : 'FALSE'}`);
                     
-                    log('LogicPhase', `Computational ${key} evaluated: ${isTrue}`);
+                    console.log(`[Probe:${key}] Computational Result: ${isTrue ? 'TRUE' : 'FALSE'}`);
                 } else {
                     // SLOW-PATH: LLM execution
+                    console.log(`[Probe:${key}] Dispatching LLM Query...`);
                     finalValue = await executeLogicProbe(key, probe, contextData, signal);
                 }
             } catch (err) {
@@ -158,18 +173,25 @@ export async function evaluateLogic(characterId, nextLayers, currentLayers, styl
                 finalValue = cachedValue || ''; 
             }
         } else {
+            console.log(`[Probe:${key}] Clean state - using cached value.`);
             finalValue = cachedValue;
         }
 
         // D. Hydration Pass
-        // If the resulting string contains {{tokens}}, resolve them from contextData
-        // (This handles use-cases like "{{hair_color}} armpit hair" in the YES box)
+        const preHydration = finalValue;
         const resultTokens = extractTokens(finalValue);
         for (const rt of resultTokens) {
             if (contextData[rt] !== undefined) {
                 const regex = new RegExp(`\\{\\{${rt}\\}\\}`, 'gi');
                 finalValue = finalValue.replace(regex, String(contextData[rt]));
             }
+        }
+
+        // TRACE: Logic Output
+        if (preHydration !== finalValue) {
+            console.log(`[Probe:${key}] Hydrated: "${preHydration}" -> "${finalValue}"`);
+        } else {
+            console.log(`[Probe:${key}] Output: "${finalValue}"`);
         }
 
         path.delete(key);
@@ -184,4 +206,14 @@ export async function evaluateLogic(characterId, nextLayers, currentLayers, styl
             if (res) nextLayers.logic[key] = res.value;
         }
     }
+
+    // FINAL SUMMARY
+    if (Object.keys(nextLayers.logic).length > 0) {
+        console.log("Summary of Logic Injections for Style Template:");
+        console.table(nextLayers.logic);
+    } else {
+        console.log("Evaluation complete. No logic probes matched tokens in the current Style template.");
+    }
+
+    console.groupEnd();
 }

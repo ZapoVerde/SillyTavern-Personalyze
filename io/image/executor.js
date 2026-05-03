@@ -1,6 +1,6 @@
 /**
  * @file data/default-user/extensions/personalyze/io/image/executor.js
- * @stamp {"utc":"2026-04-17T16:20:00.000Z"}
+ * @stamp {"utc":"2026-05-01T22:20:00.000Z"}
  * @architectural-role IO Executor (Generation Logic)
  * @description
  * Primary execution engine for PersonaLyze image generation.
@@ -9,6 +9,10 @@
  * 
  * Updated for Dynamic Variable Architecture:
  * 1. generate() now accepts raw layers object to support iterative prompt compilation.
+ * 
+ * Updated with Forensic Tracing:
+ * 1. Added prompt visibility tracing to fetchPreviewBlob for Style tests.
+ * 2. Added Final Style Report to generate() to confirm outgoing prompt contents.
  * 
  * @api-declaration
  * fetchPreviewBlob(engine, model, pos, neg, w, h, seed, loras, useLayerDiffuse, engineParams) -> Promise<string>
@@ -128,6 +132,11 @@ export async function fetchPreviewBlob(engine, model, positivePrompt, negativePr
     const scrubbedParams = scrubEngineParams(blueprint, engineParams);
 
     const reqBundle = { engine, model, positivePrompt, negativePrompt, width, height, seed, loras, useLayerDiffuse, engineParams: scrubbedParams };
+    
+    // TRACE: Final Dispatch Report (Style Test)
+    console.log(`[PLZ:Executor] DISPATCHING STYLE TEST [${engine}:${model}]`);
+    console.log(`Prompt: "${positivePrompt}"`);
+
     logCall('StyleTest', `[${engine}:${model}]`, null, null, reqBundle);
 
     try {
@@ -203,6 +212,13 @@ export async function generate(characterId, tag, emotion, layers, emotionLabel, 
         useLayerDiffuse: styleObj.useLayerDiffuse,
         engineParams: scrubbedParams
     };
+
+    // TRACE: Final Style Report
+    console.group(`[PLZ:Executor] Generation Request: ${characterId}`);
+    console.log(`Target: [${engine}:${model}] at ${w}x${h}`);
+    console.log(`Template Used: "${styleObj.template}"`);
+    console.log(`Final Prompt Dispatched: "${fullPrompt}"`);
+    console.groupEnd();
 
     logCall('PortraitGenerate', `[${engine}:${model}]\n${fullPrompt}`, null, null, reqBundle);
     
