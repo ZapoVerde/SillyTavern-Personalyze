@@ -16,7 +16,7 @@
  *     external_io: [DOM, settings.js, creators.js, help.js, tester.js, renderer.js, utils.js, state.js]
  */
 
-import { saveSettingsDebounced } from '../../../../../../script.js';
+import { saveSettingsDebounced } from '../../../../../../../script.js';
 import { getMetaSettings, getSettings } from '../../settings.js';
 import { state } from '../../state.js';
 import { confirmModal } from '../../utils/modal.js';

@@ -17,7 +17,7 @@
  *     external_io: [saveSettingsDebounced, promptModal, toastr]
  */
 
-import { saveSettingsDebounced } from '../../../../../../script.js';
+import { saveSettingsDebounced } from '../../../../../../../script.js';
 import { promptModal } from '../../utils/modal.js';
 import { setActiveProbeKey, setProbeDirty } from './state.js';
 

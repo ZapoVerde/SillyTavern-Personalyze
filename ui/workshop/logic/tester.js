@@ -16,7 +16,7 @@
  *     external_io: [LLM, computationalParser.js, logicExecutor.js, toastr]
  */
 
-import { getContext } from '../../../../../extensions.js';
+import { getContext } from '../../../../../../extensions.js';
 import { getSettings } from '../../settings.js';
 import { state } from '../../state.js';
 import { buildHistoryText } from '../../utils/history.js';

@@ -19,7 +19,7 @@
 
 import { ConnectionManagerRequestService } from '../../../../shared.js';
 import { getMetaSettings, getSettings } from '../../settings.js';
-import { saveSettingsDebounced } from '../../../../../../script.js';
+import { saveSettingsDebounced } from '../../../../../../../script.js';
 import { state } from '../../state.js';
 import { getLogicDrawerHTML, getProbeSelectorHTML } from '../styleLogicTemplates.js';
 import { getActiveProbeKey, isProbeDirty, setProbeDirty } from './state.js';
