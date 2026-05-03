@@ -1058,7 +1058,7 @@ body > #plz-vn-toggle-btn.plz-vn-toggle-disabled {
     left: 0;
     transform: none;
     opacity: 0.7;
-    z-index: 5000;
+    z-index: 500;
 }
 
 /* Ensure tabs in the header look clean and not like heavy blocks */
