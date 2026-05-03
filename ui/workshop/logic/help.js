@@ -15,7 +15,7 @@
  *     external_io: [openModal]
  */
 
-import { openModal } from '../../utils/modal.js';
+import { openModal } from '../../../utils/modal.js';
 
 /**
  * Displays a formatted modal explaining the rules and syntax for Computational Logic Probes.

@@ -17,8 +17,8 @@
  */
 
 import { getContext } from '../../../../../../extensions.js';
-import { getSettings } from '../../settings.js';
-import { state } from '../../state.js';
+import { getSettings } from '../../../settings.js';
+import { state } from '../../../state.js';
 import { buildHistoryText } from '../../utils/history.js';
 import { executeLogicProbe } from '../../../io/llm/logicExecutor.js';
 import { evaluateComputationalLogic, extractTokens } from '../../../logic/computationalParser.js';

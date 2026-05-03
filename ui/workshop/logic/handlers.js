@@ -17,10 +17,10 @@
  */
 
 import { saveSettingsDebounced } from '../../../../../../../script.js';
-import { getMetaSettings, getSettings } from '../../settings.js';
-import { state } from '../../state.js';
-import { confirmModal } from '../../utils/modal.js';
-import { openTextModal } from '../../utils/textModal.js';
+import { getMetaSettings, getSettings } from '../../../settings.js';
+import { state } from '../../../state.js';
+import { confirmModal } from '../../../utils/modal.js';
+import { openTextModal } from '../../../utils/textModal.js';
 import { getActiveProbeKey, setActiveProbeKey, setProbeDirty, setLastFocusedInput, getLastFocusedInput } from './state.js';
 import { isCircular, getInjectionString } from './utils.js';
 import { handleNewProbe, handleCloneProbe } from './creators.js';

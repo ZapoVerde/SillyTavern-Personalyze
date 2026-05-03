@@ -17,10 +17,10 @@
  *     external_io: [DOM, settings.js, state.js, ConnectionManagerRequestService, styleLogicTemplates.js]
  */
 
-import { ConnectionManagerRequestService } from '../../../../shared.js';
-import { getMetaSettings, getSettings } from '../../settings.js';
+import { ConnectionManagerRequestService } from '../../../../../shared.js';
+import { getMetaSettings, getSettings } from '../../../settings.js';
 import { saveSettingsDebounced } from '../../../../../../../script.js';
-import { state } from '../../state.js';
+import { state } from '../../../state.js';
 import { getLogicDrawerHTML, getProbeSelectorHTML } from '../styleLogicTemplates.js';
 import { getActiveProbeKey, isProbeDirty, setProbeDirty } from './state.js';
 
