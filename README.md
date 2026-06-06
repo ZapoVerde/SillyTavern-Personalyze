@@ -1,4 +1,6 @@
 # Personalyze
+
+**[WIP]**
 **The Visual Novel Continuity Engine for SillyTavern**
 
 Personalyze transforms your text-based roleplays into a dynamic, multi-character Visual Novel. It isn't just a simple "prompt-to-image" script—it is a **stateful narrative engine**. 
